@@ -53,16 +53,16 @@ public class UnitType extends UnlockableContent implements Senseable{
     /** The environment flags that this unit *cannot* function in. If the env matches any of these, it will explode or be disabled. */
     public int envDisabled = Env.scorching;
 
-    /** movement speed (world units/t) */
+    /** movement speed (tiles/second) */
     public float speed = 1.1f,
     /** multiplier for speed when boosting */
     boostMultiplier = 1f,
     /** how affected this unit is by terrain */
     floorMultiplier = 1f,
-    /** body rotation speed in degrees/t */
-    rotateSpeed = 5f,
-    /** mech base rotation speed in degrees/t*/
-    baseRotateSpeed = 5f,
+    /** body rotation speed in degrees/t (3f = 180°/sec) */
+    rotateSpeed = 3f,
+    /** mech base rotation speed in degrees/t (3f = 180°/sec) */
+    baseRotateSpeed = 3f,
     /** movement drag as fraction */
     drag = 0.3f,
     /** acceleration as fraction of speed */
@@ -84,7 +84,14 @@ public class UnitType extends UnlockableContent implements Senseable{
     /** raw health amount */
     health = 200f,
     /** incoming damage is reduced by this amount */
-    armor = 0f,
+    armor = 0f;
+
+    /** RTS armor type classification */
+    public ArmorType armorType = ArmorType.none;
+    /** RTS unit class classification */
+    public UnitClass unitClass = UnitClass.mechanical;
+
+    public float
     /** minimum range of any weapon; used for approaching targets. can be overridden by setting a value > 0. */
     range = -1,
     /** maximum range of any weapon */
@@ -782,7 +789,7 @@ public class UnitType extends UnlockableContent implements Senseable{
     public void setStats(){
         stats.add(Stat.health, health);
         stats.add(Stat.armor, armor);
-        stats.add(Stat.speed, speed * 60f / tilesize, StatUnit.tilesSecond);
+        stats.add(Stat.speed, speed, StatUnit.tilesSecond);
         stats.add(Stat.size, StatValues.squared(hitSize / tilesize, StatUnit.blocks));
         stats.add(Stat.itemCapacity, itemCapacity);
         stats.add(Stat.range, Strings.autoFixed(maxRange / tilesize, 1), StatUnit.blocks);
@@ -1427,7 +1434,7 @@ public class UnitType extends UnlockableContent implements Senseable{
             case health, maxHealth -> health;
             case size -> hitSize / tilesize;
             case itemCapacity -> itemCapacity;
-            case speed -> speed * 60f / tilesize;
+            case speed -> speed;
             case payloadCapacity -> sample instanceof Payloadc ? payloadCapacity / tilePayload : 0f;
             case id -> getLogicId();
             default -> Double.NaN;

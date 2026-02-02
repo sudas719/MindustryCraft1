@@ -99,7 +99,7 @@ public class UnitTypes{
 
         dagger = new UnitType("dagger"){{
             researchCostMultiplier = 0.5f;
-            speed = 0.5f;
+            speed = 3.75f;
             hitSize = 8f;
             health = 150;
             stepSoundVolume = 0.4f;
@@ -119,7 +119,7 @@ public class UnitTypes{
         }};
 
         mace = new UnitType("mace"){{
-            speed = 0.5f;
+            speed = 3.75f;
             hitSize = 10f;
             health = 550;
             armor = 4f;
@@ -152,9 +152,9 @@ public class UnitTypes{
         }};
 
         fortress = new UnitType("fortress"){{
-            speed = 0.43f;
+            speed = 3.225f;
             hitSize = 13f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             targetAir = false;
             health = 900;
             armor = 9f;
@@ -190,9 +190,9 @@ public class UnitTypes{
         }};
 
         scepter = new UnitType("scepter"){{
-            speed = 0.36f;
+            speed = 2.7f;
             hitSize = 22f;
-            rotateSpeed = 2.1f;
+            rotateSpeed = 3f; // 180°/sec
             health = 9000;
             armor = 10f;
             mechFrontSway = 1f;
@@ -205,8 +205,6 @@ public class UnitTypes{
             stepSound = Sounds.mechStep;
             stepSoundPitch = 0.9f;
             stepSoundVolume = 0.35f;
-
-            abilities.add(new ShieldRegenFieldAbility(25f, 250f, 60f * 1, 60f));
 
             BulletType smallBullet = new BasicBulletType(12f, 20){{
                 width = 4.5f;
@@ -276,7 +274,7 @@ public class UnitTypes{
                 ejectEffect = Fx.casing1;
                 bullet = smallBullet;
                 shootSound = Sounds.shootScepterSecondary;
-                rotateSpeed = 3f;
+                rotateSpeed = 3f; // 180°/sec
             }},
             new Weapon("scepter-mount"){{
                 reload = 15f;
@@ -286,15 +284,15 @@ public class UnitTypes{
                 ejectEffect = Fx.casing1;
                 bullet = smallBullet;
                 shootSound = Sounds.shootScepterSecondary;
-                rotateSpeed = 3f;
+                rotateSpeed = 3f; // 180°/sec
             }}
             );
         }};
 
         reign = new UnitType("reign"){{
-            speed = 0.4f;
+            speed = 3f;
             hitSize = 30f;
-            rotateSpeed = 1.65f;
+            rotateSpeed = 3f; // 180°/sec
             health = 24000;
             armor = 18f;
             mechStepParticles = true;
@@ -359,15 +357,14 @@ public class UnitTypes{
         //region ground support
 
         nova = new UnitType("nova"){{
-            canBoost = true;
-            boostMultiplier = 1.5f;
-            speed = 0.55f;
+            speed = 3.94f;
+            accel = 10f;
             hitSize = 8f;
-            health = 120f;
-            buildSpeed = 0.3f;
+            health = 45f;
             armor = 1f;
 
-            abilities.add(new RepairFieldAbility(10f, 60f * 4, 60f));
+            commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand);
+
             ammoType = new PowerAmmoType(1000);
 
             weapons.add(new Weapon("heal-weapon"){{
@@ -391,19 +388,17 @@ public class UnitTypes{
         }};
 
         pulsar = new UnitType("pulsar"){{
-            canBoost = true;
-            boostMultiplier = 1.6f;
-            speed = 0.7f;
+            speed = 3.94f;
+            accel = 10f;
             hitSize = 11f;
             health = 320f;
-            buildSpeed = 0.5f;
             armor = 4f;
-            riseSpeed = 0.07f;
 
             mineTier = 2;
             mineSpeed = 3f;
 
-            abilities.add(new ShieldRegenFieldAbility(20f, 40f, 60f * 5, 60f));
+            commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand);
+
             ammoType = new PowerAmmoType(1300);
 
             weapons.add(new Weapon("heal-shotgun-weapon"){{
@@ -447,7 +442,6 @@ public class UnitTypes{
         }};
 
         quasar = new UnitType("quasar"){{
-            mineTier = 3;
             boostMultiplier = 2f;
             health = 640f;
             buildSpeed = 1.1f;
@@ -462,13 +456,10 @@ public class UnitTypes{
             stepSoundPitch = 0.9f;
             stepSoundVolume = 0.6f;
 
-            speed = 0.5f;
+            speed = 3.75f;
             hitSize = 13f;
 
-            mineSpeed = 4f;
             drawShields = false;
-
-            abilities.add(new ForceFieldAbility(60f, 0.4f, 500f, 60f * 6));
 
             weapons.add(new Weapon("beam-weapon"){{
                 top = false;
@@ -496,7 +487,7 @@ public class UnitTypes{
         vela = new UnitType("vela"){{
             hitSize = 24f;
 
-            rotateSpeed = 1.8f;
+            rotateSpeed = 3f; // 180°/sec
             mechFrontSway = 1f;
             buildSpeed = 3f;
 
@@ -505,7 +496,7 @@ public class UnitTypes{
             ammoType = new PowerAmmoType(2500);
             drownTimeMultiplier = 1.3f;
 
-            speed = 0.44f;
+            speed = 3.3f;
             boostMultiplier = 2.4f;
             engineOffset = 12f;
             engineSize = 6f;
@@ -586,7 +577,7 @@ public class UnitTypes{
             health = 18000f;
             armor = 9f;
             stepShake = 1.5f;
-            rotateSpeed = 1.5f;
+            rotateSpeed = 3f; // 180°/sec
             drownTimeMultiplier = 1.6f;
 
             stepSound = Sounds.walkerStep;
@@ -603,7 +594,7 @@ public class UnitTypes{
             ammoType = new PowerAmmoType(4000);
             groundLayer = Layer.legUnit;
 
-            speed = 0.3f;
+            speed = 2.25f;
 
             drawShields = false;
 
@@ -662,7 +653,7 @@ public class UnitTypes{
             researchCostMultiplier = 0.5f;
             aiController = SuicideAI::new;
 
-            speed = 1f;
+            speed = 7.5f;
             hitSize = 8f;
             health = 150;
             mechSideSway = 0.25f;
@@ -699,10 +690,10 @@ public class UnitTypes{
         }};
 
         atrax = new UnitType("atrax"){{
-            speed = 0.6f;
+            speed = 4.5f;
             drag = 0.4f;
             hitSize = 13f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             targetAir = false;
             health = 600;
             immunities = ObjectSet.with(StatusEffects.burning, StatusEffects.melting);
@@ -743,10 +734,10 @@ public class UnitTypes{
         }};
 
         spiroct = new UnitType("spiroct"){{
-            speed = 0.54f;
+            speed = 4.05f;
             drag = 0.4f;
             hitSize = 15f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             health = 1000;
             legCount = 6;
             legLength = 13f;
@@ -811,12 +802,12 @@ public class UnitTypes{
 
         arkyid = new UnitType("arkyid"){{
             drag = 0.1f;
-            speed = 0.62f;
+            speed = 4.65f;
             hitSize = 23f;
             health = 8000;
             armor = 6f;
 
-            rotateSpeed = 2.7f;
+            rotateSpeed = 3f; // 180°/sec
 
             legCount = 6;
             legMoveSpace = 1f;
@@ -884,7 +875,7 @@ public class UnitTypes{
                 shootY = 7f;
                 reload = 45;
                 shake = 3f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 ejectEffect = Fx.casing1;
                 shootSound = Sounds.shootArtillerySap;
                 rotate = true;
@@ -916,7 +907,7 @@ public class UnitTypes{
 
         toxopid = new UnitType("toxopid"){{
             drag = 0.1f;
-            speed = 0.5f;
+            speed = 3.75f;
             hitSize = 26f;
             health = 22000;
             armor = 13f;
@@ -924,7 +915,7 @@ public class UnitTypes{
             stepSound = Sounds.walkerStep;
             stepSoundVolume = 1.1f;
 
-            rotateSpeed = 1.9f;
+            rotateSpeed = 3f; // 180°/sec
 
             legCount = 8;
             legMoveSpace = 0.8f;
@@ -952,7 +943,7 @@ public class UnitTypes{
                 shootY = 7f;
                 reload = 30;
                 shake = 4f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 ejectEffect = Fx.casing1;
                 shootSound = Sounds.shootToxopidShotgun;
                 shootSoundVolume = 0.8f;
@@ -985,7 +976,7 @@ public class UnitTypes{
                 reload = 210;
                 shake = 10f;
                 recoil = 10f;
-                rotateSpeed = 1f;
+                rotateSpeed = 3f; // 180°/sec
                 ejectEffect = Fx.casing3;
                 shootSound = Sounds.shootArtillerySapBig;
                 rotate = true;
@@ -1050,7 +1041,7 @@ public class UnitTypes{
 
         flare = new UnitType("flare"){{
             researchCostMultiplier = 0.5f;
-            speed = 2.7f;
+            speed = 20.25f;
             accel = 0.08f;
             drag = 0.04f;
             flying = true;
@@ -1061,7 +1052,7 @@ public class UnitTypes{
             itemCapacity = 10;
             circleTarget = true;
             omniMovement = false;
-            rotateSpeed = 5f;
+            rotateSpeed = 3f; // 180°/sec
             circleTargetRadius = 60f;
             wreckSoundVolume = 0.7f;
 
@@ -1094,7 +1085,7 @@ public class UnitTypes{
 
         horizon = new UnitType("horizon"){{
             health = 340;
-            speed = 1.65f;
+            speed = 12.375f;
             accel = 0.08f;
             drag = 0.03f;
             flying = true;
@@ -1110,7 +1101,7 @@ public class UnitTypes{
             circleTarget = true;
             ammoType = new ItemAmmoType(Items.graphite);
             omniMovement = false;
-            rotateSpeed = 4.5f;
+            rotateSpeed = 3f; // 180°/sec
             circleTargetRadius = 40f;
 
             moveSound = Sounds.loopThruster;
@@ -1144,7 +1135,7 @@ public class UnitTypes{
 
         zenith = new UnitType("zenith"){{
             health = 700;
-            speed = 1.7f;
+            speed = 12.75f;
             accel = 0.04f;
             drag = 0.016f;
             flying = true;
@@ -1191,10 +1182,10 @@ public class UnitTypes{
         }};
 
         antumbra = new UnitType("antumbra"){{
-            speed = 0.8f;
+            speed = 6f;
             accel = 0.04f;
             drag = 0.04f;
-            rotateSpeed = 1.9f;
+            rotateSpeed = 3f; // 180°/sec
             flying = true;
             lowAltitude = true;
             health = 7200;
@@ -1229,7 +1220,7 @@ public class UnitTypes{
                 x = 17f;
                 reload = 20f;
                 ejectEffect = Fx.casing1;
-                rotateSpeed = 8f;
+                rotateSpeed = 3f; // 180°/sec
                 bullet = missiles;
                 shootSound = Sounds.shootMissile;
                 rotate = true;
@@ -1239,7 +1230,7 @@ public class UnitTypes{
                 y = -8f;
                 x = 17f;
                 reload = 35;
-                rotateSpeed = 8f;
+                rotateSpeed = 3f; // 180°/sec
                 ejectEffect = Fx.casing1;
                 bullet = missiles;
                 shootSound = Sounds.shootMissile;
@@ -1252,7 +1243,7 @@ public class UnitTypes{
                 shootY = 10f;
                 reload = 12;
                 shake = 1f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 ejectEffect = Fx.casing1;
                 shootSound = Sounds.shootSpectre;
                 rotate = true;
@@ -1268,10 +1259,10 @@ public class UnitTypes{
         }};
 
         eclipse = new UnitType("eclipse"){{
-            speed = 0.54f;
+            speed = 4.05f;
             accel = 0.04f;
             drag = 0.04f;
-            rotateSpeed = 1f;
+            rotateSpeed = 3f; // 180°/sec
             flying = true;
             lowAltitude = true;
             health = 22000;
@@ -1302,7 +1293,7 @@ public class UnitTypes{
                 shootY = 9f;
                 x = 18f;
                 y = 5f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 reload = 45f;
                 recoil = 4f;
                 shootSound = Sounds.shootEclipse;
@@ -1323,7 +1314,7 @@ public class UnitTypes{
             new Weapon("large-artillery"){{
                 x = 11f;
                 y = 27f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 reload = 9f;
                 shootSound = Sounds.shootCyclone;
                 shadow = 7f;
@@ -1337,7 +1328,7 @@ public class UnitTypes{
                 x = 20f;
                 reload = 12f;
                 ejectEffect = Fx.casing1;
-                rotateSpeed = 7f;
+                rotateSpeed = 3f; // 180°/sec
                 shake = 1f;
                 shootSound = Sounds.shootCyclone;
                 rotate = true;
@@ -1356,7 +1347,7 @@ public class UnitTypes{
             flying = true;
             drag = 0.06f;
             accel = 0.12f;
-            speed = 1.5f;
+            speed = 11.25f;
             health = 100;
             engineSize = 1.8f;
             engineOffset = 5.7f;
@@ -1366,9 +1357,6 @@ public class UnitTypes{
             wreckSoundVolume = deathSoundVolume = 0.7f;
 
             ammoType = new PowerAmmoType(500);
-
-            mineTier = 1;
-            mineSpeed = 2.5f;
         }};
 
         poly = new UnitType("poly"){{
@@ -1376,8 +1364,8 @@ public class UnitTypes{
 
             flying = true;
             drag = 0.05f;
-            speed = 2.6f;
-            rotateSpeed = 15f;
+            speed = 19.5f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             range = 130f;
             health = 400;
@@ -1387,8 +1375,6 @@ public class UnitTypes{
             lowAltitude = true;
 
             ammoType = new PowerAmmoType(900);
-            mineTier = 2;
-            mineSpeed = 3.5f;
             wreckSoundVolume = 0.9f;
 
             abilities.add(new RepairFieldAbility(5f, 60f * 8, 50f));
@@ -1429,11 +1415,9 @@ public class UnitTypes{
         mega = new UnitType("mega"){{
             defaultCommand = UnitCommand.repairCommand;
 
-            mineTier = 3;
-            mineSpeed = 4f;
             health = 460;
             armor = 3f;
-            speed = 2.5f;
+            speed = 18.75f;
             accel = 0.06f;
             drag = 0.017f;
             lowAltitude = true;
@@ -1482,8 +1466,8 @@ public class UnitTypes{
         quad = new UnitType("quad"){{
             armor = 8f;
             health = 6000;
-            speed = 1.2f;
-            rotateSpeed = 2f;
+            speed = 9f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.05f;
             drag = 0.017f;
             lowAltitude = false;
@@ -1560,8 +1544,8 @@ public class UnitTypes{
 
             armor = 16f;
             health = 24000;
-            speed = 0.8f;
-            rotateSpeed = 1f;
+            speed = 6f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.04f;
             drag = 0.018f;
             flying = true;
@@ -1578,22 +1562,20 @@ public class UnitTypes{
 
             loopSound = Sounds.loopHover;
 
-            abilities.add(new ForceFieldAbility(140f, 4f, 7000f, 60f * 8, 8, 0f){{
-                breakSound = Sounds.shieldBreak;
-            }}, new RepairFieldAbility(130f, 60f * 2, 140f));
+            abilities.add(new RepairFieldAbility(130f, 60f * 2, 140f));
         }};
 
         //endregion
         //region naval attack
 
         risso = new UnitType("risso"){{
-            speed = 1.1f;
+            speed = 8.25f;
             drag = 0.13f;
             hitSize = 10f;
             health = 280;
             armor = 2f;
             accel = 0.4f;
-            rotateSpeed = 3.3f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
 
             trailLength = 20;
@@ -1649,12 +1631,12 @@ public class UnitTypes{
 
         minke = new UnitType("minke"){{
             health = 600;
-            speed = 0.9f;
+            speed = 6.75f;
             drag = 0.15f;
             hitSize = 13f;
             armor = 4f;
             accel = 0.3f;
-            rotateSpeed = 2.6f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
             ammoType = new ItemAmmoType(Items.graphite);
 
@@ -1672,7 +1654,7 @@ public class UnitTypes{
                 x = 5f;
                 y = 3.5f;
                 rotate = true;
-                rotateSpeed = 5f;
+                rotateSpeed = 3f; // 180°/sec
                 inaccuracy = 8f;
                 ejectEffect = Fx.casing1;
                 shootSound = Sounds.shootDuo;
@@ -1694,7 +1676,7 @@ public class UnitTypes{
                 y = -5f;
                 rotate = true;
                 inaccuracy = 2f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 shake = 1.5f;
                 ejectEffect = Fx.casing2;
                 shootSound = Sounds.shootArtillerySmall;
@@ -1712,9 +1694,9 @@ public class UnitTypes{
 
         bryde = new UnitType("bryde"){{
             health = 910;
-            speed = 0.85f;
+            speed = 6.375f;
             accel = 0.2f;
-            rotateSpeed = 1.8f;
+            rotateSpeed = 3f; // 180°/sec
             drag = 0.17f;
             hitSize = 20f;
             armor = 7f;
@@ -1730,14 +1712,13 @@ public class UnitTypes{
             waveTrailY = -9f;
             trailScl = 1.5f;
 
-            abilities.add(new ShieldRegenFieldAbility(20f, 40f, 60f * 4, 60f));
 
             weapons.add(new Weapon("large-artillery"){{
                 reload = 65f;
                 mirror = false;
                 x = 0f;
                 y = -3.5f;
-                rotateSpeed = 1.7f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
                 shootY = 7f;
                 shake = 5f;
@@ -1778,7 +1759,7 @@ public class UnitTypes{
 
                 shadow = 6f;
 
-                rotateSpeed = 4f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
                 shoot.shots = 2;
                 shoot.shotDelay = 3f;
@@ -1814,11 +1795,11 @@ public class UnitTypes{
             health = 11000;
             armor = 12f;
 
-            speed = 0.73f;
+            speed = 5.475f;
             drag = 0.17f;
             hitSize = 39f;
             accel = 0.2f;
-            rotateSpeed = 1.3f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
             ammoType = new ItemAmmoType(Items.thorium);
 
@@ -1836,7 +1817,7 @@ public class UnitTypes{
                 x = 0f;
                 y = 0f;
                 rotate = true;
-                rotateSpeed = 4f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
 
                 shadow = 20f;
@@ -1883,7 +1864,7 @@ public class UnitTypes{
                 cooldownTime = 90f;
                 x = 70f/4f;
                 y = -66f/4f;
-                rotateSpeed = 4f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
                 shootY = 7f;
                 shake = 2f;
@@ -1907,12 +1888,12 @@ public class UnitTypes{
 
         omura = new UnitType("omura"){{
             health = 22000;
-            speed = 0.62f;
+            speed = 4.65f;
             drag = 0.18f;
             hitSize = 58f;
             armor = 16f;
             accel = 0.19f;
-            rotateSpeed = 0.9f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
             ammoType = new PowerAmmoType(4000);
 
@@ -1931,7 +1912,7 @@ public class UnitTypes{
                 mirror = false;
                 x = 0f;
                 y = -3.5f;
-                rotateSpeed = 1.4f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
                 shootY = 23f;
                 shake = 6f;
@@ -1958,12 +1939,12 @@ public class UnitTypes{
         //endregion
         //region naval support
         retusa = new UnitType("retusa"){{
-            speed = 0.9f;
+            speed = 6.75f;
             drag = 0.14f;
             hitSize = 11f;
             health = 270;
             accel = 0.4f;
-            rotateSpeed = 5f;
+            rotateSpeed = 3f; // 180°/sec
             trailLength = 20;
             waveTrailX = 5f;
             trailScl = 1.3f;
@@ -1996,7 +1977,7 @@ public class UnitTypes{
                 reload = 22f;
                 x = 4.5f;
                 y = -3.5f;
-                rotateSpeed = 5f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = true;
                 rotate = true;
                 bullet = new LaserBoltBulletType(5.2f, 12){{
@@ -2014,7 +1995,7 @@ public class UnitTypes{
                 reload = 90f;
                 x = y = shootX = shootY = 0f;
                 shootSound = Sounds.shootRetusa;
-                rotateSpeed = 180f;
+                rotateSpeed = 3f; // 180°/sec
                 shootSoundVolume = 0.9f;
 
                 shoot.shots = 3;
@@ -2068,12 +2049,12 @@ public class UnitTypes{
 
         oxynoe = new UnitType("oxynoe"){{
             health = 560;
-            speed = 0.83f;
+            speed = 6.225f;
             drag = 0.14f;
             hitSize = 14f;
             armor = 4f;
             accel = 0.4f;
-            rotateSpeed = 4f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
 
             moveSoundVolume = 0.55f;
@@ -2097,7 +2078,7 @@ public class UnitTypes{
                 x = 4.5f;
                 y = 6.5f;
                 rotate = true;
-                rotateSpeed = 5f;
+                rotateSpeed = 3f; // 180°/sec
                 inaccuracy = 10f;
                 ejectEffect = Fx.casing1;
                 shootSound = Sounds.shootFlamePlasma;
@@ -2150,9 +2131,9 @@ public class UnitTypes{
 
         cyerce = new UnitType("cyerce"){{
             health = 870;
-            speed = 0.86f;
+            speed = 6.45f;
             accel = 0.22f;
-            rotateSpeed = 2.6f;
+            rotateSpeed = 3f; // 180°/sec
             drag = 0.16f;
             hitSize = 20f;
             armor = 6f;
@@ -2190,7 +2171,7 @@ public class UnitTypes{
 
                 shadow = 5f;
 
-                rotateSpeed = 4f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
                 inaccuracy = 1f;
                 velocityRnd = 0.1f;
@@ -2294,11 +2275,11 @@ public class UnitTypes{
             health = 12000;
             armor = 12f;
 
-            speed = 0.7f;
+            speed = 5.25f;
             drag = 0.17f;
             hitSize = 44f;
             accel = 0.2f;
-            rotateSpeed = 1.4f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
             ammoType = new PowerAmmoType(3500);
             ammoCapacity = 40;
@@ -2346,12 +2327,12 @@ public class UnitTypes{
 
         navanax = new UnitType("navanax"){{
             health = 20000;
-            speed = 0.65f;
+            speed = 4.875f;
             drag = 0.17f;
             hitSize = 58f;
             armor = 16f;
             accel = 0.2f;
-            rotateSpeed = 1.1f;
+            rotateSpeed = 3f; // 180°/sec
             faceTarget = false;
             ammoType = new PowerAmmoType(4500);
 
@@ -2383,7 +2364,7 @@ public class UnitTypes{
                         targetInterval = 20f;
                         targetSwitchInterval = 35f;
 
-                        rotateSpeed = 3.5f;
+                        rotateSpeed = 3f; // 180°/sec
                         reload = 170f;
                         recoil = 1f;
                         shootSound = Sounds.beamPlasmaSmall;
@@ -2433,7 +2414,7 @@ public class UnitTypes{
 
                 reload = 65f;
                 shake = 3f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 shadow = 30f;
                 shootY = 7f;
                 recoil = 4f;
@@ -2523,8 +2504,8 @@ public class UnitTypes{
             mineTier = 1;
             buildSpeed = 0.5f;
             drag = 0.05f;
-            speed = 3f;
-            rotateSpeed = 15f;
+            speed = 22.5f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             fogRadius = 0f;
             itemCapacity = 30;
@@ -2571,8 +2552,8 @@ public class UnitTypes{
             mineTier = 1;
             buildSpeed = 0.75f;
             drag = 0.05f;
-            speed = 3.3f;
-            rotateSpeed = 17f;
+            speed = 24.75f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             fogRadius = 0f;
             itemCapacity = 50;
@@ -2621,8 +2602,8 @@ public class UnitTypes{
             mineTier = 2;
             buildSpeed = 1f;
             drag = 0.05f;
-            speed = 3.55f;
-            rotateSpeed = 19f;
+            speed = 26.625f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.11f;
             fogRadius = 0f;
             itemCapacity = 70;
@@ -2670,8 +2651,8 @@ public class UnitTypes{
         stell = new TankUnitType("stell"){{
             hitSize = 12f;
             treadPullOffset = 3;
-            speed = 0.75f;
-            rotateSpeed = 3.5f;
+            speed = 5.625f;
+            rotateSpeed = 3f; // 180°/sec
             health = 850;
             armor = 6f;
             itemCapacity = 0;
@@ -2689,7 +2670,7 @@ public class UnitTypes{
                 shootY = 4.5f;
                 recoil = 1f;
                 rotate = true;
-                rotateSpeed = 2.2f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
                 x = 0f;
                 y = -0.75f;
@@ -2716,8 +2697,8 @@ public class UnitTypes{
         locus = new TankUnitType("locus"){{
             hitSize = 18f;
             treadPullOffset = 5;
-            speed = 0.7f;
-            rotateSpeed = 2.6f;
+            speed = 5.25f;
+            rotateSpeed = 3f; // 180°/sec
             health = 2100;
             armor = 8f;
             itemCapacity = 0;
@@ -2736,7 +2717,7 @@ public class UnitTypes{
                 shootY = 10f;
                 recoil = 1f;
                 rotate = true;
-                rotateSpeed = 1.4f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
                 shootCone = 2f;
                 x = 0f;
@@ -2799,8 +2780,8 @@ public class UnitTypes{
         precept = new TankUnitType("precept"){{
             hitSize = 24f;
             treadPullOffset = 5;
-            speed = 0.64f;
-            rotateSpeed = 1.5f;
+            speed = 4.8f;
+            rotateSpeed = 3f; // 180°/sec
             health = 5000;
             armor = 11f;
             itemCapacity = 0;
@@ -2818,7 +2799,7 @@ public class UnitTypes{
                 shootY = 16f;
                 recoil = 3f;
                 rotate = true;
-                rotateSpeed = 1.625f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
                 shootCone = 2f;
                 x = 0f;
@@ -2873,7 +2854,7 @@ public class UnitTypes{
         vanquish = new TankUnitType("vanquish"){{
             hitSize = 28f;
             treadPullOffset = 4;
-            speed = 0.63f;
+            speed = 4.725f;
             health = 11000;
             armor = 20f;
             itemCapacity = 0;
@@ -2895,7 +2876,7 @@ public class UnitTypes{
                 shake = 5f;
                 recoil = 4f;
                 rotate = true;
-                rotateSpeed = 1f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
                 x = 0f;
                 y = 0;
@@ -2956,7 +2937,7 @@ public class UnitTypes{
                     shootY = 5.5f;
                     recoil = 2f;
                     rotate = true;
-                    rotateSpeed = 2f;
+                    rotateSpeed = 3f; // 180°/sec
                     shootSound = Sounds.shootStell;
 
                     bullet = new BasicBulletType(4.5f, 25){{
@@ -2977,11 +2958,11 @@ public class UnitTypes{
         conquer = new TankUnitType("conquer"){{
             hitSize = 46f;
             treadPullOffset = 1;
-            speed = 0.48f;
+            speed = 3.6f;
             health = 22000;
             armor = 26f;
             crushDamage = 25f / 5f;
-            rotateSpeed = 0.8f;
+            rotateSpeed = 3f; // 180°/sec
             floorMultiplier = 0.3f;
             immunities.addAll(StatusEffects.burning, StatusEffects.melting);
 
@@ -3000,7 +2981,7 @@ public class UnitTypes{
                 shake = 5f;
                 recoil = 5f;
                 rotate = true;
-                rotateSpeed = 0.6f;
+                rotateSpeed = 3f; // 180°/sec
                 mirror = false;
                 x = 0f;
                 y = -2f;
@@ -3157,10 +3138,10 @@ public class UnitTypes{
         //region erekir - mech
 
         merui = new ErekirUnitType("merui"){{
-            speed = 0.72f;
+            speed = 5.4f;
             drag = 0.11f;
             hitSize = 9f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             health = 680;
             armor = 4f;
             legStraightness = 0.3f;
@@ -3243,10 +3224,10 @@ public class UnitTypes{
         }};
 
         cleroi = new ErekirUnitType("cleroi"){{
-            speed = 0.6f;
+            speed = 4.5f;
             drag = 0.1f;
             hitSize = 14f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             health = 1100;
             armor = 5f;
             stepShake = 0f;
@@ -3353,10 +3334,10 @@ public class UnitTypes{
         }};
 
         anthicus = new ErekirUnitType("anthicus"){{
-            speed = 0.65f;
+            speed = 4.875f;
             drag = 0.1f;
             hitSize = 21f;
-            rotateSpeed = 3f;
+            rotateSpeed = 3f; // 180°/sec
             health = 2900;
             armor = 7f;
             fogRadius = 40f;
@@ -3415,7 +3396,7 @@ public class UnitTypes{
                 shootWarmupSpeed = 0.05f;
                 minWarmup = 0.9f;
                 rotationLimit = 70f;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 inaccuracy = 20f;
                 shootStatus = StatusEffects.slow;
                 alwaysShootWhenMoving = true;
@@ -3511,7 +3492,7 @@ public class UnitTypes{
 
         tecta = new ErekirUnitType("tecta"){{
             drag = 0.1f;
-            speed = 0.6f;
+            speed = 4.5f;
             hitSize = 30f;
             health = 6500;
             armor = 5f;
@@ -3528,20 +3509,7 @@ public class UnitTypes{
             stepSoundVolume = 1f;
             stepSoundPitch = 1f;
 
-            abilities.add(new ShieldArcAbility(){{
-                region = "tecta-shield";
-                radius = 45f;
-                angle = 82f;
-                regen = 40f / 60f;
-                cooldown = 60f * 8f;
-                max = 2200f;
-                y = -20f;
-                width = 8f;
-                whenShooting = false;
-                chanceDeflect = 1f;
-            }});
-
-            rotateSpeed = 2.1f;
+            rotateSpeed = 3f; // 180°/sec
 
             legCount = 6;
             legLength = 15f;
@@ -3621,11 +3589,11 @@ public class UnitTypes{
 
         collaris = new ErekirUnitType("collaris"){{
             drag = 0.1f;
-            speed = 1.1f;
+            speed = 8.25f;
             hitSize = 44f;
             health = 18000;
             armor = 9f;
-            rotateSpeed = 1.6f;
+            rotateSpeed = 3f; // 180°/sec
             lockLegBase = true;
             legContinuousMove = true;
             legStraightness = 0.6f;
@@ -3664,7 +3632,7 @@ public class UnitTypes{
                 shootSound = Sounds.shootCollaris;
                 mirror = true;
                 rotationLimit = 30f;
-                rotateSpeed = 0.4f;
+                rotateSpeed = 3f; // 180°/sec
                 rotate = true;
 
                 x = 48 / 4f;
@@ -3801,8 +3769,8 @@ public class UnitTypes{
             shadowElevation = 0.1f;
 
             drag = 0.07f;
-            speed = 1.8f;
-            rotateSpeed = 5f;
+            speed = 13.5f;
+            rotateSpeed = 3f; // 180°/sec
 
             accel = 0.09f;
             health = 600f;
@@ -3868,8 +3836,8 @@ public class UnitTypes{
             lowAltitude = false;
             flying = true;
             drag = 0.08f;
-            speed = 2f;
-            rotateSpeed = 8f;
+            speed = 15f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.09f;
             health = 1100f;
             armor = 3f;
@@ -3914,8 +3882,8 @@ public class UnitTypes{
         obviate = new ErekirUnitType("obviate"){{
             flying = true;
             drag = 0.08f;
-            speed = 1.8f;
-            rotateSpeed = 2.5f;
+            speed = 13.5f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.09f;
             health = 2300f;
             armor = 6f;
@@ -4039,8 +4007,8 @@ public class UnitTypes{
             lowAltitude = false;
             flying = true;
             drag = 0.06f;
-            speed = 1.1f;
-            rotateSpeed = 3.2f;
+            speed = 8.25f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             health = 6000f;
             armor = 4f;
@@ -4067,7 +4035,7 @@ public class UnitTypes{
                 x = 51 / 4f;
                 y = 5 / 4f;
                 rotate = true;
-                rotateSpeed = 2f;
+                rotateSpeed = 3f; // 180°/sec
                 reload = 55f;
                 layerOffset = -0.001f;
                 recoil = 1f;
@@ -4143,8 +4111,8 @@ public class UnitTypes{
             lowAltitude = false;
             flying = true;
             drag = 0.07f;
-            speed = 1f;
-            rotateSpeed = 2f;
+            speed = 7.5f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             health = 12000f;
             armor = 9f;
@@ -4188,7 +4156,7 @@ public class UnitTypes{
                 y = -10f / 4f;
                 mirror = true;
                 rotate = true;
-                rotateSpeed = 0.4f;
+                rotateSpeed = 3f; // 180°/sec
                 reload = 70f;
                 layerOffset = -20f;
                 recoil = 1f;
@@ -4300,7 +4268,7 @@ public class UnitTypes{
             armor = 2;
             hitSize = 9f;
             omniMovement = false;
-            rotateSpeed = 2.5f;
+            rotateSpeed = 3f; // 180°/sec
             drownTimeMultiplier = 1.75f;
             segments = 3;
             drawBody = false;
@@ -4312,7 +4280,7 @@ public class UnitTypes{
             segmentScl = 3f;
             segmentPhase = 5f;
             segmentMag = 0.5f;
-            speed = 1.2f;
+            speed = 9f;
         }};
 
         latum = new NeoplasmUnitType("latum"){{
@@ -4320,7 +4288,7 @@ public class UnitTypes{
             armor = 12;
             hitSize = 48f;
             omniMovement = false;
-            rotateSpeed = 1.7f;
+            rotateSpeed = 3f; // 180°/sec
             segments = 4;
             drawBody = false;
             hidden = true;
@@ -4330,7 +4298,7 @@ public class UnitTypes{
 
             segmentScl = 4f;
             segmentPhase = 5f;
-            speed = 1f;
+            speed = 7.5f;
 
             abilities.add(new SpawnDeathAbility(renale, 5, 11f));
         }};
@@ -4358,8 +4326,8 @@ public class UnitTypes{
             mineTier = 3;
             buildSpeed = 1.2f;
             drag = 0.08f;
-            speed = 5.6f;
-            rotateSpeed = 7f;
+            speed = 42f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.09f;
             itemCapacity = 60;
             health = 300f;
@@ -4424,8 +4392,8 @@ public class UnitTypes{
             mineTier = 3;
             buildSpeed = 1.4f;
             drag = 0.08f;
-            speed = 7f;
-            rotateSpeed = 8f;
+            speed = 52.5f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.09f;
             itemCapacity = 90;
             health = 500f;
@@ -4477,7 +4445,7 @@ public class UnitTypes{
 
             weapons.add(new BuildWeapon("build-weapon"){{
                 rotate = true;
-                rotateSpeed = 7f;
+                rotateSpeed = 3f; // 180°/sec
                 x = 14/4f;
                 y = 15/4f;
                 layerOffset = -0.001f;
@@ -4503,8 +4471,8 @@ public class UnitTypes{
             mineTier = 3;
             buildSpeed = 1.5f;
             drag = 0.08f;
-            speed = 7.5f;
-            rotateSpeed = 8f;
+            speed = 56.25f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.08f;
             itemCapacity = 110;
             health = 700f;
@@ -4562,7 +4530,7 @@ public class UnitTypes{
             speed = 0f;
             hitSize = 0f;
             health = 1;
-            rotateSpeed = 360f;
+            rotateSpeed = 3f; // 180°/sec
             itemCapacity = 0;
             hidden = true;
             internal = true;
@@ -4580,8 +4548,8 @@ public class UnitTypes{
             lowAltitude = false;
             flying = true;
             drag = 0.06f;
-            speed = 3.5f;
-            rotateSpeed = 9f;
+            speed = 26.25f;
+            rotateSpeed = 3f; // 180°/sec
             accel = 0.1f;
             itemCapacity = 100;
             health = 200f;
@@ -4601,7 +4569,7 @@ public class UnitTypes{
             flying = true;
             drag = 0.06f;
             accel = 0.11f;
-            speed = 1.3f;
+            speed = 9.75f;
             health = 90;
             engineSize = 2f;
             engineOffset = 6.5f;

@@ -45,10 +45,16 @@ public class DesktopInput extends InputHandler{
     public boolean deleting = false, shouldShoot = false, panning = false, movedPlan = false;
     /** Mouse pan speed. */
     public float panScale = 0.005f, panSpeed = 4.5f, panBoostSpeed = 15f;
+    /** Edge scrolling state */
+    public boolean edgeScrolling = false;
+    public float edgeScrollX = 0f, edgeScrollY = 0f;
     /** Delta time between consecutive clicks. */
     public long selectMillis = 0;
     /** Previously selected tile. */
     public Tile prevSelected;
+    /** Unit selection long press tracking */
+    public long unitSelectPressTime = 0;
+    public static final long UNIT_SELECT_LONG_PRESS_MS = 300;
 
     /** Most recently selected control group by index */
     public int lastCtrlGroup;
@@ -59,6 +65,14 @@ public class DesktopInput extends InputHandler{
     public long lastPayloadKeyTapMillis;
     /** Time of most recent payload pickup/drop key hold*/
     public long lastPayloadKeyHoldMillis;
+
+    /** View presets: camera positions for F1-F4 */
+    public Vec2[] viewPresets = new Vec2[4];
+
+    /** Shift key command queuing */
+    private boolean shiftWasPressed = false;
+    private Seq<Vec2> queuedCommandTargets = new Seq<>();
+    private mindustry.ui.UnitAbilityPanel.CommandMode queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
 
     private float buildPlanMouseOffsetX, buildPlanMouseOffsetY;
     private boolean changedCursor, pressedCommandRect;
@@ -129,6 +143,45 @@ public class DesktopInput extends InputHandler{
         Lines.stroke(1f);
         int cursorX = tileX(Core.input.mouseX());
         int cursorY = tileY(Core.input.mouseY());
+
+        //Draw queued command targets when Shift is held
+        if(!queuedCommandTargets.isEmpty() && (Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight))){
+            Lines.stroke(2f);
+            Draw.color(Pal.accent);
+
+            //Draw lines between queued targets
+            for(int i = 0; i < queuedCommandTargets.size; i++){
+                Vec2 target = queuedCommandTargets.get(i);
+
+                //Draw circle at target
+                Lines.circle(target.x, target.y, 8f);
+
+                //Draw line from previous target or from units
+                if(i == 0){
+                    //Draw lines from selected units to first target
+                    for(Unit unit : selectedUnits){
+                        if(unit.isValid()){
+                            Lines.line(unit.x, unit.y, target.x, target.y);
+                        }
+                    }
+                }else{
+                    //Draw line from previous target
+                    Vec2 prev = queuedCommandTargets.get(i - 1);
+                    Lines.line(prev.x, prev.y, target.x, target.y);
+                }
+            }
+
+            //Draw line from last target to current mouse position
+            if(!queuedCommandTargets.isEmpty()){
+                Vec2 last = queuedCommandTargets.get(queuedCommandTargets.size - 1);
+                float mouseWorldX = Core.camera.unproject(Core.input.mouseX(), Core.input.mouseY()).x;
+                float mouseWorldY = Core.camera.unproject(Core.input.mouseX(), Core.input.mouseY()).y;
+                Draw.color(Pal.accent, 0.5f);
+                Lines.line(last.x, last.y, mouseWorldX, mouseWorldY);
+            }
+
+            Draw.reset();
+        }
 
         //draw break selection
         if(mode == breaking){
@@ -230,6 +283,14 @@ public class DesktopInput extends InputHandler{
     public void update(){
         super.update();
 
+        //Handle Shift key release for queued commands
+        boolean shiftPressed = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+        if(shiftWasPressed && !shiftPressed && !queuedCommandTargets.isEmpty()){
+            //Shift was released, execute all queued commands
+            executeQueuedCommands();
+        }
+        shiftWasPressed = shiftPressed;
+
         if(net.active() && Core.input.keyTap(Binding.playerList) && (scene.getKeyboardFocus() == null || scene.getKeyboardFocus().isDescendantOf(ui.listfrag.content) || scene.getKeyboardFocus().isDescendantOf(ui.minimapfrag.elem))){
             ui.listfrag.toggle();
         }
@@ -287,21 +348,47 @@ public class DesktopInput extends InputHandler{
                 Core.camera.position.x += Mathf.clamp((Core.input.mouseX() - Core.graphics.getWidth() / 2f) * panScale, -1, 1) * camSpeed;
                 Core.camera.position.y += Mathf.clamp((Core.input.mouseY() - Core.graphics.getHeight() / 2f) * panScale, -1, 1) * camSpeed;
             }
+
+            //edge scrolling
+            if(Core.settings.getBool("edgescrolling") && !scene.hasDialog() && !scene.hasField()){
+                float edgeDist = Core.settings.getInt("edgescrolldistance", 20);
+                float edgeSpeed = Core.settings.getInt("edgescrollspeed", 10) * Time.delta;
+
+                float mouseX = Core.input.mouseX();
+                float mouseY = Core.input.mouseY();
+                float screenWidth = Core.graphics.getWidth();
+                float screenHeight = Core.graphics.getHeight();
+
+                edgeScrollX = 0f;
+                edgeScrollY = 0f;
+
+                //check if mouse near edges
+                if(mouseX < edgeDist){
+                    edgeScrollX = -edgeSpeed * (1f - mouseX / edgeDist);
+                }else if(mouseX > screenWidth - edgeDist){
+                    edgeScrollX = edgeSpeed * ((mouseX - (screenWidth - edgeDist)) / edgeDist);
+                }
+
+                if(mouseY < edgeDist){
+                    edgeScrollY = -edgeSpeed * (1f - mouseY / edgeDist);
+                }else if(mouseY > screenHeight - edgeDist){
+                    edgeScrollY = edgeSpeed * ((mouseY - (screenHeight - edgeDist)) / edgeDist);
+                }
+
+                //apply camera movement
+                if(edgeScrollX != 0f || edgeScrollY != 0f){
+                    Core.camera.position.add(edgeScrollX, edgeScrollY);
+                    edgeScrolling = true;
+                }else{
+                    edgeScrolling = false;
+                }
+            }
         }
 
         shouldShoot = !scene.hasMouse() && !locked && !state.isEditor();
 
-        if(!locked && block == null && !scene.hasField() && !scene.hasDialog() &&
-                //disable command mode when player unit can boost and command mode binding is the same
-                !(!player.dead() && player.unit().type.canBoost && Binding.commandMode.value.key == Binding.boost.value.key)){
-            if(settings.getBool("commandmodehold")){
-                commandMode = input.keyDown(Binding.commandMode);
-            }else if(input.keyTap(Binding.commandMode)){
-                commandMode = !commandMode;
-            }
-        }else{
-            commandMode = false;
-        }
+        //Command mode is always enabled - no toggle needed
+        commandMode = true;
 
         //validate commanding units
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
@@ -359,6 +446,7 @@ public class DesktopInput extends InputHandler{
 
                     IntSeq group = controlGroups[i];
                     boolean creating = input.keyDown(Binding.createControlGroup);
+                    boolean adding = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
 
                     //clear existing if making a new control group
                     //if any of the control group edit buttons are pressed take the current selection
@@ -366,55 +454,145 @@ public class DesktopInput extends InputHandler{
                         group.clear();
 
                         IntSeq selectedUnitIds = selectedUnits.mapInt(u -> u.id);
+                        IntSeq selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
                         if(Core.settings.getBool("distinctcontrolgroups", true)){
                             for(IntSeq cg : controlGroups){
                                 if(cg != null){
                                     cg.removeAll(selectedUnitIds);
+                                    cg.removeAll(selectedBuildingIds);
                                 }
                             }
                         }
                         group.addAll(selectedUnitIds);
+                        group.addAll(selectedBuildingIds);
+                    }else if(adding){
+                        //Shift+number: Add currently selected units to this formation
+                        IntSeq selectedUnitIds = selectedUnits.mapInt(u -> u.id);
+                        IntSeq selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
+
+                        if(Core.settings.getBool("distinctcontrolgroups", true)){
+                            for(IntSeq cg : controlGroups){
+                                if(cg != null && cg != group){
+                                    cg.removeAll(selectedUnitIds);
+                                    cg.removeAll(selectedBuildingIds);
+                                }
+                            }
+                        }
+
+                        group.addAll(selectedUnitIds);
+                        group.addAll(selectedBuildingIds);
                     }
 
-                    //remove invalid units
+                    //remove invalid units and buildings
                     for(int j = 0; j < group.size; j++){
-                        Unit u = Groups.unit.getByID(group.get(j));
-                        if(u == null || !u.isCommandable() || !u.isValid()){
+                        int id = group.get(j);
+                        Unit u = Groups.unit.getByID(id);
+                        Building b = null;
+
+                        //Buildings don't have ID mapping, search manually
+                        if(u == null){
+                            for(Building building : Groups.build){
+                                if(building.id == id){
+                                    b = building;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if((u == null || !u.isCommandable() || !u.isValid()) && (b == null || !b.isCommandable() || !b.isValid())){
                             group.removeIndex(j);
                             j --;
                         }
                     }
 
-                    //replace the selected units with the current control group
-                    if(!group.isEmpty() && !creating){
+                    //replace the selected units/buildings with the current control group
+                    if(!group.isEmpty() && !creating && !adding){
                         selectedUnits.clear();
                         commandBuildings.clear();
 
                         group.each(id -> {
                             var unit = Groups.unit.getByID(id);
+                            Building building = null;
+
+                            //Buildings don't have ID mapping, search manually
+                            if(unit == null){
+                                for(Building b : Groups.build){
+                                    if(b.id == id){
+                                        building = b;
+                                        break;
+                                    }
+                                }
+                            }
+
                             if(unit != null){
                                 selectedUnits.addAll(unit);
+                            }else if(building != null){
+                                commandBuildings.add(building);
                             }
                         });
 
                         //double tap to center camera
                         if(lastCtrlGroup == i && Time.timeSinceMillis(lastCtrlGroupSelectMillis) < 400){
                             float totalX = 0, totalY = 0;
+                            int count = 0;
                             for(Unit unit : selectedUnits){
                                 totalX += unit.x;
                                 totalY += unit.y;
+                                count++;
                             }
-                            panning = true;
-                            Core.camera.position.set(totalX / selectedUnits.size, totalY / selectedUnits.size);
+                            for(Building building : commandBuildings){
+                                totalX += building.x;
+                                totalY += building.y;
+                                count++;
+                            }
+                            if(count > 0){
+                                panning = true;
+                                Core.camera.position.set(totalX / count, totalY / count);
+                            }
                         }
                         lastCtrlGroup = i;
                         lastCtrlGroupSelectMillis = Time.millis();
                     }
                 }
             }
+
+            //grid command keybindings (StarCraft II style)
+            KeyBind[] gridKeys = {
+                Binding.commandGrid01, Binding.commandGrid02, Binding.commandGrid03,
+                Binding.commandGrid04, Binding.commandGrid05,
+                Binding.commandGrid06, Binding.commandGrid07, Binding.commandGrid08,
+                Binding.commandGrid09, Binding.commandGrid10,
+                Binding.commandGrid11, Binding.commandGrid12, Binding.commandGrid13,
+                Binding.commandGrid14, Binding.commandGrid15
+            };
+
+            for(int i = 0; i < gridKeys.length; i++){
+                if(input.keyTap(gridKeys[i])){
+                    //TODO: Map grid position to available commands
+                    //This would require accessing the command list from PlacementFragment
+                    //For now, this is a placeholder for the keybinding system
+                }
+            }
         }
 
+        //View presets: Ctrl+F1-F4 to save, F1-F4 to jump
+        KeyBind[] viewPresetKeys = {Binding.viewPreset1, Binding.viewPreset2, Binding.viewPreset3, Binding.viewPreset4};
+        for(int i = 0; i < viewPresetKeys.length; i++){
+            if(input.keyTap(viewPresetKeys[i])){
+                if(Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight)){
+                    //Ctrl+F1-F4: Save camera position
+                    viewPresets[i] = new Vec2(Core.camera.position.x, Core.camera.position.y);
+                }else if(viewPresets[i] != null){
+                    //F1-F4: Jump to saved position
+                    Core.camera.position.set(viewPresets[i]);
+                }
+            }
+        }
+
+        //Possession is completely disabled - players cannot control units directly
+        /*
         if(!scene.hasMouse() && !locked && state.rules.possessionAllowed){
+            //Original Ctrl+Click selection still works
             if(Core.input.keyDown(Binding.control) && Core.input.keyTap(Binding.select)){
                 Unit on = selectedUnit();
                 var build = selectedControlBuild();
@@ -427,7 +605,38 @@ public class DesktopInput extends InputHandler{
                     recentRespawnTimer = 1f;
                 }
             }
+
+            //New left-click selection: direct in single-player, long press in multiplayer
+            if(!Core.input.keyDown(Binding.control)){
+                if(Core.input.keyDown(Binding.select)){
+                    if(unitSelectPressTime == 0){
+                        unitSelectPressTime = Time.millis();
+                    }
+
+                    //In single-player, select immediately; in multiplayer, require long press
+                    boolean shouldSelect = !net.active() || Time.timeSinceMillis(unitSelectPressTime) >= UNIT_SELECT_LONG_PRESS_MS;
+
+                    if(shouldSelect && Time.timeSinceMillis(unitSelectPressTime) >= (net.active() ? UNIT_SELECT_LONG_PRESS_MS : 0)){
+                        Unit on = selectedUnit();
+                        var build = selectedControlBuild();
+                        if(on != null){
+                            Call.unitControl(player, on);
+                            shouldShoot = false;
+                            recentRespawnTimer = 1f;
+                            unitSelectPressTime = -1; //Mark as consumed
+                        }else if(build != null && on == null){
+                            //Only select building if no unit is present
+                            Call.buildingControlSelect(player, build);
+                            recentRespawnTimer = 1f;
+                            unitSelectPressTime = -1; //Mark as consumed
+                        }
+                    }
+                }else{
+                    unitSelectPressTime = 0;
+                }
+            }
         }
+        */
 
         if(!player.dead() && !state.isPaused() && !scene.hasField() && !locked){
             updateMovement(player.unit());
@@ -586,6 +795,7 @@ public class DesktopInput extends InputHandler{
 
         if(Core.input.keyTap(Binding.deselect) && !ui.minimapfrag.shown() && !isPlacing() && player.unit().plans.isEmpty() && !commandMode){
             player.unit().mineTile = null;
+            selectedResource = null;
         }
 
         if(Core.input.keyTap(Binding.clearBuilding) && !player.dead()){
@@ -694,15 +904,21 @@ public class DesktopInput extends InputHandler{
                 buildPlanMouseOffsetY = splan.y * tilesize - Core.input.mouseWorld().y;
             }else if(plan != null && plan.breaking){
                 deleting = true;
-            }else if(commandMode){
+            }else if(commandMode && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+                //Only allow box selection if NOT in an active RTS command mode
                 commandRect = true;
                 commandRectX = input.mouseWorldX();
                 commandRectY = input.mouseWorldY();
             }else if(!checkConfigTap() && selected != null && !tryRepairDerelict(selected)){
-                //only begin shooting if there's no cursor event
-                if(!tryTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
-                    && !(tryStopMine(selected) || (!settings.getBool("doubletapmine") || selected == prevSelected && Time.timeSinceMillis(selectMillis) < 500) && tryBeginMine(selected)) && !Core.scene.hasKeyboard()){
-                    player.shooting = shouldShoot;
+                if(trySelectResource(selected)){
+                    //resource selection consumes the tap
+                }else{
+                    selectedResource = null;
+                    //only begin shooting if there's no cursor event
+                    if(!tryTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
+                        && !(tryStopMine(selected) || (!settings.getBool("doubletapmine") || selected == prevSelected && Time.timeSinceMillis(selectMillis) < 500) && tryBeginMine(selected)) && !Core.scene.hasKeyboard()){
+                        player.shooting = shouldShoot;
+                    }
                 }
             }else if(!Core.scene.hasKeyboard()){ //if it's out of bounds, shooting is just fine
                 player.shooting = shouldShoot;
@@ -880,6 +1096,9 @@ public class DesktopInput extends InputHandler{
     public boolean tap(float x, float y, int count, KeyCode button){
         if(scene.hasMouse() || !commandMode) return false;
 
+        //Command mode is now handled in touchDown, not tap
+        //This prevents double execution
+
         tappedOne = true;
 
         //click: select a single unit
@@ -895,12 +1114,161 @@ public class DesktopInput extends InputHandler{
         return super.tap(x, y, count, button);
     }
 
+    public void executeActiveCommand(float screenX, float screenY){
+        if(ui.hudfrag.abilityPanel == null) return;
+
+        var mode = ui.hudfrag.abilityPanel.activeCommand;
+        float worldX = Core.camera.unproject(screenX, screenY).x;
+        float worldY = Core.camera.unproject(screenX, screenY).y;
+
+        //Check if Shift is held for command queuing
+        boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+
+        if(shiftHeld){
+            //Queue the command target, don't execute yet
+            if(queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+                queuedCommandMode = mode;
+            }
+            queuedCommandTargets.add(new Vec2(worldX, worldY));
+            //Don't exit command mode, allow more targets to be added
+            return;
+        }
+
+        //Execute immediately if Shift not held
+        executeCommandAtTarget(mode, worldX, worldY, false);
+
+        //Exit command mode after executing
+        ui.hudfrag.abilityPanel.exitCommandMode();
+    }
+
+    private void executeQueuedCommands(){
+        if(queuedCommandTargets.isEmpty() || queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+            queuedCommandTargets.clear();
+            queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
+            return;
+        }
+
+        //For patrol, add waypoints in a loop
+        if(queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.PATROL && queuedCommandTargets.size > 0){
+            //For patrol, we need to create a loop: current position -> waypoints -> back to start
+            //First, add current position of units as starting point (if not queuing)
+            if(selectedUnits.size > 0){
+                //Get average position of selected units as patrol start
+                float avgX = 0, avgY = 0;
+                for(Unit unit : selectedUnits){
+                    avgX += unit.x;
+                    avgY += unit.y;
+                }
+                avgX /= selectedUnits.size;
+                avgY /= selectedUnits.size;
+
+                //Add starting position
+                executeCommandAtTarget(queuedCommandMode, avgX, avgY, false);
+            }
+
+            //Execute patrol with looping waypoints
+            for(int i = 0; i < queuedCommandTargets.size; i++){
+                Vec2 target = queuedCommandTargets.get(i);
+                executeCommandAtTarget(queuedCommandMode, target.x, target.y, true);
+            }
+
+            //Add first waypoint again to create infinite loop
+            if(queuedCommandTargets.size > 0){
+                Vec2 firstTarget = queuedCommandTargets.get(0);
+                executeCommandAtTarget(queuedCommandMode, firstTarget.x, firstTarget.y, true);
+            }
+        }else{
+            //Execute all queued commands in sequence for non-patrol commands
+            //All commands are queued (appended) so units complete current objective first
+            for(int i = 0; i < queuedCommandTargets.size; i++){
+                Vec2 target = queuedCommandTargets.get(i);
+                executeCommandAtTarget(queuedCommandMode, target.x, target.y, true); //Always queue
+            }
+        }
+
+        //Clear queue
+        queuedCommandTargets.clear();
+        queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
+
+        //Exit command mode
+        if(ui.hudfrag.abilityPanel != null){
+            ui.hudfrag.abilityPanel.exitCommandMode();
+        }
+    }
+
+    private void executeCommandAtTarget(mindustry.ui.UnitAbilityPanel.CommandMode mode, float worldX, float worldY, boolean queue){
+        int[] ids = new int[selectedUnits.size];
+        for(int i = 0; i < ids.length; i++){
+            ids[i] = selectedUnits.get(i).id;
+        }
+
+        switch(mode){
+            case MOVE:
+                //Move command: units move to location without engaging
+                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                break;
+
+            case PATROL:
+                //Patrol command: units patrol between waypoints with patrol AI
+                //Each click adds a patrol waypoint
+                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                break;
+
+            case ATTACK:
+                //Attack command: units move and attack
+                //Check if clicking on enemy unit or building
+                Teamc attack = world.buildWorld(worldX, worldY);
+                if(attack == null || attack.team() == player.team()){
+                    attack = selectedEnemyUnit(worldX, worldY);
+                }
+
+                if(attack != null && attack.team() != player.team()){
+                    Call.commandUnits(player, ids, attack instanceof Building b ? b : null, attack instanceof Unit u ? u : null, new Vec2(worldX, worldY), queue, true);
+                }else{
+                    Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                }
+                break;
+        }
+    }
+
+    @Override
+    public boolean multiUnitSelect(){
+        //Shift key enables additive selection
+        return Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+    }
+
     @Override
     public boolean touchDown(float x, float y, int pointer, KeyCode button){
         if(scene.hasMouse() || !commandMode) return false;
 
+        //If in active RTS command mode, handle left-click on press (not release)
+        if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+            if(button == KeyCode.mouseLeft){
+                //Execute command immediately on mouse press
+                executeActiveCommand(x, y);
+                return true;
+            }
+            //Right-click cancels command mode
+            if(button == KeyCode.mouseRight){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+                return true;
+            }
+            return false;
+        }
+
         if(button == KeyCode.mouseRight){
-            commandTap(x, y);
+            //Check if Shift is held for waypoint queuing
+            boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+            if(shiftHeld && (selectedUnits.size > 0 || commandBuildings.size > 0)){
+                //Queue the waypoint
+                Vec2 worldPos = Core.camera.unproject(x, y);
+                if(queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+                    queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.MOVE;
+                }
+                queuedCommandTargets.add(new Vec2(worldPos.x, worldPos.y));
+            }else{
+                commandTap(x, y);
+            }
         }
 
         if(button == Binding.commandQueue.value.key){

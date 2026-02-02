@@ -1019,7 +1019,7 @@ public class Blocks{
             wallOre = true;
         }};
 
-        graphiticWall = new StaticWall("graphitic-wall"){{
+        graphiticWall = new CrystalMineralWall("graphitic-wall"){{
             itemDrop = Items.graphite;
             variants = 3;
         }};

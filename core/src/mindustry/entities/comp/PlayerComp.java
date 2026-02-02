@@ -173,11 +173,12 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
             //have a small delay before death to prevent the camera from jumping around too quickly
             //(this is not for balance, it just looks better this way)
             deathTimer += Time.delta;
-            if(deathTimer >= deathDelay){
-                //request spawn - this happens serverside only
-                core.requestSpawn(self());
-                deathTimer = 0;
-            }
+            //Disabled automatic respawn - players must manually respawn
+            //if(deathTimer >= deathDelay){
+            //    //request spawn - this happens serverside only
+            //    core.requestSpawn(self());
+            //    deathTimer = 0;
+            //}
         }
 
         textFadeTime -= Time.delta / (60 * 5);

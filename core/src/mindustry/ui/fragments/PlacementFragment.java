@@ -273,7 +273,8 @@ public class PlacementFragment{
     public void build(Group parent){
         parent.fill(full -> {
             toggler = full;
-            full.bottom().right().visible(() -> ui.hudfrag.shown);
+            //Building construction interface hidden - RTS mode uses command-based construction
+            full.bottom().right().visible(() -> false);
 
             full.table(frame -> {
 
@@ -462,192 +463,13 @@ public class PlacementFragment{
                     }
                 }).colspan(3).fillX().row();
 
-                //commandTable: commanded units
+                //commandTable: commanded units - DISABLED, replaced with new StarCraft 2-style UI
                 {
                     commandTable.touchable = Touchable.enabled;
-                    commandTable.add(Core.bundle.get("commandmode.name")).fill().center().labelAlign(Align.center).row();
+                    commandTable.add("Command Mode").fill().center().labelAlign(Align.center).row();
                     commandTable.image().color(Pal.accent).growX().pad(20f).padTop(0f).padBottom(4f).row();
-                    commandTable.table(u -> {
-
-                        Bits activeCommands = new Bits(content.unitCommands().size);
-                        Bits activeStances = new Bits(content.unitStances().size);
-
-                        Bits availableCommands = new Bits(content.unitCommands().size);
-                        Bits availableStances = new Bits(content.unitStances().size);
-
-                        u.left();
-                        int[] curCount = {0};
-                        Bits usedCommands = new Bits(content.unitCommands().size);
-                        var commands = new Seq<UnitCommand>();
-
-                        Bits usedStances = new Bits(content.unitStances().size);
-                        var stances = new Seq<UnitStance>();
-                        var stancesOut = new Seq<UnitStance>();
-
-                        rebuildCommand = () -> {
-                            u.clearChildren();
-                            var units = control.input.selectedUnits;
-                            if(units.size > 0){
-                                usedCommands.clear();
-                                usedStances.clear();
-                                commands.clear();
-                                stances.clear();
-
-                                int[] counts = new int[content.units().size];
-
-                                for(var unit : units){
-                                    counts[unit.type.id] ++;
-
-                                    stancesOut.clear();
-                                    unit.type.getUnitStances(unit, stancesOut);
-
-                                    for(var stance : stancesOut){
-                                        if(!usedStances.get(stance.id)){
-                                            stances.add(stance);
-                                            usedStances.set(stance.id);
-                                        }
-                                    }
-                                }
-
-                                Table unitlist = u.table().growX().left().get();
-                                unitlist.left();
-
-                                int col = 0;
-                                for(int i = 0; i < counts.length; i++){
-                                    if(counts[i] > 0){
-                                        var type = content.unit(i);
-                                        unitlist.add(StatValues.stack(type, counts[i])).pad(4).with(b -> {
-                                            b.clearListeners();
-                                            b.addListener(Tooltips.getInstance().create(type.localizedName, false));
-
-                                            var listener = new ClickListener();
-
-                                            //left click -> select
-                                            b.clicked(KeyCode.mouseLeft, () -> {
-                                                control.input.selectedUnits.removeAll(unit -> unit.type != type);
-                                                Events.fire(Trigger.unitCommandChange);
-                                            });
-                                            //right click -> remove
-                                            b.clicked(KeyCode.mouseRight, () -> {
-                                                control.input.selectedUnits.removeAll(unit -> unit.type == type);
-                                                Events.fire(Trigger.unitCommandChange);
-                                            });
-
-                                            b.addListener(listener);
-                                            b.addListener(new HandCursorListener());
-                                            //gray on hover
-                                            b.update(() -> ((Group)b.getChildren().first()).getChildren().first().setColor(listener.isOver() ? Color.lightGray : Color.white));
-                                        });
-
-                                        if(++col % 7 == 0){
-                                            unitlist.row();
-                                        }
-
-                                        for(var command : type.commands){
-                                            if(!usedCommands.get(command.id)){
-                                                commands.add(command);
-                                                usedCommands.set(command.id);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                //list commands
-                                if(commands.size > 1){
-                                    u.row();
-
-                                    u.table(coms -> {
-                                        coms.left();
-                                        int scol = 0;
-                                        for(var command : commands){
-                                            coms.button(Icon.icons.get(command.icon, Icon.cancel), Styles.clearNoneTogglei, () -> {
-                                                Call.setUnitCommand(player, units.mapInt(un -> un.id, un -> un.type.allowCommand(un, command)).toArray(), command);
-                                            }).checked(i -> activeCommands.get(command.id)).size(50f).tooltip(command.localized(), true);
-
-                                            if(++scol % 6 == 0) coms.row();
-                                        }
-
-                                    }).fillX().padTop(4f).left();
-                                }
-
-                                //list stances
-                                if(stances.size > 1){
-                                    u.row();
-
-                                    if(commands.size > 1){
-                                        u.add(new Image(Tex.whiteui)).height(3f).color(Pal.gray).pad(7f).growX().row();
-                                    }
-
-                                    u.table(coms -> {
-                                        coms.left();
-                                        int scol = 0;
-                                        for(var stance : stances){
-
-                                            coms.button(stance.getIcon(), Styles.clearNoneTogglei, () -> {
-                                                Call.setUnitStance(player, units.mapInt(un -> un.id, un -> un.type.allowStance(un, stance)).toArray(), stance, !activeStances.get(stance.id));
-                                            }).checked(i -> activeStances.get(stance.id)).size(50f).tooltip(stance.localized(), true);
-
-                                            if(++scol % 6 == 0) coms.row();
-                                        }
-                                    }).fillX().padTop(4f).left();
-                                }
-                            }else{
-                                u.add(Core.bundle.get("commandmode.nounits")).color(Color.lightGray).growX().center().labelAlign(Align.center).pad(6);
-                            }
-                        };
-
-                        u.update(() -> {
-                            {
-                                activeCommands.clear();
-                                activeStances.clear();
-                                availableCommands.clear();
-                                availableStances.clear();
-
-                                //find the command that all units have, or null if they do not share one
-                                for(var unit : control.input.selectedUnits){
-                                    if(unit.controller() instanceof CommandAI cmd){
-                                        activeCommands.set(cmd.command.id);
-                                        activeStances.set(cmd.stances);
-                                    }
-
-                                    stancesOut.clear();
-                                    unit.type.getUnitStances(unit, stancesOut);
-
-                                    for(var stance : stancesOut){
-                                        availableStances.set(stance.id);
-                                    }
-
-                                    for(var command : unit.type.commands){
-                                        availableCommands.set(command.id);
-                                    }
-                                }
-
-                                int size = control.input.selectedUnits.size;
-                                if(curCount[0] != size || !usedCommands.equals(availableCommands) || !usedStances.equals(availableStances)){
-                                    if(!(curCount[0] + size == 0)){
-                                        rebuildCommand.run();
-                                    }
-                                    curCount[0] = size;
-                                }
-
-                                //not a huge fan of running input logic here, but it's convenient as the stance arrays are all here...
-                                for(UnitStance stance : stances){
-                                    //first stance must always be the stop stance
-                                    if(stance.keybind != null && Core.input.keyTap(stance.keybind)){
-                                        Call.setUnitStance(player, control.input.selectedUnits.mapInt(un -> un.id, un -> un.type.allowStance(un, stance)).toArray(), stance, !activeStances.get(stance.id));
-                                    }
-                                }
-
-                                for(UnitCommand command : commands){
-                                    //first stance must always be the stop stance
-                                    if(command.keybind != null && Core.input.keyTap(command.keybind)){
-                                        Call.setUnitCommand(player, control.input.selectedUnits.mapInt(un -> un.id, un -> un.type.allowCommand(un, command)).toArray(), command);
-                                    }
-                                }
-                            }
-                        });
-                        rebuildCommand.run();
-                    }).grow();
+                    commandTable.add("See unit selection at bottom-left").color(Color.lightGray).pad(10f);
+                    //Unit display and commands removed - see UnitSelectionGrid at bottom-left
                 }
 
                 //blockCatTable: all blocks | all categories

@@ -294,6 +294,9 @@ public class ConstructBlock extends Block{
 
             progress = Mathf.clamp(progress + maxProgress);
 
+            //Update health based on construction progress
+            health = current.health * progress;
+
             if(progress >= 1f || state.rules.infiniteResources){
                 boolean canFinish = true;
 
@@ -367,6 +370,9 @@ public class ConstructBlock extends Block{
             }
 
             progress = Mathf.clamp(progress - amount);
+
+            //Update health based on deconstruction progress
+            health = current.health * progress;
 
             if(progress <= current.deconstructThreshold || state.rules.infiniteResources){
                 //add any leftover items that weren't obtained due to rounding errors
@@ -446,6 +452,10 @@ public class ConstructBlock extends Block{
             for(int i = 0; i < requirements.length; i++){
                 this.itemsLeft[i] = Mathf.round(requirements[i].amount * state.rules.buildCostMultiplier);
             }
+
+            //Initialize health based on current progress
+            health = current.health * progress;
+
             pathfinder.updateTile(tile);
         }
 

@@ -21,7 +21,7 @@ public class GroundAI extends AIController{
     public void updateMovement(){
 
         //if it hasn't moved the stuck range in twice the time it should have taken, it's stuck
-        float stuckThreshold = Math.max(1f, stuckRange * 2f / unit.type.speed);
+        float stuckThreshold = Math.max(1f, stuckRange * 2f / (unit.type.speed * tilesize / 60f));
 
         Building core = unit.closestEnemyCore();
         boolean moved = false;
@@ -70,7 +70,7 @@ public class GroundAI extends AIController{
                         if(other != unit && other.controller() instanceof GroundAI ai && other.within(unit.x, unit.y, radius + other.hitSize * unitCollisionRadiusScale)){
                             ai.stuckX = other.x;
                             ai.stuckY = other.y;
-                            ai.stuckTime = Math.max(1f, stuckRange * 2f / other.type.speed) + 1f;
+                            ai.stuckTime = Math.max(1f, stuckRange * 2f / (other.type.speed * tilesize / 60f)) + 1f;
                         }
                     });
                 }

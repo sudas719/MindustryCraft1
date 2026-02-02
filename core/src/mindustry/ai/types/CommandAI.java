@@ -46,6 +46,8 @@ public class CommandAI extends AIController{
     public Bits stances = new Bits(content.unitStances().size);
     /** Current controller instance based on command. */
     protected @Nullable AIController commandController;
+    /** Pending harvest target set by player command. */
+    public @Nullable Vec2 pendingHarvestTarget;
     /** Last command type assigned. Used for detecting command changes. */
     protected @Nullable UnitCommand lastCommand;
 
@@ -60,6 +62,9 @@ public class CommandAI extends AIController{
             unit.mineTile = null;
             unit.clearBuilding();
             this.command = command;
+            if(command != UnitCommand.harvestCommand){
+                pendingHarvestTarget = null;
+            }
         }
     }
 
@@ -153,6 +158,10 @@ public class CommandAI extends AIController{
         //use the command controller if it is provided, and bail out.
         if(commandController != null){
             if(commandController.unit() != unit) commandController.unit(unit);
+            if(commandController instanceof HarvestAI hai && pendingHarvestTarget != null){
+                hai.setHarvestTarget(pendingHarvestTarget);
+                pendingHarvestTarget = null;
+            }
             commandController.updateUnit();
         }else{
             defaultBehavior();
@@ -387,6 +396,18 @@ public class CommandAI extends AIController{
             }else{
                 faceTarget();
             }
+        }
+    }
+
+    /** Sets a crystal harvest target for this unit, forcing the harvest command. */
+    public void setHarvestTarget(Vec2 target){
+        if(target == null) return;
+        pendingHarvestTarget = target.cpy();
+        if(command != UnitCommand.harvestCommand){
+            command(UnitCommand.harvestCommand);
+        }else if(commandController instanceof HarvestAI hai){
+            hai.setHarvestTarget(pendingHarvestTarget);
+            pendingHarvestTarget = null;
         }
     }
 

@@ -8,6 +8,7 @@ import arc.math.geom.*;
 import arc.scene.ui.layout.*;
 import arc.util.*;
 import mindustry.ai.types.*;
+import mindustry.ai.UnitCommand;
 import mindustry.annotations.Annotations.*;
 import mindustry.async.*;
 import mindustry.content.*;
@@ -90,8 +91,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public void wobble(){
-        x += Mathf.sin(Time.time + (id % 10) * 12, 25f, 0.05f) * Time.delta * elevation;
-        y += Mathf.cos(Time.time + (id % 10) * 12, 25f, 0.05f) * Time.delta * elevation;
+        //Wobble disabled - flying units no longer circle when idle
     }
 
     public void moveAt(Vec2 vector, float acceleration){
@@ -177,7 +177,10 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     public float speed(){
         float strafePenalty = isGrounded() || !isPlayer() ? 1f : Mathf.lerp(1f, type.strafePenalty, Angles.angleDist(vel().angle(), rotation) / 180f);
         float boost = Mathf.lerp(1f, type.canBoost ? type.boostMultiplier : 1f, elevation);
-        return type.speed * strafePenalty * boost * floorSpeedMultiplier();
+        float base = type.speed * tilesize / 60f * strafePenalty * boost * floorSpeedMultiplier();
+        float dragScale = 1f - drag * Time.delta;
+        if(dragScale <= 0.0001f) dragScale = 0.0001f;
+        return base / dragScale;
     }
 
     /** @return where the unit wants to look at. */
@@ -277,7 +280,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
             case mineY -> mining() ? mineTile.y : -1;
             case armor -> armorOverride >= 0f ? armorOverride : armor;
             case flag -> flag;
-            case speed -> type.speed * 60f / tilesize * speedMultiplier;
+            case speed -> type.speed * speedMultiplier;
             case controlled -> !isValid() ? 0 :
                     controller instanceof LogicAI ? ctrlProcessor :
                     controller instanceof Player ? ctrlPlayer :
@@ -454,6 +457,11 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     /** @return the collision layer to use for unit physics. Returning anything outside of PhysicsProcess contents will crash the game. */
     public int collisionLayer(){
+        boolean harvestCommand = controller instanceof HarvestAI ||
+            (controller instanceof CommandAI cmd && cmd.currentCommand() == UnitCommand.harvestCommand);
+        if(harvestCommand && (type == UnitTypes.nova || type == UnitTypes.pulsar)){
+            return -1;
+        }
         return type.allowLegStep && type.legPhysicsLayer ? PhysicsProcess.layerLegs : isGrounded() ? PhysicsProcess.layerGround : PhysicsProcess.layerFlying;
     }
 
@@ -710,7 +718,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(!headless){
             control.sound.loop(type.loopSound, this, type.loopSoundVolume);
             if(type.moveSound != Sounds.none){
-                float progress = Mathf.clamp(vel.len() / type.speed);
+                float progress = Mathf.clamp(vel.len() / (type.speed * tilesize / 60f));
                 float pitch = Mathf.lerp(type.moveSoundPitchMin,  type.moveSoundPitchMax, progress);
                 control.sound.loop(type.moveSound, this, type.moveSoundVolume * progress, pitch);
             }

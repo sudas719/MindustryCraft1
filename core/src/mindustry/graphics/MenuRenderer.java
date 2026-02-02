@@ -260,7 +260,7 @@ public class MenuRenderer implements Disposable{
         float offset = -100f;
 
         for(int i = 0; i < flyers; i++){
-            Tmp.v1.trns(flyerRot, time * (flyerType.speed));
+            Tmp.v1.trns(flyerRot, time * (flyerType.speed * tilesize / 60f));
 
             cons.get(
             (Mathf.randomSeedRange(i, range) + Tmp.v1.x + Mathf.absin(time + Mathf.randomSeedRange(i + 2, 500), 10f, 3.4f) + offset) % (tw + Mathf.randomSeed(i + 5, 0, 500)),

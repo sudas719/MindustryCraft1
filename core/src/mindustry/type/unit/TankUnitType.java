@@ -10,7 +10,7 @@ public class TankUnitType extends ErekirUnitType{
         squareShape = true;
         omniMovement = false;
         rotateMoveFirst = true;
-        rotateSpeed = 1.3f;
+        rotateSpeed = 3f; // 180°/sec
         envDisabled = Env.none;
         speed = 0.8f;
     }

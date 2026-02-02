@@ -9,6 +9,8 @@ import mindustry.async.*;
 import mindustry.gen.*;
 import mindustry.type.*;
 
+import static mindustry.Vars.*;
+
 @Component
 abstract class SegmentComp implements Posc, Rotc, Hitboxc, Unitc, Segmentc{
     @Import float x, y, rotation;
@@ -143,11 +145,11 @@ abstract class SegmentComp implements Posc, Rotc, Hitboxc, Unitc, Segmentc{
 
         //TODO should depend on the head's speed.
         if(headDelta > 0.001f){
-            rotation = Mathf.slerpDelta(rotation, parent.rotation(), type.baseRotateSpeed * Mathf.clamp(headDelta / type().speed / Time.delta));
+            rotation = Mathf.slerpDelta(rotation, parent.rotation(), type.baseRotateSpeed * Mathf.clamp(headDelta / (type().speed * tilesize / 60f) / Time.delta));
         }
 
         Vec2 moveVec = Tmp.v1.trns(rotation + 180f, type.segmentSpacing).add(parent).sub(x, y);
-        float prefSpeed = type.speed * Time.delta * 9999f;
+        float prefSpeed = type.speed * tilesize / 60f * Time.delta * 9999f;
         move(moveVec.limit(prefSpeed)); //TODO other segments are left behind
 
         if(childSegment != null){

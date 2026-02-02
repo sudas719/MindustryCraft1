@@ -119,32 +119,7 @@ public class OverlayRenderer{
 
         InputHandler input = control.input;
 
-        Sized select = input.selectedUnit();
-        if(select == null) select = input.selectedControlBuild();
-        if(!Core.input.keyDown(Binding.control) || !state.rules.possessionAllowed) select = null;
-
-        unitFade = Mathf.lerpDelta(unitFade, Mathf.num(select != null), 0.1f);
-
-        if(select != null) lastSelect = select;
-        if(select == null) select = lastSelect;
-        if(select != null && (!(select instanceof Unitc u) || u.isAI())){
-            Draw.mixcol(Pal.accent, 1f);
-            Draw.alpha(unitFade);
-            Building build = (select instanceof BlockUnitc b ? b.tile() : select instanceof Building b ? b : null);
-            TextureRegion region = build != null ? build.block.fullIcon : Core.atlas.white();
-
-            if(select instanceof BlockUnitc){
-                Draw.rect(region, select.getX(), select.getY());
-            }
-
-            for(int i = 0; i < 4; i++){
-                float rot = i * 90f + 45f + (-Time.time) % 360f;
-                float length = select.hitSize() * 1.5f + (unitFade * 2.5f);
-                Draw.rect("select-arrow", select.getX() + Angles.trnsx(rot, length), select.getY() + Angles.trnsy(rot, length), length / 1.9f, length / 1.9f, rot - 135f);
-            }
-
-            Draw.reset();
-        }
+        //Removed Ctrl hover effects - no longer showing yellow highlight and rotation on units/buildings
 
         //draw config selected block
         if(input.config.isShown()){

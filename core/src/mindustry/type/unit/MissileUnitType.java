@@ -32,7 +32,7 @@ public class MissileUnitType extends UnitType{
         hoverable = false;
         speed = 4f;
         lifetime = 60f * 1.7f;
-        rotateSpeed = 2.5f;
+        rotateSpeed = 3f; // 180°/sec
         range = 6f;
         targetPriority = -1f;
         outlineColor = Pal.darkOutline;

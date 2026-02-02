@@ -278,6 +278,7 @@ public class SettingsMenuDialog extends BaseDialog{
         menu.button("@settings.graphics", Icon.image, style, isize, () -> visible(1)).marginLeft(marg).row();
         menu.button("@settings.sound", Icon.filters, style, isize, () -> visible(2)).marginLeft(marg).row();
         menu.button("@settings.language", Icon.chat, style, isize, ui.language::show).marginLeft(marg).row();
+        //Keybinding customization for RTS controls
         if(!mobile || Core.settings.getBool("keyboard")){
             menu.button("@settings.controls", Icon.move, style, isize, ui.controls::show).marginLeft(marg).row();
         }
@@ -347,10 +348,14 @@ public class SettingsMenuDialog extends BaseDialog{
             game.checkPref("backgroundpause", true);
             game.checkPref("buildautopause", false);
             game.checkPref("distinctcontrolgroups", true);
+            game.checkPref("edgescrolling", true);
+            game.sliderPref("edgescrolldistance", 20, 5, 100, 5, i -> i + "px");
+            game.sliderPref("edgescrollspeed", 10, 1, 30, 1, i -> i + "");
         }
 
         game.checkPref("doubletapmine", false);
         game.checkPref("commandmodehold", true);
+        game.checkPref("corespawning", false);
 
         if(!ios){
             game.checkPref("modcrashdisable", true);
@@ -481,14 +486,24 @@ public class SettingsMenuDialog extends BaseDialog{
             graphics.checkPref("coreitems", true);
         }
         graphics.checkPref("minimap", !mobile);
+
+        //Minimap size setting
+        graphics.sliderPref("minimapsize", 200, 100, 400, 10, s -> s + "px");
+
+        //Bottom UI offset setting (linked to minimap)
+        graphics.sliderPref("bottomuioffset", 0, 0, 200, 10, s -> s + "px");
+
+        //Control panel height setting (extended range for background drawing)
+        graphics.sliderPref("controlpanelheight", 200, 600, 2000, 10, s -> s + "px");
+
+        //Control panel background image path (file picker with multiple extensions)
+        graphics.filePickerPref("controlpanelbg", "", "png", "jpg", "jpeg");
+
         graphics.checkPref("smoothcamera", true);
         if(!mobile){
             graphics.checkPref("detach-camera", false);
         }
-        graphics.checkPref("position", false);
-        if(!mobile){
-            graphics.checkPref("mouseposition", false);
-        }
+        //Removed position and mouseposition settings
         graphics.checkPref("fps", false);
         graphics.checkPref("playerindicators", true);
         graphics.checkPref("indicators", true);
@@ -717,6 +732,18 @@ public class SettingsMenuDialog extends BaseDialog{
             rebuild();
         }
 
+        public void filePickerPref(String name, String def, String... extensions){
+            list.add(new FilePickerSetting(name, def, extensions, null));
+            settings.defaults(name, def);
+            rebuild();
+        }
+
+        public void filePickerPref(String name, String def, Cons<String> changed, String... extensions){
+            list.add(new FilePickerSetting(name, def, extensions, changed));
+            settings.defaults(name, def);
+            rebuild();
+        }
+
         public void rebuild(){
             clearChildren();
 
@@ -874,6 +901,53 @@ public class SettingsMenuDialog extends BaseDialog{
 
                 addDesc(table.label(() -> title).left().padTop(3f).get());
                 table.row().add(area).left();
+                table.row();
+            }
+        }
+
+        public static class FilePickerSetting extends Setting{
+            String def;
+            String[] extensions;
+            Cons<String> changed;
+
+            public FilePickerSetting(String name, String def, String[] extensions, Cons<String> changed){
+                super(name);
+                this.def = def;
+                this.extensions = extensions;
+                this.changed = changed;
+            }
+
+            @Override
+            public void add(SettingsTable table){
+                Table row = new Table();
+
+                Label pathLabel = new Label("");
+                pathLabel.update(() -> {
+                    String path = settings.getString(name, def);
+                    pathLabel.setText(path.isEmpty() ? "@none" : path);
+                });
+
+                row.add(pathLabel).growX().left().padRight(8f);
+
+                row.button("@settings.file.select", Icon.file, () -> {
+                    //Use showNativeFileChooser with multiple extensions
+                    platform.showNativeFileChooser(true, "@open", file -> {
+                        settings.put(name, file.absolutePath());
+                        if(changed != null){
+                            changed.get(file.absolutePath());
+                        }
+                    }, extensions);
+                }).size(150f, 40f);
+
+                row.button(Icon.cancel, () -> {
+                    settings.put(name, "");
+                    if(changed != null){
+                        changed.get("");
+                    }
+                }).size(40f, 40f).padLeft(4f);
+
+                addDesc(table.label(() -> title).left().padTop(3f).get());
+                table.row().add(row).left().growX();
                 table.row();
             }
         }

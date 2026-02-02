@@ -15,6 +15,7 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.input.*;
+import arc.files.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
@@ -41,6 +42,7 @@ public class HudFragment{
 
     public PlacementFragment blockfrag = new PlacementFragment();
     public CoreItemsDisplay coreItems = new CoreItemsDisplay();
+    public UnitAbilityPanel abilityPanel; //Public reference for command mode access
     public boolean shown = true;
 
     private ImageButton flip;
@@ -311,23 +313,9 @@ public class HudFragment{
             t.table(Styles.black6, top -> top.add("@waiting.players").style(Styles.outlineLabel).pad(18f));
         });
 
-        //minimap + position
-        parent.fill(t -> {
-            t.name = "minimap/position";
-            t.visible(() -> Core.settings.getBool("minimap") && shown);
-            //minimap
-            t.add(new Minimap()).name("minimap");
-            t.row();
-            //position
-            t.label(() ->
-                (Core.settings.getBool("position") ? player.tileX() + "," + player.tileY() + "\n" : "") +
-                (Core.settings.getBool("mouseposition") ? "[lightgray]" + World.toTile(Core.input.mouseWorldX()) + "," + World.toTile(Core.input.mouseWorldY()) : ""))
-            .visible(() -> Core.settings.getBool("position") || Core.settings.getBool("mouseposition"))
-            .touchable(Touchable.disabled)
-            .style(Styles.outlineLabel)
-            .name("position");
-            t.top().right();
-        });
+        //Removed old minimap/position display - now integrated in bottom UI
+
+        //Removed old unit selection grid - replaced with integrated bottom UI
 
         ui.hints.build(parent);
 
@@ -650,6 +638,134 @@ public class HudFragment{
                     });
                 }).visible(() -> state.isCampaign() && content.items().contains(i -> state.rules.sector != null && state.rules.sector.info.getExport(i) > 0));
             });
+
+        //Integrated bottom interface: minimap + unit selection + abilities
+        parent.fill(t -> {
+            t.name = "integrated-bottom-ui";
+            t.bottom();
+            t.visible(() -> shown && !state.isMenu());
+
+            //Create a stack for layered rendering
+            Stack stack = new Stack();
+
+            //Layer 1 (Bottom): Combined black background + custom image
+            //Background draws independently of UI element positions
+            Table backgroundLayer = new Table(){
+                TextureRegion customBg = null;
+                String lastPath = "";
+
+                @Override
+                public void draw(){
+                    //Get current settings
+                    float panelHeight = Core.settings.getInt("controlpanelheight", 200);
+                    float minimapSize = Core.settings.getInt("minimapsize", 200);
+
+                    //Calculate background position and size
+                    //Start after minimap (with margin), extend to screen right edge
+                    float minimapMargin = 10f; //5px margin on each side of minimap = 10px total
+                    float bgStartX = minimapSize + minimapMargin;
+                    float bgWidth = Core.graphics.getWidth() - bgStartX;
+
+                    //Draw black background from minimap's right edge to screen right edge
+                    Draw.color(Color.black);
+                    Fill.rect(bgStartX, y, bgWidth, panelHeight);
+                    Draw.color();
+
+                    //Then draw custom background image on top if set
+                    String bgPath = Core.settings.getString("controlpanelbg", "");
+                    if(!bgPath.isEmpty()){
+                        //Load texture if path changed
+                        if(!bgPath.equals(lastPath)){
+                            lastPath = bgPath;
+                            try{
+                                Fi file = Core.files.absolute(bgPath);
+                                if(file.exists()){
+                                    Texture tex = new Texture(file);
+                                    customBg = new TextureRegion(tex);
+                                }else{
+                                    customBg = null;
+                                }
+                            }catch(Exception e){
+                                customBg = null;
+                            }
+                        }
+
+                        //Draw custom background if loaded, clipped to background area
+                        if(customBg != null){
+                            //Clip to background area (after minimap to screen edge)
+                            if(!clipBegin(bgStartX, y, bgWidth, panelHeight)) return;
+
+                            //Draw from bottom-left of background area, using original image dimensions
+                            float imgWidth = customBg.width;
+                            float imgHeight = customBg.height;
+                            Draw.rect(customBg, bgStartX + imgWidth / 2f, y + imgHeight / 2f, imgWidth, imgHeight);
+
+                            //End clipping
+                            clipEnd();
+                        }
+                    }else{
+                        customBg = null;
+                        lastPath = "";
+                    }
+                }
+            };
+            backgroundLayer.setFillParent(true);
+            backgroundLayer.touchable = Touchable.enabled;
+
+            //Layer 2 (Top): UI elements at fixed positions
+            Table uiLayer = new Table();
+            uiLayer.defaults().bottom();
+            uiLayer.touchable = Touchable.childrenOnly;
+
+            //Left: Minimap
+            Minimap minimap = new Minimap();
+            uiLayer.table(miniTable -> {
+                miniTable.name = "minimap-container";
+                miniTable.visible(() -> Core.settings.getBool("minimap"));
+                miniTable.add(minimap);
+            }).bottom().left();
+
+            //Center: Unit Selection Grid
+            uiLayer.table(unitTable -> {
+                unitTable.name = "unitselection";
+                unitTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0 ||
+                    (control.input.selectedResource != null && control.input.selectedResource.block() instanceof CrystalMineralWall));
+                unitTable.add(new UnitSelectionGrid()).maxWidth(600f).pad(4f);
+            }).bottom().growX();
+
+            //Right: Ability panel
+            abilityPanel = new UnitAbilityPanel();
+            uiLayer.table(abilityTable -> {
+                abilityTable.name = "abilitypanel";
+                abilityTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0);
+                abilityTable.add(abilityPanel).pad(4f);
+            }).bottom().right();
+
+            //Add layers to stack (bottom to top)
+            stack.add(backgroundLayer);
+            stack.add(uiLayer);
+
+            Cell<Stack> cell = t.add(stack).growX();
+
+            //UI elements stay at fixed height, only minimap size is adjustable
+            //Control panel height only affects background drawing, not UI layout
+            stack.update(() -> {
+                float size = Core.settings.getInt("minimapsize", 200);
+                minimap.setMinimapSize(size);
+
+                //Stack height is based on minimap size, not control panel height
+                //This keeps UI elements at bottom without moving them up
+                float uiHeight = size + 10f; //Minimap size + margin
+                stack.setHeight(uiHeight);
+                cell.height(uiHeight);
+            });
+
+            //Apply bottom offset to the parent table, not the stack
+            t.update(() -> {
+                float offset = Core.settings.getInt("bottomuioffset", 0);
+                t.marginBottom(offset);
+            });
+        });
 
         blockfrag.build(parent);
     }

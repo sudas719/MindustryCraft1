@@ -70,14 +70,16 @@ public class MoveLightningAbility extends Ability{
     @Override
     public void addStats(Table t){
         super.addStats(t);
-        t.add(abilityStat("minspeed", Strings.autoFixed(minSpeed * 60f / tilesize, 2)));
+        t.add(abilityStat("minspeed", Strings.autoFixed(minSpeed, 2)));
         t.row();
         t.add(Core.bundle.format("bullet.damage", damage));
     }
 
     @Override
     public void update(Unit unit){
-        float scl = Mathf.clamp((unit.vel().len() - minSpeed) / (maxSpeed - minSpeed));
+        float min = minSpeed * tilesize / 60f;
+        float max = maxSpeed * tilesize / 60f;
+        float scl = Mathf.clamp((unit.vel().len() - min) / (max - min));
         if(Mathf.chance(Time.delta * chance * scl)){
             float x = unit.x + Angles.trnsx(unit.rotation, this.y, this.x * side), y = unit.y + Angles.trnsy(unit.rotation, this.y, this.x * side);
 
@@ -98,7 +100,9 @@ public class MoveLightningAbility extends Ability{
 
     @Override
     public void draw(Unit unit){
-        float scl = Mathf.clamp((unit.vel().len() - minSpeed) / (maxSpeed - minSpeed));
+        float min = minSpeed * tilesize / 60f;
+        float max = maxSpeed * tilesize / 60f;
+        float scl = Mathf.clamp((unit.vel().len() - min) / (max - min));
         TextureRegion region = Core.atlas.find(heatRegion);
         if(Core.atlas.isFound(region) && scl > 0.00001f){
             Draw.color(color);

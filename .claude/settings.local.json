@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gradlew tasks:*)",
+      "Bash(./gradlew tasks:*)",
+      "Bash(gradlew.bat compileJava:*)",
+      "Bash(./gradlew compileJava:*)",
+      "Bash(./gradlew desktop:run:*)",
+      "Bash(gradlew core:compileJava:*)",
+      "Bash(./gradlew.bat core:compileJava:*)",
+      "Bash(gradlew.bat desktop:run:*)",
+      "Bash(find:*)",
+      "Bash(.\\\\gradlew.bat desktop:run:*)",
+      "Bash(timeout /t 30)",
+      "Bash(cmd /c gradlew.bat desktop:run)",
+      "Bash(ping:*)",
+      "Bash(cmd /c:*)",
+      "Bash(gradlew.bat core:compileJava:*)",
+      "Bash(./gradlew core:compileJava:*)",
+      "Bash(gradlew.bat desktop:compileJava:*)",
+      "Bash(./gradlew desktop:compileJava:*)",
+      "Bash(gradlew desktop:dist:*)",
+      "Bash(./gradlew desktop:dist:*)"
+    ]
+  }
+}

@@ -90,32 +90,9 @@ public class CoreBlock extends StorageBlock{
 
     @Remote(called = Loc.server)
     public static void playerSpawn(Tile tile, Player player){
-        if(player == null || tile == null || !(tile.build instanceof CoreBuild core)) return;
-
-        UnitType spawnType = ((CoreBlock)core.block).unitType;
-        if(core.wasVisible){
-            Fx.spawn.at(core);
-        }
-
-        player.set(core);
-
-        if(!net.client()){
-            Unit unit = spawnType.create(tile.team());
-            //reset reload so that the player can't shoot immediately
-            for(var mount : unit.mounts){
-                mount.reload = mount.weapon.reload;
-            }
-            unit.set(core);
-            unit.rotation(90f);
-            unit.impulse(0f, 3f);
-            unit.spawnedByCore(true);
-            unit.controller(player);
-            unit.add();
-        }
-
-        if(state.isCampaign() && player == Vars.player){
-            spawnType.unlock();
-        }
+        //Disabled: Core units are no longer spawned
+        //Players cannot possess units anymore
+        return;
     }
 
     @Override

@@ -115,7 +115,9 @@ public class MinimapRenderer{
             pixmap.dispose();
             texture.dispose();
         }
-        setZoom(4f);
+        //Set zoom to show entire map by default
+        float maxZoom = Math.min(world.width(), world.height()) / baseSize / 2f;
+        setZoom(maxZoom);
         pixmap = new Pixmap(world.width(), world.height());
         texture = new Texture(pixmap);
         region = new TextureRegion(texture);

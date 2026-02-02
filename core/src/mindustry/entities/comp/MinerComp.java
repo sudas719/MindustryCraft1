@@ -5,6 +5,7 @@ import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.util.*;
+import mindustry.ai.types.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
 import mindustry.gen.*;
@@ -12,6 +13,7 @@ import mindustry.graphics.*;
 import mindustry.input.*;
 import mindustry.type.*;
 import mindustry.world.*;
+import mindustry.world.blocks.environment.*;
 
 import static mindustry.Vars.*;
 
@@ -70,6 +72,9 @@ abstract class MinerComp implements Itemsc, Posc, Teamc, Rotc, Drawc{
 
     @Override
     public void update(){
+        // Skip if using HarvestAI
+        if(this.<Unit>self().controller() instanceof HarvestAI) return;
+
         if(mineTile == null) return;
 
         Building core = closestCore();
@@ -98,21 +103,70 @@ abstract class MinerComp implements Itemsc, Posc, Teamc, Rotc, Drawc{
             if(mineTimer >= 50f + (type.mineHardnessScaling ? item.hardness*15f : 15f)){
                 mineTimer = 0;
 
-                if(state.rules.sector != null && team() == state.rules.defaultTeam) state.rules.sector.info.handleProduction(item, 1);
+                int amount = 1;
+                int reserves = 0;
+                boolean finite = false;
+                CrystalMineralWall crystal = mineTile.block() instanceof CrystalMineralWall cm ? cm : null;
+                if(crystal != null){
+                    amount = crystal.mineAmount(mineTile, this.<Unit>self());
+                    if(!crystal.isInfinite(mineTile)){
+                        reserves = crystal.getReserves(mineTile);
+                        amount = Math.min(amount, reserves);
+                        finite = true;
+                    }
+                }
 
-                if(core != null && within(core, mineTransferRange) && core.acceptStack(item, 1, this) == 1 && offloadImmediately()){
+                if(amount <= 0){
+                    mineTile = null;
+                    mineTimer = 0f;
+                    return;
+                }
+
+                int toCore = 0;
+                if(core != null && within(core, mineTransferRange) && offloadImmediately()){
+                    toCore = core.acceptStack(item, amount, this);
+                }
+
+                int toUnit = 0;
+                if(amount - toCore > 0 && acceptsItem(item)){
+                    toUnit = Math.min(amount - toCore, maxAccepted(item));
+                }
+
+                int mined = toCore + toUnit;
+                if(mined <= 0){
+                    mineTile = null;
+                    mineTimer = 0f;
+                    return;
+                }
+
+                if(finite && !net.client()){
+                    int remaining = reserves - mined;
+                    if(remaining <= 0){
+                        mineTile.setNet(Blocks.air);
+                    }else{
+                        crystal.setReserves(mineTile, remaining);
+                    }
+                }
+
+                if(state.rules.sector != null && team() == state.rules.defaultTeam) state.rules.sector.info.handleProduction(item, mined);
+
+                if(toCore > 0){
                     //add item to inventory before it is transferred
-                    if(item() == item && !net.client()) addItem(item);
-                    Call.transferItemTo(self(), item, 1,
+                    if(item() == item && !net.client()) addItem(item, toCore);
+                    Call.transferItemTo(self(), item, toCore,
                     mineTile.worldx() + Mathf.range(tilesize / 2f),
                     mineTile.worldy() + Mathf.range(tilesize / 2f), core);
-                }else if(acceptsItem(item)){
+                }
+
+                if(toUnit > 0){
                     //this is clientside, since items are synced anyway
-                    InputHandler.transferItemToUnit(item,
-                    mineTile.worldx() + Mathf.range(tilesize / 2f),
-                    mineTile.worldy() + Mathf.range(tilesize / 2f),
-                    this);
-                }else{
+                    for(int i = 0; i < toUnit; i++){
+                        InputHandler.transferItemToUnit(item,
+                        mineTile.worldx() + Mathf.range(tilesize / 2f),
+                        mineTile.worldy() + Mathf.range(tilesize / 2f),
+                        this);
+                    }
+                }else if(mined > 0){
                     mineTile = null;
                     mineTimer = 0f;
                 }

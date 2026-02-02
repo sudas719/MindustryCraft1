@@ -703,7 +703,18 @@ public class Tile implements Position, QuadTreeObject, Displayable{
 
     @Override
     public void display(Table table){
+        // Check for special displayable blocks
+        if(block instanceof CrystalMineralWall crystal){
+            crystal.displayTile(table, this);
+            return;
+        }
 
+        if(floor instanceof SteamVent vent && vent.isCenterVent(this)){
+            vent.displayTile(table, this);
+            return;
+        }
+
+        // Default display logic
         Block toDisplay =
             block.itemDrop != null ? block :
             overlay.itemDrop != null || wallDrop() != null ? overlay :

@@ -13,7 +13,7 @@ import mindustry.input.*;
 
 /** Defines a pattern of behavior that an RTS-controlled unit should follow. Shows up in the command UI. */
 public class UnitCommand extends MappableContent{
-    public static UnitCommand moveCommand, repairCommand, rebuildCommand, assistCommand, mineCommand, boostCommand, enterPayloadCommand, loadUnitsCommand, loadBlocksCommand, unloadPayloadCommand, loopPayloadCommand;
+    public static UnitCommand moveCommand, repairCommand, rebuildCommand, assistCommand, mineCommand, boostCommand, enterPayloadCommand, loadUnitsCommand, loadBlocksCommand, unloadPayloadCommand, loopPayloadCommand, harvestCommand;
 
     /** Name of UI icon (from Icon class). */
     public final String icon;
@@ -116,5 +116,6 @@ public class UnitCommand extends MappableContent{
             drawTarget = true;
             resetTarget = false;
         }};
+        harvestCommand = new UnitCommand("harvest", "commandRallyPoint", Binding.unitCommandHarvest, u -> new HarvestAI());
     }
 }

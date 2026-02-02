@@ -87,6 +87,14 @@ public class Control implements ApplicationListener, Loadable{
 
                 dialog.show();
             }
+
+            //show StarCraft II keybinding migration warning
+            if(!Core.settings.getBool("sc2_migration_shown", false)){
+                Time.runTask(6f, () -> {
+                    ui.showInfo("Keybindings updated to StarCraft II style.\nPress F10 for menu (was ESC).\nCamera uses edge scrolling (WASD disabled).\nCommand grid uses Q/W/E/R/T, A/S/D/F/G, Z/X/C/V/B.");
+                    Core.settings.put("sc2_migration_shown", true);
+                });
+            }
         });
 
         Events.on(StateChangeEvent.class, event -> {
@@ -338,7 +346,8 @@ public class Control implements ApplicationListener, Loadable{
         "ip", "localhost",
         "color-0", playerColors[8].rgba(),
         "name", "",
-        "lastBuild", 0
+        "lastBuild", 0,
+        "distinctcontrolgroups", false
         );
 
         saves.load();
