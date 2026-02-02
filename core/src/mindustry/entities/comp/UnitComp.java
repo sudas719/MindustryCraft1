@@ -37,6 +37,8 @@ import static mindustry.logic.GlobalVars.*;
 abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, Itemsc, Rotc, Unitc, Weaponsc, Drawc, Syncc, Shieldc, Displayable, Ranged, Minerc, Builderc, Senseable, Settable{
     private static final Vec2 tmp1 = new Vec2(), tmp2 = new Vec2();
     static final float warpDst = 8f;
+    private static final float harvestSoftDuration = 45f;
+    private static final float harvestSoftScale = 3f;
 
     @Import boolean dead, disarmed;
     @Import float x, y, rotation, maxHealth, drag, armor, hitSize, health, shield, ammo, dragMultiplier, armorOverride, speedMultiplier;
@@ -63,6 +65,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private transient float resupplyTime = Mathf.random(10f);
     private transient boolean wasPlayer;
     private transient boolean wasHealed;
+    private transient boolean wasHarvestCollision;
+    transient float harvestSoftTime;
+    public boolean harvestHidden;
 
     @SyncLocal float elevation;
     private transient boolean wasFlying;
@@ -457,12 +462,25 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     /** @return the collision layer to use for unit physics. Returning anything outside of PhysicsProcess contents will crash the game. */
     public int collisionLayer(){
+        if(harvestHidden){
+            return -1;
+        }
         boolean harvestCommand = controller instanceof HarvestAI ||
             (controller instanceof CommandAI cmd && cmd.currentCommand() == UnitCommand.harvestCommand);
-        if(harvestCommand && (type == UnitTypes.nova || type == UnitTypes.pulsar)){
+        boolean harvestCollision = harvestCommand && (type == UnitTypes.nova || type == UnitTypes.pulsar);
+        if(wasHarvestCollision && !harvestCollision){
+            harvestSoftTime = harvestSoftDuration;
+        }
+        wasHarvestCollision = harvestCollision;
+        if(harvestCollision){
             return -1;
         }
         return type.allowLegStep && type.legPhysicsLayer ? PhysicsProcess.layerLegs : isGrounded() ? PhysicsProcess.layerGround : PhysicsProcess.layerFlying;
+    }
+
+    public float collisionPushScale(){
+        if(harvestSoftTime <= 0f) return 1f;
+        return Mathf.lerp(1f, harvestSoftScale, harvestSoftTime / harvestSoftDuration);
     }
 
     public void lookAt(float angle){
@@ -634,6 +652,10 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     public void update(){
 
         type.update(self());
+
+        if(harvestSoftTime > 0f){
+            harvestSoftTime = Math.max(0f, harvestSoftTime - Time.delta);
+        }
 
         //update bounds
 
@@ -926,6 +948,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     @Override
     public void draw(){
+        if(harvestHidden) return;
         type.draw(self());
     }
 

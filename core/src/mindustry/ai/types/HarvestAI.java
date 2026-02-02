@@ -20,6 +20,8 @@ public class HarvestAI extends AIController{
     public static ObjectMap<Tile, Seq<Unit>> activeNovas = new ObjectMap<>();
     public static ObjectMap<Tile, Seq<Unit>> activePulsars = new ObjectMap<>();
     public static ObjectMap<Tile, Seq<Unit>> novaQueue = new ObjectMap<>();
+    public static ObjectMap<Tile, Seq<Unit>> targetNovas = new ObjectMap<>();
+    public static ObjectMap<Tile, Seq<Unit>> targetPulsars = new ObjectMap<>();
     public static float lastCleanupTime = 0f;
     public static final float cleanupInterval = 60f; // Clean up every 1 second
 
@@ -37,11 +39,14 @@ public class HarvestAI extends AIController{
     public @Nullable Tile miningTile;
     public @Nullable Tile queuedTile;
     public float harvestTimer;
+    public boolean inCondenser;
+    public Vec2 condenserEntryPos = new Vec2();
     public Vec2 lastHarvestPos = new Vec2();
     public Building targetCore;
     public float seekTimer = 0f; // Throttle seeking attempts
 
-    public static final float harvestTime = 150f; // 2.5 seconds
+    public static final float harvestTime = 135f; // 2.25 seconds
+    public static final float gasHarvestTime = 75f; // 1.25 second
     public static final float harvestRange = tilesize; // 1 tile distance
     public static final float searchRadius = 10f * tilesize; // 10x10 grid
     public static final float maxSearchRadius = 50f * tilesize; // Maximum search radius
@@ -52,10 +57,11 @@ public class HarvestAI extends AIController{
     public void setHarvestTarget(Vec2 target){
         if(target == null) return;
         Tile tile = world.tileWorld(target.x, target.y);
-        if(tile == null || !(tile.block() instanceof CrystalMineralWall)) return;
-        forcedTarget = tile;
+        Tile resolved = resolveHarvestTile(tile);
+        if(resolved == null) return;
+        forcedTarget = resolved;
         forcedByPlayer = true;
-        harvestTarget = tile;
+        setHarvestTargetTile(resolved);
         harvestTimer = 0f;
         state = HarvestState.HARVESTING;
     }
@@ -63,8 +69,14 @@ public class HarvestAI extends AIController{
     @Override
     public void updateMovement(){
         if(unit.hasItem() && state != HarvestState.RETURNING){
-            clearMiningState();
-            state = HarvestState.RETURNING;
+            boolean allowCarryForGas = harvestTarget != null && isGasTarget(harvestTarget);
+            boolean allowCarryGasToCrystal = unit.stack.item == Items.highEnergyGas
+                && harvestTarget != null
+                && harvestTarget.block() instanceof CrystalMineralWall;
+            if(!allowCarryForGas && !allowCarryGasToCrystal && !(forcedByPlayer && forcedTarget != null && !nearTile(forcedTarget))){
+                clearMiningState();
+                state = HarvestState.RETURNING;
+            }
         }
 
         // Clean up invalid reservations periodically (not every frame!)
@@ -73,6 +85,20 @@ public class HarvestAI extends AIController{
             cleanupMap(activeNovas);
             cleanupMap(activePulsars);
             cleanupQueue(novaQueue);
+            cleanupTargets(targetNovas);
+            cleanupTargets(targetPulsars);
+        }
+
+        if(harvestTarget != null && !isValidHarvestTarget(harvestTarget)){
+            if(harvestTarget == forcedTarget){
+                forcedTarget = null;
+                forcedByPlayer = false;
+            }
+            setHarvestTargetTile(null);
+        }
+
+        if(harvestTarget != null && !hasTargetEntry(harvestTarget)){
+            setHarvestTargetTile(harvestTarget);
         }
 
         switch(state){
@@ -92,8 +118,8 @@ public class HarvestAI extends AIController{
 
         // Check if there's a forced target first
         if(forcedTarget != null){
-            if(forcedTarget.block() instanceof CrystalMineralWall){
-                harvestTarget = forcedTarget;
+            if(isValidHarvestTarget(forcedTarget)){
+                setHarvestTargetTile(forcedTarget);
                 harvestTimer = 0f;
                 state = HarvestState.HARVESTING;
                 return;
@@ -107,7 +133,7 @@ public class HarvestAI extends AIController{
         Tile nearest = findNearestOre();
 
         if(nearest != null){
-            harvestTarget = nearest;
+            setHarvestTargetTile(nearest);
             harvestTimer = 0f;
             state = HarvestState.HARVESTING;
         }else{
@@ -117,15 +143,24 @@ public class HarvestAI extends AIController{
     }
 
     void updateHarvesting(){
-        if(harvestTarget == null || !(harvestTarget.block() instanceof CrystalMineralWall)){
+        if(harvestTarget == null || !isValidHarvestTarget(harvestTarget)){
             // Ore disappeared or was mined out
             clearMiningState();
             if(harvestTarget == forcedTarget){
                 forcedTarget = null;
                 forcedByPlayer = false;
             }
-            harvestTarget = null;
+            setHarvestTargetTile(null);
             state = HarvestState.SEEKING;
+            return;
+        }
+
+        if(isGasTarget(harvestTarget)){
+            updateGasHarvesting();
+            return;
+        }
+
+        if(tryRebalanceTargets()){
             return;
         }
 
@@ -163,12 +198,11 @@ public class HarvestAI extends AIController{
                         int currentCount = novaInterestCount(harvestTarget);
                         int betterCount = novaInterestCount(better);
                         if(currentCount - betterCount >= 2){
-                            boolean keepForcedQueue = forcedByPlayer && forcedTarget != null;
                             clearMiningState();
-                            if(keepForcedQueue){
-                                queueNova(forcedTarget);
+                            if(forcedByPlayer){
+                                forcedTarget = better;
                             }
-                            harvestTarget = better;
+                            setHarvestTargetTile(better);
                             harvestTimer = 0f;
                         }
                     }
@@ -188,6 +222,9 @@ public class HarvestAI extends AIController{
             int amount = crystal.mineAmount(harvestTarget, unit);
 
             // Add to unit inventory
+            if(unit.hasItem() && unit.stack.item == Items.highEnergyGas){
+                unit.clearItem();
+            }
             unit.addItem(crystal.itemDrop, amount);
 
             // Decrease reserves
@@ -204,9 +241,102 @@ public class HarvestAI extends AIController{
             // Remember position and transition to returning
             lastHarvestPos.set(harvestTarget.worldx(), harvestTarget.worldy());
             clearMiningState();
-            harvestTarget = null;
             state = HarvestState.RETURNING;
         }
+    }
+
+    void updateGasHarvesting(){
+        if(!(harvestTarget.floor() instanceof SteamVent vent)){
+            clearMiningState();
+            state = HarvestState.SEEKING;
+            return;
+        }
+
+        if(!isNova(unit)){
+            clearMiningState();
+            if(harvestTarget == forcedTarget){
+                forcedTarget = null;
+                forcedByPlayer = false;
+            }
+            setHarvestTargetTile(null);
+            state = HarvestState.SEEKING;
+            return;
+        }
+
+        Building condenser = findVentCondenser(harvestTarget);
+        if(condenser == null || !condenser.isValid()){
+            clearMiningState();
+            unit.lookAt(harvestTarget.worldx(), harvestTarget.worldy());
+            return;
+        }
+
+        if(inCondenser){
+            harvestTimer += Time.delta;
+            if(harvestTimer >= gasHarvestTime){
+                harvestTimer = 0f;
+                inCondenser = false;
+                unit.harvestHidden = false;
+
+                int amount = vent.getNovaCollect(harvestTarget);
+                int consumed = vent.isInfinite(harvestTarget) ? amount : vent.consumeGas(harvestTarget, amount);
+                if(consumed > 0){
+                    if(unit.hasItem()){
+                        unit.clearItem();
+                    }
+                    unit.addItem(Items.highEnergyGas, consumed);
+                }
+
+                lastHarvestPos.set(harvestTarget.worldx(), harvestTarget.worldy());
+                clearMiningState();
+                state = HarvestState.RETURNING;
+
+                if(unit.controller() instanceof CommandAI ai){
+                    ai.applyQueuedCommand();
+                }
+            }
+            return;
+        }
+
+        // Move to condenser contact point
+        unit.lookAt(condenser.x, condenser.y);
+        Rect condRect = Tmp.r1.setSize(condenser.block.size * tilesize).setCenter(condenser.x, condenser.y);
+        Tile approach = unit.isGrounded() ? condenser.findClosestEdge(unit, t -> !isPassable(t)) : null;
+        Vec2 contact = contactPoint(condRect,
+            approach == null ? unit.x : approach.worldx(),
+            approach == null ? unit.y : approach.worldy(),
+            Tmp.v1);
+
+        if(touching(condRect)){
+            stopAtContact(condRect, contact);
+        }else{
+            moveToContact(contact, approach, 20f);
+        }
+
+        if(!touching(condRect)){
+            clearMiningState();
+            return;
+        }
+
+        if(unit.hasItem() && unit.stack.item == Items.highEnergyGas){
+            clearMiningState();
+            state = HarvestState.RETURNING;
+            return;
+        }
+
+        boolean miningLocked = miningTile == harvestTarget;
+        if(!miningLocked){
+            if(!canMineHere(harvestTarget)){
+                harvestTimer = 0f;
+                return;
+            }
+        }
+
+        startMining(harvestTarget);
+        inCondenser = true;
+        harvestTimer = 0f;
+        condenserEntryPos.set(unit.x, unit.y);
+        unit.harvestHidden = true;
+        unit.vel.setZero();
     }
 
     void updateReturning(){
@@ -253,6 +383,36 @@ public class HarvestAI extends AIController{
             // Return to last harvest position
             state = HarvestState.SEEKING;
         }
+    }
+
+    boolean isValidHarvestTarget(Tile tile){
+        if(tile == null) return false;
+        if(tile.block() instanceof CrystalMineralWall) return true;
+        if(tile.floor() instanceof SteamVent vent) return vent.checkAdjacent(tile);
+        return false;
+    }
+
+    boolean isGasTarget(Tile tile){
+        return tile != null && tile.floor() instanceof SteamVent vent && vent.checkAdjacent(tile);
+    }
+
+    @Nullable Tile resolveHarvestTile(@Nullable Tile tile){
+        if(tile == null) return null;
+        if(tile.block() instanceof CrystalMineralWall) return tile;
+        if(tile.floor() instanceof SteamVent vent){
+            Tile data = vent.dataTile(tile);
+            return data != null && vent.checkAdjacent(data) ? data : null;
+        }
+        return null;
+    }
+
+    @Nullable Building findVentCondenser(@Nullable Tile tile){
+        if(tile == null) return null;
+        Building build = tile.build;
+        if(build != null && build.block == Blocks.ventCondenser && build.team == unit.team){
+            return build;
+        }
+        return null;
     }
 
     float collisionRadius(){
@@ -354,6 +514,13 @@ public class HarvestAI extends AIController{
     }
 
     void clearMiningState(){
+        if(inCondenser){
+            inCondenser = false;
+            unit.harvestHidden = false;
+            if(unit.controller() instanceof CommandAI ai){
+                ai.applyQueuedCommand();
+            }
+        }
         if(miningTile != null){
             if(isPulsar(unit)){
                 removeActive(activePulsars, miningTile, unit);
@@ -377,17 +544,23 @@ public class HarvestAI extends AIController{
             novaQueue.put(tile, queue);
         }
 
-        if(queue.contains(unit)){
-            if(forcedByPlayer && queue.first() != unit){
-                queue.remove(unit);
-                queue.insert(0, unit);
+        if(queue.contains(unit)) return;
+
+        if(forcedByPlayer){
+            int insertIndex = -1;
+            for(int i = 0; i < queue.size; i++){
+                if(!isPlayerForced(queue.get(i))){
+                    insertIndex = i;
+                    break;
+                }
+            }
+            if(insertIndex == -1){
+                queue.add(unit);
+            }else{
+                queue.insert(insertIndex, unit);
             }
         }else{
-            if(forcedByPlayer){
-                queue.insert(0, unit);
-            }else{
-                queue.add(unit);
-            }
+            queue.add(unit);
         }
         queuedTile = tile;
     }
@@ -480,7 +653,7 @@ public class HarvestAI extends AIController{
                 Tile tile = world.tile(tx + dx, ty + dy);
                 if(tile == null || !(tile.block() instanceof CrystalMineralWall)) continue;
 
-                if(activeCount(activeNovas, tile) > 0 || activeCount(activePulsars, tile) > 0) continue;
+                if(targetCount(targetNovas, tile) > 0 || targetCount(targetPulsars, tile) > 0) continue;
 
                 float dst = Mathf.dst2(x, y, tile.worldx(), tile.worldy());
                 if(dst < bestDst){
@@ -502,15 +675,15 @@ public class HarvestAI extends AIController{
     }
 
     static int minerCount(Tile tile){
-        return activeCount(activeNovas, tile) + activeCount(activePulsars, tile) + queuedCount(novaQueue, tile);
+        return targetCount(targetNovas, tile) + targetCount(targetPulsars, tile);
     }
 
     public static int getActiveNovaCount(Tile tile){
-        return activeCount(activeNovas, tile);
+        return targetCount(targetNovas, tile);
     }
 
     static int novaInterestCount(Tile tile){
-        return activeCount(activeNovas, tile) + queuedCount(novaQueue, tile);
+        return targetCount(targetNovas, tile);
     }
 
     static int activeCount(ObjectMap<Tile, Seq<Unit>> map, Tile tile){
@@ -519,6 +692,11 @@ public class HarvestAI extends AIController{
     }
 
     static int queuedCount(ObjectMap<Tile, Seq<Unit>> map, Tile tile){
+        Seq<Unit> seq = map.get(tile);
+        return seq == null ? 0 : seq.size;
+    }
+
+    static int targetCount(ObjectMap<Tile, Seq<Unit>> map, Tile tile){
         Seq<Unit> seq = map.get(tile);
         return seq == null ? 0 : seq.size;
     }
@@ -569,6 +747,35 @@ public class HarvestAI extends AIController{
         }
     }
 
+    static void cleanupTargets(ObjectMap<Tile, Seq<Unit>> map){
+        Seq<Tile> toRemove = new Seq<>();
+        map.each((tile, units) -> {
+            units.removeAll(u -> u == null || !u.isValid() || u.dead || !isHarvestingUnit(u) || !isTargetingTile(u, tile));
+            if(units.isEmpty()){
+                toRemove.add(tile);
+            }
+        });
+        for(Tile tile : toRemove){
+            map.remove(tile);
+        }
+    }
+
+    static boolean isTargetingTile(Unit unit, Tile tile){
+        if(unit.controller() instanceof HarvestAI hai) return hai.harvestTarget == tile;
+        if(unit.controller() instanceof CommandAI cmd && cmd.commandController instanceof HarvestAI hai){
+            return hai.harvestTarget == tile;
+        }
+        return false;
+    }
+
+    static boolean isPlayerForced(Unit unit){
+        if(unit.controller() instanceof HarvestAI hai) return hai.forcedByPlayer;
+        if(unit.controller() instanceof CommandAI cmd && cmd.commandController instanceof HarvestAI hai){
+            return hai.forcedByPlayer;
+        }
+        return false;
+    }
+
     static boolean isHarvestingUnit(Unit unit){
         if(unit.controller() instanceof HarvestAI) return true;
         if(unit.controller() instanceof CommandAI cmd){
@@ -579,6 +786,7 @@ public class HarvestAI extends AIController{
 
     public void removed(){
         clearMiningState();
+        setHarvestTargetTile(null);
     }
 
     void moveToContact(Vec2 contact, @Nullable Tile approach, float speed){
@@ -624,5 +832,72 @@ public class HarvestAI extends AIController{
         if(unit.isFlying()) return true;
         if(unit.isPathImpassable(tile.x, tile.y)) return false;
         return unit.canPass(tile.x, tile.y);
+    }
+
+    boolean tryRebalanceTargets(){
+        if(!isNova(unit) || miningTile == harvestTarget) return false;
+        if(forcedByPlayer && forcedTarget != null && !nearTile(forcedTarget)) return false;
+
+        Tile anchor = forcedTarget != null ? forcedTarget : harvestTarget;
+        Tile better = findOreNear(anchor.worldx(), anchor.worldy(), searchRadius, true);
+        if(better == null || better == harvestTarget) return false;
+
+        int currentCount = novaInterestCount(harvestTarget);
+        int betterCount = novaInterestCount(better);
+        if(currentCount - betterCount < 2) return false;
+
+        clearMiningState();
+        if(forcedByPlayer){
+            forcedTarget = better;
+        }
+        setHarvestTargetTile(better);
+        harvestTimer = 0f;
+        return true;
+    }
+
+    boolean nearTile(Tile tile){
+        if(tile == null) return false;
+        return unit.within(tile.worldx(), tile.worldy(), collisionRadius() + tilesize);
+    }
+
+    void setHarvestTargetTile(@Nullable Tile newTarget){
+        if(harvestTarget == newTarget){
+            if(newTarget != null){
+                if(isNova(unit)){
+                    addActive(targetNovas, newTarget, unit);
+                }else if(isPulsar(unit)){
+                    addActive(targetPulsars, newTarget, unit);
+                }
+            }
+            return;
+        }
+        if(harvestTarget != null){
+            if(isNova(unit)){
+                removeActive(targetNovas, harvestTarget, unit);
+            }else if(isPulsar(unit)){
+                removeActive(targetPulsars, harvestTarget, unit);
+            }
+        }
+
+        harvestTarget = newTarget;
+
+        if(newTarget != null){
+            if(isNova(unit)){
+                addActive(targetNovas, newTarget, unit);
+            }else if(isPulsar(unit)){
+                addActive(targetPulsars, newTarget, unit);
+            }
+        }
+    }
+
+    boolean hasTargetEntry(Tile tile){
+        if(isNova(unit)){
+            Seq<Unit> seq = targetNovas.get(tile);
+            return seq != null && seq.contains(unit);
+        }else if(isPulsar(unit)){
+            Seq<Unit> seq = targetPulsars.get(tile);
+            return seq != null && seq.contains(unit);
+        }
+        return false;
     }
 }

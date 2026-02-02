@@ -50,6 +50,10 @@ public class CommandAI extends AIController{
     public @Nullable Vec2 pendingHarvestTarget;
     /** Last command type assigned. Used for detecting command changes. */
     protected @Nullable UnitCommand lastCommand;
+    /** Queued command while the unit is locked inside a condenser. */
+    public @Nullable UnitCommand queuedCommand;
+    public @Nullable Vec2 queuedCommandPos;
+    public @Nullable Teamc queuedCommandTarget;
 
     public UnitCommand currentCommand(){
         return command == null ? UnitCommand.moveCommand : command;
@@ -57,6 +61,10 @@ public class CommandAI extends AIController{
 
     /** Attempts to assign a command to this unit. If not supported by the unit type, does nothing. */
     public void command(UnitCommand command){
+        if(commandLocked()){
+            queuedCommand = command;
+            return;
+        }
         if(unit.type.commands.contains(command)){
             //clear old state.
             unit.mineTile = null;
@@ -566,6 +574,10 @@ public class CommandAI extends AIController{
 
     public void commandPosition(Vec2 pos, boolean stopWhenInRange){
         if(pos == null) return;
+        if(commandLocked()){
+            queuedCommandPos = pos.cpy();
+            return;
+        }
 
         //this is an allocation, but it's relatively rarely called anyway, and outside mutations must be prevented
         targetPos = lastTargetPos = pos.cpy();
@@ -588,8 +600,34 @@ public class CommandAI extends AIController{
     }
 
     public void commandTarget(Teamc moveTo, boolean stopAtTarget){
+        if(commandLocked()){
+            queuedCommandTarget = moveTo;
+            return;
+        }
         attackTarget = moveTo;
         this.stopAtTarget = stopAtTarget;
+    }
+
+    public void applyQueuedCommand(){
+        if(queuedCommand == null && queuedCommandPos == null && queuedCommandTarget == null) return;
+
+        UnitCommand next = queuedCommand != null ? queuedCommand : command;
+        if(next != null){
+            command(next);
+        }
+        if(queuedCommandTarget != null){
+            commandTarget(queuedCommandTarget, false);
+        }else if(queuedCommandPos != null){
+            commandPosition(queuedCommandPos, false);
+        }
+
+        queuedCommand = null;
+        queuedCommandPos = null;
+        queuedCommandTarget = null;
+    }
+
+    private boolean commandLocked(){
+        return unit != null && unit.harvestHidden;
     }
 
 }

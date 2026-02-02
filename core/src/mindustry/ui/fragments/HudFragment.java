@@ -729,7 +729,8 @@ public class HudFragment{
             uiLayer.table(unitTable -> {
                 unitTable.name = "unitselection";
                 unitTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0 ||
-                    (control.input.selectedResource != null && control.input.selectedResource.block() instanceof CrystalMineralWall));
+                    (control.input.selectedResource != null && (control.input.selectedResource.block() instanceof CrystalMineralWall
+                        || control.input.selectedResource.floor() instanceof SteamVent)));
                 unitTable.add(new UnitSelectionGrid()).maxWidth(600f).pad(4f);
             }).bottom().growX();
 

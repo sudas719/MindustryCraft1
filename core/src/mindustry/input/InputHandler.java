@@ -997,7 +997,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public void selectUnitsRect(){
         if(commandMode && commandRect){
-            if(!tappedOne){
+            float dx = input.mouseWorldX() - commandRectX;
+            float dy = input.mouseWorldY() - commandRectY;
+            float dragThreshold = tilesize * 0.25f;
+            boolean dragged = dx * dx + dy * dy > dragThreshold * dragThreshold;
+            if(!tappedOne || dragged){
                 var units = selectedCommandUnits(commandRectX, commandRectY, input.mouseWorldX() - commandRectX, input.mouseWorldY() - commandRectY);
 
                 if(multiUnitSelect()){
@@ -1020,6 +1024,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     }
                     commandBuildings.addAll(buildings);
                     unassignBuildingsFromControl(commandBuildings);
+                    if(buildings.isEmpty() && !multiUnitSelect()){
+                        commandBuildings.clear();
+                    }
                 }
 
                 if(units.isEmpty() && commandBuildings.isEmpty()){
@@ -1079,10 +1086,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     selectedUnits.add(unit);
                 }
                 commandBuildings.clear();
-            }else{
-                //Only check for buildings if no unit was found
-                Building build = world.buildWorld(input.mouseWorldX(), input.mouseWorldY());
-                if(build != null && build.team == player.team()){
+                }else{
+                    //Only check for buildings if no unit was found
+                    Building build = world.buildWorld(input.mouseWorldX(), input.mouseWorldY());
+                    if(build != null && build.team == player.team()){
                     boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
                     boolean ctrlHeld = Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight);
 
@@ -1110,14 +1117,17 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         commandBuildings.clear();
                         commandBuildings.add(build);
                     }
-                    unassignBuildingsFromControl(commandBuildings);
-                }else{
-                    commandBuildings.clear();
+                        unassignBuildingsFromControl(commandBuildings);
+                    }else{
+                        Tile tile = world.tileWorld(input.mouseWorldX(), input.mouseWorldY());
+                        if(!trySelectResource(tile)){
+                            commandBuildings.clear();
+                        }
+                    }
                 }
+                Events.fire(Trigger.unitCommandChange);
             }
-            Events.fire(Trigger.unitCommandChange);
         }
-    }
 
     public void unassignBuildingsFromControl(Seq<Building> buildings){
         if(buildings.isEmpty()) return;
@@ -1144,9 +1154,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             Vec2 target = input.mouseWorld(screenX, screenY).cpy();
 
             if(selectedUnits.size > 0){
-                // Check if clicking on a crystal mineral
+                // Check if clicking on a harvestable resource
                 Tile tile = world.tileWorld(target.x, target.y);
-                if(tile != null && tile.block() instanceof CrystalMineralWall){
+                Tile resource = resolveResourceTile(tile);
+                if(resource != null && (resource.block() instanceof CrystalMineralWall || resource.floor() instanceof SteamVent)){
                     // Switch units to harvest command and target this tile
                     for(Unit unit : selectedUnits){
                         if(unit.controller() instanceof CommandAI ai){
@@ -1957,7 +1968,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(tile.block() instanceof CrystalMineralWall) return tile;
         if(tile.floor() instanceof SteamVent vent){
             Tile dataTile = vent.dataTile(tile);
-            return dataTile == null ? tile : dataTile;
+            if(dataTile == null) return null;
+            return vent.checkAdjacent(dataTile) ? dataTile : null;
         }
         return null;
     }
@@ -1976,12 +1988,14 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         for(int x = tx1; x <= tx2; x++){
             for(int y = ty1; y <= ty2; y++){
                 Tile tile = world.tile(x, y);
-                if(tile == null || !(tile.block() instanceof CrystalMineralWall)) continue;
+                Tile resource = resolveResourceTile(tile);
+                if(resource == null) continue;
+                if(!(resource.block() instanceof CrystalMineralWall) && !(resource.floor() instanceof SteamVent)) continue;
 
-                float dst = Mathf.dst2(mx, my, tile.worldx(), tile.worldy());
+                float dst = Mathf.dst2(mx, my, resource.worldx(), resource.worldy());
                 if(dst < bestDst){
                     bestDst = dst;
-                    best = tile;
+                    best = resource;
                 }
             }
         }

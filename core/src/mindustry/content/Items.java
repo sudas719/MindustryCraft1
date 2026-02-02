@@ -1,14 +1,16 @@
 package mindustry.content;
 
+import arc.*;
 import arc.graphics.*;
+import arc.graphics.g2d.*;
 import arc.struct.*;
 import mindustry.type.*;
 
 public class Items{
     public static Item
-    scrap, copper, lead, graphite, coal, titanium, thorium, silicon, plastanium,
-    phaseFabric, surgeAlloy, sporePod, sand, blastCompound, pyratite, metaglass,
-    beryllium, tungsten, oxide, carbide, fissileMatter, dormantCyst;
+        scrap, copper, lead, graphite, coal, titanium, thorium, silicon, plastanium,
+        phaseFabric, surgeAlloy, sporePod, sand, blastCompound, pyratite, metaglass,
+        beryllium, tungsten, oxide, carbide, fissileMatter, dormantCyst, highEnergyGas;
 
     public static final Seq<Item> serpuloItems = new Seq<>(), erekirItems = new Seq<>(), erekirOnlyItems = new Seq<>();
 
@@ -135,14 +137,26 @@ public class Items{
             hidden = true;
         }};
 
+        highEnergyGas = new Item("high-energy-gas", Color.valueOf("89e8b6")){
+            @Override
+            public void loadIcon(){
+                super.loadIcon();
+                TextureRegion cyanogen = Core.atlas.find("liquid-cyanogen", fullIcon);
+                if(cyanogen != null){
+                    fullIcon = cyanogen;
+                    uiIcon = cyanogen;
+                }
+            }
+        };
+
         serpuloItems.addAll(
         scrap, copper, lead, graphite, coal, titanium, thorium, silicon, plastanium,
-        phaseFabric, surgeAlloy, sporePod, sand, blastCompound, pyratite, metaglass
+        phaseFabric, surgeAlloy, sporePod, sand, blastCompound, pyratite, metaglass, highEnergyGas
         );
 
         erekirItems.addAll(
         graphite, thorium, silicon, phaseFabric, surgeAlloy, sand,
-        beryllium, tungsten, oxide, carbide, fissileMatter, dormantCyst
+        beryllium, tungsten, oxide, carbide, fissileMatter, dormantCyst, highEnergyGas
         );
 
         erekirOnlyItems.addAll(erekirItems).removeAll(serpuloItems);

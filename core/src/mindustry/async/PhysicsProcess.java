@@ -47,6 +47,7 @@ public class PhysicsProcess implements AsyncProcess{
                 body.y = entity.y;
                 body.mass = entity.mass();
                 body.radius = entity.hitSize * Vars.unitCollisionRadiusScale;
+                body.pushScale = 1f;
 
                 PhysicRef ref = new PhysicRef(entity, body);
                 refs.add(ref);
@@ -63,6 +64,12 @@ public class PhysicsProcess implements AsyncProcess{
             ref.x = entity.x;
             ref.y = entity.y;
             ref.body.local = local || entity.isLocal();
+            ref.body.radius = entity.hitSize * Vars.unitCollisionRadiusScale;
+            if(entity instanceof Unit){
+                ref.body.pushScale = ((Unit)entity).collisionPushScale();
+            }else{
+                ref.body.pushScale = 1f;
+            }
         }
     }
 
@@ -193,12 +200,14 @@ public class PhysicsProcess implements AsyncProcess{
                         float m1 = other.mass / ms, m2 = body.mass / ms;
 
                         //first body is always local due to guard check above
-                        body.x += vec.x * m1 / scl;
-                        body.y += vec.y * m1 / scl;
+                        float scl1 = scl * Math.max(1f, body.pushScale);
+                        float scl2 = scl * Math.max(1f, other.pushScale);
+                        body.x += vec.x * m1 / scl1;
+                        body.y += vec.y * m1 / scl1;
 
                         if(other.local){
-                            other.x -= vec.x * m2 / scl;
-                            other.y -= vec.y * m2 / scl;
+                            other.x -= vec.x * m2 / scl2;
+                            other.y -= vec.y * m2 / scl2;
                         }
                     }
                 }
@@ -207,7 +216,7 @@ public class PhysicsProcess implements AsyncProcess{
         }
 
         public static class PhysicsBody implements QuadTreeObject{
-            public float x, y, radius, mass;
+            public float x, y, radius, mass, pushScale = 1f;
             public int layer = 0;
             public boolean collided = false, local = true;
 

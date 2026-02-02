@@ -104,7 +104,11 @@ public class MenuFragment{
             }));
         }
 
-        String versionText = ((Version.build == -1) ? "[#fc8140aa]" : "[#ffffffba]") + Version.combined();
+        String[] versionLines = {
+            "v0.2",
+            "MindustryCraftⅠ",
+            "Love From StarCraftⅡ"
+        };
         parent.fill((x, y, w, h) -> {
             TextureRegion logo = Core.atlas.find("logo");
             float width = Core.graphics.getWidth(), height = Core.graphics.getHeight() - Core.scene.marginTop;
@@ -122,7 +126,11 @@ public class MenuFragment{
             Draw.rect(logo, fx, fy, logow, logoh);
 
             Fonts.outline.setColor(Color.white);
-            Fonts.outline.draw(versionText, fx, fy - logoh/2f - Scl.scl(2f), Align.center);
+            float baseY = fy - logoh / 2f - Scl.scl(2f);
+            float lineHeight = Fonts.outline.getLineHeight();
+            for(int i = 0; i < versionLines.length; i++){
+                Fonts.outline.draw(versionLines[i], fx, baseY - lineHeight * i, Align.center);
+            }
         }).touchable = Touchable.disabled;
     }
 

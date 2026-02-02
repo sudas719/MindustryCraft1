@@ -7,11 +7,15 @@ import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
 import arc.struct.*;
 import mindustry.ai.types.HarvestAI;
+import mindustry.content.Blocks;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.type.*;
 import mindustry.world.*;
+import mindustry.entities.bullet.*;
+import mindustry.world.blocks.defense.turrets.*;
 import mindustry.world.blocks.environment.CrystalMineralWall;
+import mindustry.world.blocks.environment.SteamVent;
 
 import static mindustry.Vars.*;
 
@@ -250,7 +254,8 @@ public class UnitSelectionGrid extends Table{
             }
 
             Tile currentResource = control.input.selectedResource;
-            boolean showResource = current.isEmpty() && currentResource != null && currentResource.block() instanceof CrystalMineralWall;
+            boolean showResource = current.isEmpty() && currentResource != null &&
+                (currentResource.block() instanceof CrystalMineralWall || currentResource.floor() instanceof SteamVent);
 
             if(showResource){
                 if(displayedResource != currentResource || !displayedItems.isEmpty()){
@@ -283,7 +288,11 @@ public class UnitSelectionGrid extends Table{
         paginationTable.clear();
 
         if(displayedResource != null){
-            buildCrystalInfoPanel(displayedResource);
+            if(displayedResource.block() instanceof CrystalMineralWall){
+                buildCrystalInfoPanel(displayedResource);
+            }else if(displayedResource.floor() instanceof SteamVent){
+                buildSteamVentInfoPanel(displayedResource);
+            }
             return;
         }
 
@@ -417,17 +426,29 @@ public class UnitSelectionGrid extends Table{
                 //Icons row: armor and weapons
                 rightHalf.table(iconsRow -> {
                     iconsRow.defaults().size(28f).pad(4f);
+                    String armorLabel = Core.bundle.get("ui.armor", "Armor");
+                    String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
+                    String typeLabel = Core.bundle.get("ui.type", "Type");
+                    String valueLabel = Core.bundle.get("ui.value", "Value");
+                    String speedLabel = Core.bundle.get("ui.speed", "Speed");
+                    String damageLabel = Core.bundle.get("ui.damage", "Damage");
+                    String rangeLabel = Core.bundle.get("ui.range", "Range");
+                    String targetLabel = Core.bundle.get("ui.target", "Target");
+                    String targetAir = Core.bundle.get("ui.target.air", "Air");
+                    String targetGround = Core.bundle.get("ui.target.ground", "Ground");
+                    String targetGroundAir = Core.bundle.get("ui.target.groundair", "Ground & Air");
+                    String multiAttackLabel = Core.bundle.get("ui.multiact", "Multi-attack");
 
                     //Armor icon
                     iconsRow.table(armorIcon -> {
                         armorIcon.image(Icon.defense).color(Color.orange);
                         armorIcon.addListener(new Tooltip(t -> {
                             t.background(Styles.black6);
-                            t.add("Armor").color(Color.yellow).row();
+                            t.add(armorLabel).color(Color.yellow).row();
                             t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-                            t.add("Type: " + unit.type.armorType.displayName).left().row();
-                            t.add("Value: " + (int)unit.type.armor).left().row();
-                    t.add("Speed: " + String.format("%.1f", unit.type.speed) + " tiles/s").left().row();
+                            t.add(typeLabel + ": " + armorTypeName(unit.type.armorType)).left().row();
+                            t.add(valueLabel + ": " + (int)unit.type.armor).left().row();
+                            t.add(speedLabel + ": " + String.format("%.1f", unit.type.speed) + " tiles/s").left().row();
                         }));
                     });
 
@@ -452,7 +473,7 @@ public class UnitSelectionGrid extends Table{
                             weaponIcon.image(canAttackAir && canAttackGround ? Icon.units : Icon.defense);
                             weaponIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
-                                t.add("Weapon").color(Color.yellow).row();
+                                t.add(weaponLabel).color(Color.yellow).row();
                                 t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
 
                                 //Find first weapon for stats
@@ -461,20 +482,20 @@ public class UnitSelectionGrid extends Table{
                                         float damage = weapon.bullet.damage;
                                         if(weapon.bullet.splashDamage > damage) damage = weapon.bullet.splashDamage;
 
-                                        t.add("Damage: " + (int)damage).left().row();
-                                        t.add("Range: " + (int)(weapon.range() / 8f) + " tiles").left().row();
+                                        t.add(damageLabel + ": " + (int)damage).left().row();
+                                        t.add(rangeLabel + ": " + (int)(weapon.range() / 8f) + " tiles").left().row();
 
                                         if(weapon.reload > 0){
-                                            t.add("Speed: " + String.format("%.1f", weapon.reload / 60f) + "s").left().row();
+                                            t.add(speedLabel + ": " + String.format("%.1f", weapon.reload / 60f) + "s").left().row();
                                         }
 
                                         if(weapon.bullet.fragBullets > 1){
-                                            t.add("Multi-attack: " + weapon.bullet.fragBullets + "x").left().row();
+                                            t.add(multiAttackLabel + ": " + weapon.bullet.fragBullets + "x").left().row();
                                         }
 
-                                        String target = canAttackAir && canAttackGround ? "Ground & Air" :
-                                                       canAttackAir ? "Air" : "Ground";
-                                        t.add("Target: " + target).left().row();
+                                        String target = canAttackAir && canAttackGround ? targetGroundAir :
+                                                       canAttackAir ? targetAir : targetGround;
+                                        t.add(targetLabel + ": " + target).left().row();
                                         break;
                                     }
                                 }
@@ -485,26 +506,148 @@ public class UnitSelectionGrid extends Table{
 
                 //Bottom row: armor type and unit class
                 rightHalf.table(bottomRow -> {
-                    bottomRow.add(unit.type.armorType.displayName).color(Color.white).padRight(12f);
-                    bottomRow.add(unit.type.unitClass.displayName).color(Color.white);
+                    String armorName = armorTypeName(unit.type.armorType);
+                    String className = unitClassName(unit.type.unitClass);
+                    bottomRow.add(armorName + " " + className).color(Color.white);
                 }).padTop(8f);
             }).grow().center();
         }).growX().height(120f);
     }
 
     private void buildBuildingInfoPanel(Building building){
-        gridTable.row();
-        gridTable.table(infoTable -> {
-            infoTable.background(Styles.black8);
-            infoTable.margin(4f);
-            infoTable.add("Building: " + building.block.localizedName).color(Color.white).pad(4f);
-        }).growX();
+        gridTable.clear();
+
+        gridTable.table(panel -> {
+            panel.background(Styles.black8);
+            panel.margin(8f);
+
+            //Left half: Building icon
+            panel.table(leftHalf -> {
+                leftHalf.defaults().center();
+                leftHalf.image(building.block.uiIcon).size(96f).row();
+
+                if(building.block == Blocks.ventCondenser){
+                    Tile tile = building.tile;
+                    if(tile != null && tile.floor() instanceof SteamVent vent){
+                        Tile data = vent.dataTile(tile);
+                        String remainingLabel = Core.bundle.get("steamvent.remaining", "Remaining");
+                        String infiniteLabel = Core.bundle.get("ui.infinite", "Infinite");
+                        leftHalf.label(() -> {
+                            if(vent.isInfinite(data)){
+                                return remainingLabel + ": " + infiniteLabel;
+                            }
+                            return remainingLabel + ": " + vent.getReserves(data);
+                        }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
+                    }
+                }
+            }).width(120f).padRight(16f);
+
+            //Right half: Building info (centered)
+            panel.table(rightHalf -> {
+                rightHalf.defaults().center();
+
+                //Building name
+                rightHalf.add(building.block.localizedName).color(Color.white).style(Styles.outlineLabel).row();
+
+                //Icons row: armor and weapons
+                rightHalf.table(iconsRow -> {
+                    iconsRow.defaults().size(28f).pad(4f);
+                    String armorLabel = Core.bundle.get("ui.armor", "Armor");
+                    String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
+                    String valueLabel = Core.bundle.get("ui.value", "Value");
+                    String speedLabel = Core.bundle.get("ui.speed", "Speed");
+                    String damageLabel = Core.bundle.get("ui.damage", "Damage");
+                    String rangeLabel = Core.bundle.get("ui.range", "Range");
+                    String targetLabel = Core.bundle.get("ui.target", "Target");
+                    String healthLabel = Core.bundle.get("ui.health", "Health");
+                    String targetAir = Core.bundle.get("ui.target.air", "Air");
+                    String targetGround = Core.bundle.get("ui.target.ground", "Ground");
+                    String targetGroundAir = Core.bundle.get("ui.target.groundair", "Ground & Air");
+                    //Armor icon
+                    iconsRow.table(armorIcon -> {
+                        armorIcon.image(Icon.defense).color(Color.orange);
+                        armorIcon.addListener(new Tooltip(t -> {
+                            t.background(Styles.black6);
+                            t.add(armorLabel).color(Color.yellow).row();
+                            t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+                            t.add(valueLabel + ": " + (int)building.block.armor).left().row();
+                            t.add(healthLabel + ": " + (int)building.maxHealth).left().row();
+                        }));
+                    });
+
+                    //Weapon icon (only if this block can attack)
+                    if(building.block.attacks){
+                        iconsRow.table(weaponIcon -> {
+                            weaponIcon.image(Icon.units);
+                            weaponIcon.addListener(new Tooltip(t -> {
+                                t.background(Styles.black6);
+                                t.add(weaponLabel).color(Color.yellow).row();
+                                t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+
+                                float range = -1f;
+                                float reload = -1f;
+                                Float damage = null;
+                                String target = null;
+
+                                if(building instanceof BaseTurret.BaseTurretBuild baseBuild){
+                                    range = baseBuild.range();
+                                }
+
+                                if(building.block instanceof Turret turret && building instanceof Turret.TurretBuild turretBuild){
+                                    BulletType bullet = turretBuild.peekAmmo();
+                                    if(bullet != null){
+                                        float dmg = bullet.damage;
+                                        if(bullet.splashDamage > dmg) dmg = bullet.splashDamage;
+                                        damage = dmg;
+                                    }
+
+                                    reload = turret.reload;
+                                    target = turret.targetAir && turret.targetGround ? targetGroundAir :
+                                        turret.targetAir ? targetAir : targetGround;
+                                }else if(building.block instanceof TractorBeamTurret tractor){
+                                    if(tractor.damage > 0f){
+                                        damage = tractor.damage * 60f;
+                                    }
+                                    target = tractor.targetAir && tractor.targetGround ? targetGroundAir :
+                                        tractor.targetAir ? targetAir : targetGround;
+                                }else if(building.block instanceof BaseTurret){
+                                    target = targetGround;
+                                }
+
+                                if(damage != null){
+                                    t.add(damageLabel + ": " + (int)(float)damage).left().row();
+                                }
+                                if(range >= 0f){
+                                    t.add(rangeLabel + ": " + (int)(range / 8f) + " tiles").left().row();
+                                }
+                                if(reload > 0f){
+                                    t.add(speedLabel + ": " + String.format("%.1f", reload / 60f) + "s").left().row();
+                                }
+                                if(target != null){
+                                    t.add(targetLabel + ": " + target).left().row();
+                                }
+                            }));
+                        });
+                    }
+                }).padTop(8f).row();
+
+                //Bottom row: armor type and building category
+                String armorName = armorTypeName(armorTypeFor(building.block));
+                String className = unitClassName(UnitClass.mechanical);
+                String buildingLabel = Core.bundle.get("ui.building", "Building");
+                rightHalf.add(armorName + " " + className + " " + buildingLabel)
+                    .color(Color.white).padTop(8f);
+            }).grow().center();
+        }).growX().height(120f);
     }
 
     private void buildCrystalInfoPanel(Tile tile){
         if(tile == null || !(tile.block() instanceof CrystalMineralWall)) return;
 
         CrystalMineralWall crystal = (CrystalMineralWall)tile.block();
+        String collectingLabel = Core.bundle.get("resource.collecting", "Collecting units");
+        String remainingLabel = Core.bundle.get("crystalmineral.remaining", "Remaining");
+        String infiniteLabel = Core.bundle.get("ui.infinite", "Infinite");
 
         gridTable.clear();
         gridTable.table(panel -> {
@@ -512,16 +655,44 @@ public class UnitSelectionGrid extends Table{
             panel.margin(8f);
             panel.defaults().center();
 
-            panel.label(() -> "采集单位: " + HarvestAI.getActiveNovaCount(tile))
+            panel.label(() -> collectingLabel + ": " + HarvestAI.getActiveNovaCount(tile))
                 .style(Styles.outlineLabel).color(Color.white).row();
 
             panel.image(tile.block().uiIcon).size(80f).padTop(6f).row();
 
             panel.label(() -> {
                 if(crystal.isInfinite(tile)){
-                    return "剩余: ∞";
+                    return remainingLabel + ": " + infiniteLabel;
                 }
-                return "剩余: " + crystal.getReserves(tile);
+                return remainingLabel + ": " + crystal.getReserves(tile);
+            }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
+        }).growX().height(120f);
+    }
+
+    private void buildSteamVentInfoPanel(Tile tile){
+        if(tile == null || !(tile.floor() instanceof SteamVent vent)) return;
+
+        Tile data = vent.dataTile(tile);
+        String collectingLabel = Core.bundle.get("resource.collecting", "Collecting units");
+        String remainingLabel = Core.bundle.get("steamvent.remaining", "Remaining");
+        String infiniteLabel = Core.bundle.get("ui.infinite", "Infinite");
+
+        gridTable.clear();
+        gridTable.table(panel -> {
+            panel.background(Styles.black8);
+            panel.margin(8f);
+            panel.defaults().center();
+
+            panel.label(() -> collectingLabel + ": " + HarvestAI.getActiveNovaCount(data))
+                .style(Styles.outlineLabel).color(Color.white).row();
+
+            panel.image(tile.floor().uiIcon).size(80f).padTop(6f).row();
+
+            panel.label(() -> {
+                if(vent.isInfinite(data)){
+                    return remainingLabel + ": " + infiniteLabel;
+                }
+                return remainingLabel + ": " + vent.getReserves(data);
             }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
         }).growX().height(120f);
     }
@@ -544,4 +715,20 @@ public class UnitSelectionGrid extends Table{
         }
         return -1;
     }
+
+    private String armorTypeName(ArmorType type){
+        String key = "armor." + type.name();
+        return Core.bundle.get(key, type.displayName);
+    }
+
+    private String unitClassName(UnitClass type){
+        String key = "unitclass." + type.name();
+        return Core.bundle.get(key, type.displayName);
+    }
+
+    private ArmorType armorTypeFor(Block block){
+        if(block == null) return ArmorType.none;
+        return ArmorType.heavy;
+    }
 }
+
