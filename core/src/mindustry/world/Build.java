@@ -12,9 +12,14 @@ import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.game.Teams.*;
 import mindustry.gen.*;
+import mindustry.type.*;
+import mindustry.entities.units.BuildPlan;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.ConstructBlock.*;
+import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
+import mindustry.world.blocks.environment.CrystalMineralWall;
+import mindustry.world.blocks.environment.SteamVent;
 
 import static mindustry.Vars.*;
 
@@ -69,7 +74,14 @@ public class Build{
     /** Places a ConstructBlock at this location. To preserve bandwidth, a config is only passed in the case of instant-place blocks. */
     @Remote(called = Loc.server)
     public static void beginPlace(@Nullable Unit unit, Block result, Team team, int x, int y, int rotation, @Nullable Object placeConfig){
-        if(!validPlace(result, team, x, y, rotation)){
+        boolean ignoreUnits = ConstructBlock.isPrepaid(Point2.pack(x, y));
+        if(!ignoreUnits && unit != null){
+            BuildPlan plan = unit.buildPlan();
+            if(plan != null && plan.requireClose && !plan.breaking && plan.x == x && plan.y == y){
+                ignoreUnits = true;
+            }
+        }
+        if(!(ignoreUnits ? validPlaceIgnoreUnits(result, team, x, y, rotation, true, true) : validPlace(result, team, x, y, rotation))){
             return;
         }
 
@@ -158,6 +170,40 @@ public class Build{
         result.placeBegan(tile, previous, unit);
     }
 
+    /** Places a ConstructBlock and deducts full cost immediately. Used for RTS build commands. */
+    @Remote(called = Loc.server)
+    public static void beginPlacePaid(@Nullable Unit unit, Block result, Team team, int x, int y, int rotation, @Nullable Object placeConfig){
+        if(!validPlaceIgnoreUnits(result, team, x, y, rotation, true, true)){
+            return;
+        }
+
+        if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+            CoreBuild core = team.core();
+            if(core == null) return;
+
+            for(ItemStack stack : result.requirements){
+                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
+                if(amount > 0 && !core.items.has(stack.item, amount)){
+                    return;
+                }
+            }
+
+            for(ItemStack stack : result.requirements){
+                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
+                if(amount > 0){
+                    core.items.remove(stack.item, amount);
+                }
+            }
+
+            if(!result.instantBuild){
+                ConstructBlock.markPrepaid(Point2.pack(x, y));
+            }
+        }
+
+        ConstructBlock.markForceBuildTime(Point2.pack(x, y));
+        beginPlace(unit, result, team, x, y, rotation, placeConfig);
+    }
+
     /** @return whether a tile can be placed at this location by this team. */
     public static boolean validPlace(Block type, Team team, int x, int y, int rotation){
         return validPlace(type, team, x, y, rotation, true);
@@ -215,6 +261,46 @@ public class Build{
 
         if(tile == null) return false;
 
+        if(type instanceof CoreBlock){
+            boolean[] valid = {true};
+            tile.getLinkedTilesAs(type, t -> {
+                if(t.block() instanceof CrystalMineralWall || t.floor() instanceof SteamVent){
+                    valid[0] = false;
+                }
+            });
+            return valid[0];
+        }
+
+        if(type == Blocks.ventCondenser){
+            if(!(tile.floor() instanceof SteamVent vent)) return false;
+            for(int dx = -1; dx <= 1; dx++){
+                for(int dy = -1; dy <= 1; dy++){
+                    Tile other = world.tile(tile.x + dx, tile.y + dy);
+                    if(other == null || other.floor() != vent) return false;
+                }
+            }
+
+            int offsetx = -(type.size - 1) / 2;
+            int offsety = -(type.size - 1) / 2;
+
+            for(int dx = 0; dx < type.size; dx++){
+                for(int dy = 0; dy < type.size; dy++){
+                    int wx = dx + offsetx + tile.x, wy = dy + offsety + tile.y;
+                    Tile check = world.tile(wx, wy);
+                    if(check == null) return false;
+                    if(check.build != null){
+                        if(check.build.block == Blocks.ventCondenser) return false;
+                        if(!(check.build instanceof ConstructBuild build && build.current == type) && check.build.block != Blocks.ventSpout){
+                            return false;
+                        }
+                    }else if(check.block() != Blocks.air && check.block() != Blocks.ventSpout){
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         if(!type.canPlaceOn(tile, team, rotation)){
             return false;
         }
@@ -229,7 +315,7 @@ public class Build{
             return false;
         }
 
-        if(!type.requiresWater && !contactsShallows(tile.x, tile.y, type) && !type.placeableLiquid){
+        if(type.requiresWater && !contactsShallows(tile.x, tile.y, type) && !type.placeableLiquid){
             return false;
         }
 

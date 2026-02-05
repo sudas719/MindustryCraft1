@@ -7,6 +7,7 @@ import arc.util.*;
 import mindustry.ai.UnitCommand;
 import mindustry.content.*;
 import mindustry.entities.units.*;
+import mindustry.game.Team;
 import mindustry.gen.*;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
@@ -348,9 +349,8 @@ public class HarvestAI extends AIController{
         }
 
         if(targetCore == null){
-            // No core available, drop items
-            unit.clearItem();
-            state = HarvestState.SEEKING;
+            // No core available, wait in place until one exists
+            unit.vel.setZero();
             return;
         }
 
@@ -388,12 +388,19 @@ public class HarvestAI extends AIController{
     boolean isValidHarvestTarget(Tile tile){
         if(tile == null) return false;
         if(tile.block() instanceof CrystalMineralWall) return true;
-        if(tile.floor() instanceof SteamVent vent) return vent.checkAdjacent(tile);
+        if(tile.floor() instanceof SteamVent vent){
+            Tile data = vent.dataTile(tile);
+            if(data == null || !vent.checkAdjacent(data)) return false;
+            return vent.isInfinite(data) || vent.getReserves(data) > 0;
+        }
         return false;
     }
 
     boolean isGasTarget(Tile tile){
-        return tile != null && tile.floor() instanceof SteamVent vent && vent.checkAdjacent(tile);
+        if(tile == null || !(tile.floor() instanceof SteamVent vent)) return false;
+        Tile data = vent.dataTile(tile);
+        if(data == null || !vent.checkAdjacent(data)) return false;
+        return vent.isInfinite(data) || vent.getReserves(data) > 0;
     }
 
     @Nullable Tile resolveHarvestTile(@Nullable Tile tile){
@@ -401,7 +408,10 @@ public class HarvestAI extends AIController{
         if(tile.block() instanceof CrystalMineralWall) return tile;
         if(tile.floor() instanceof SteamVent vent){
             Tile data = vent.dataTile(tile);
-            return data != null && vent.checkAdjacent(data) ? data : null;
+            if(data == null || !vent.checkAdjacent(data)) return null;
+            Tile center = data.nearby(-1, -1);
+            if(center != null && center.floor() == vent) return center;
+            return data;
         }
         return null;
     }
@@ -594,6 +604,68 @@ public class HarvestAI extends AIController{
                 return harvestTarget;
             }
         }
+        return best;
+    }
+
+    public static @Nullable Tile findNearestCrystalTile(float x, float y, float radius){
+        Tile best = null;
+        float bestDst = Float.MAX_VALUE;
+
+        int range = (int)(radius / tilesize);
+        range = Math.min(range, 100);
+
+        int tx = world.toTile(x);
+        int ty = world.toTile(y);
+
+        for(int dx = -range; dx <= range; dx++){
+            for(int dy = -range; dy <= range; dy++){
+                Tile tile = world.tile(tx + dx, ty + dy);
+                if(tile == null || !(tile.block() instanceof CrystalMineralWall)) continue;
+
+                float dst = Mathf.dst2(x, y, tile.worldx(), tile.worldy());
+                if(dst < bestDst){
+                    bestDst = dst;
+                    best = tile;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    public static @Nullable Tile findNearestGasTile(float x, float y, float radius, Team team){
+        Tile best = null;
+        float bestDst = Float.MAX_VALUE;
+        IntSet visited = new IntSet();
+
+        int range = (int)(radius / tilesize);
+        range = Math.min(range, 100);
+
+        int tx = world.toTile(x);
+        int ty = world.toTile(y);
+
+        for(int dx = -range; dx <= range; dx++){
+            for(int dy = -range; dy <= range; dy++){
+                Tile tile = world.tile(tx + dx, ty + dy);
+                if(tile == null || !(tile.floor() instanceof SteamVent vent)) continue;
+
+                Tile data = vent.dataTile(tile);
+                if(data == null || !vent.checkAdjacent(data)) continue;
+                if(!visited.add(data.pos())) continue;
+
+                if(!vent.isInfinite(data) && vent.getReserves(data) <= 0) continue;
+
+                Building build = data.build;
+                if(build == null || build.block != Blocks.ventCondenser || build.team != team) continue;
+
+                float dst = Mathf.dst2(x, y, data.worldx(), data.worldy());
+                if(dst < bestDst){
+                    bestDst = dst;
+                    best = data;
+                }
+            }
+        }
+
         return best;
     }
 

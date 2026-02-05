@@ -14,6 +14,9 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
+import mindustry.ai.*;
+import mindustry.ai.types.*;
+import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
@@ -197,13 +200,22 @@ public class DesktopInput extends InputHandler{
             }
         }
 
+        super.drawTop();
         Draw.reset();
     }
 
     @Override
     public void drawBottom(){
+        float cursorAlpha = 0.5f;
         int cursorX = tileX(Core.input.mouseX());
         int cursorY = tileY(Core.input.mouseY());
+        if(isPlacing() && block == Blocks.ventCondenser){
+            Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+            if(snap != null){
+                cursorX = snap.x;
+                cursorY = snap.y;
+            }
+        }
 
         //draw plan being moved
         if(splan != null){
@@ -242,38 +254,51 @@ public class DesktopInput extends InputHandler{
             drawOverPlan(plan, plan.cachedValid);
         }
 
-        if(player.isBuilder()){
-            //draw things that may be placed soon
+        //draw things that may be placed soon
             if(mode == placing && block != null){
                 for(int i = 0; i < linePlans.size; i++){
                     var plan = linePlans.get(i);
                     if(i == linePlans.size - 1 && plan.block.rotate && plan.block.drawArrow){
                         drawArrow(block, plan.x, plan.y, plan.rotation);
                     }
-                    drawPlan(linePlans.get(i));
+                    boolean valid = validPlace(plan.x, plan.y, plan.block, plan.rotation);
+                    plan.cachedValid = valid;
+                    plan.block.drawPlan(plan, allPlans(), valid, cursorAlpha);
                 }
-                linePlans.each(this::drawOverPlan);
+                for(int i = 0; i < linePlans.size; i++){
+                    var plan = linePlans.get(i);
+                    drawOverPlan(plan, plan.cachedValid, cursorAlpha);
+                }
             }else if(isPlacing()){
                 int rot = block == null ? rotation : block.planRotation(rotation);
+                int placeX = cursorX;
+                int placeY = cursorY;
+                if(block == Blocks.ventCondenser){
+                    Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+                    if(snap != null){
+                        placeX = snap.x;
+                        placeY = snap.y;
+                    }
+                }
                 if(block.rotate && block.drawArrow){
-                    drawArrow(block, cursorX, cursorY, rot);
+                    drawArrow(block, placeX, placeY, rot);
                 }
                 Draw.color();
-                boolean valid = validPlace(cursorX, cursorY, block, rot);
-                drawPlan(cursorX, cursorY, block, rot);
-                block.drawPlace(cursorX, cursorY, rot, valid);
+                boolean valid = validPlace(placeX, placeY, block, rot);
+                drawPlan(placeX, placeY, block, rot, cursorAlpha);
+                block.drawPlace(placeX, placeY, rot, valid);
 
                 if(block.saveConfig){
                     Draw.mixcol(!valid ? Pal.breakInvalid : Color.white, (!valid ? 0.4f : 0.24f) + Mathf.absin(Time.globalTime, 6f, 0.28f));
-                    bplan.set(cursorX, cursorY, rot, block);
+                    Draw.alpha(cursorAlpha);
+                    bplan.set(placeX, placeY, rot, block);
                     bplan.config = block.lastConfig;
                     block.drawPlanConfig(bplan, allPlans());
-                    bplan.config = null;
-                    Draw.reset();
-                }
-
-                drawOverlapCheck(block, cursorX, cursorY, valid);
+                bplan.config = null;
+                Draw.reset();
             }
+
+            drawOverlapCheck(block, placeX, placeY, valid);
         }
 
         Draw.reset();
@@ -299,6 +324,8 @@ public class DesktopInput extends InputHandler{
         boolean panCam = false;
         float camSpeed = (!Core.input.keyDown(Binding.boost) ? panSpeed : panBoostSpeed) * Time.delta;
         boolean detached = settings.getBool("detach-camera", false);
+        float arrowCamX = 0f, arrowCamY = 0f;
+        boolean arrowCam = false;
 
         if(!scene.hasField() && !scene.hasDialog()){
             if(input.keyTap(Binding.debugHitboxes)){
@@ -323,6 +350,18 @@ public class DesktopInput extends InputHandler{
                 panning = false;
                 spectating = null;
             }
+
+            if(!ui.chatfrag.shown()){
+                if(Core.input.keyDown(KeyCode.left)) arrowCamX -= 1f;
+                if(Core.input.keyDown(KeyCode.right)) arrowCamX += 1f;
+                if(Core.input.keyDown(KeyCode.up)) arrowCamY += 1f;
+                if(Core.input.keyDown(KeyCode.down)) arrowCamY -= 1f;
+                arrowCam = arrowCamX != 0f || arrowCamY != 0f;
+                if(arrowCam){
+                    panning = true;
+                    spectating = null;
+                }
+            }
         }
 
         panning |= detached;
@@ -335,6 +374,10 @@ public class DesktopInput extends InputHandler{
                 }
 
                 Core.camera.position.add(Tmp.v1.setZero().add(Core.input.axis(Binding.moveX), Core.input.axis(Binding.moveY)).nor().scl(camSpeed));
+            }
+
+            if(arrowCam && !scene.hasField() && !scene.hasDialog() && !ui.chatfrag.shown()){
+                Core.camera.position.add(Tmp.v1.set(arrowCamX, arrowCamY).nor().scl(camSpeed));
             }else if((!player.dead() || spectating != null) && !panning){
                 //TODO do not pan
                 Team corePanTeam = state.won ? state.rules.waveTeam : player.team();
@@ -697,11 +740,17 @@ public class DesktopInput extends InputHandler{
             pollInputPlayer();
         }
 
+        HoverInfo hover = updateHover(false);
+        if(hover.isValid()){
+            cursorType = hoverCursor(hover);
+        }
+
         if(Core.input.keyRelease(Binding.select)){
             player.shooting = false;
         }
 
-        if(!Core.scene.hasMouse() && !ui.minimapfrag.shown()){
+        boolean hoverCursor = cursorType == ui.hoverGreenCursor || cursorType == ui.hoverRedCursor || cursorType == ui.hoverYellowCursor;
+        if((!Core.scene.hasMouse() || hoverCursor) && !ui.minimapfrag.shown()){
             Core.graphics.cursor(cursorType);
             changedCursor = cursorType != SystemCursor.arrow;
         }else{
@@ -774,6 +823,13 @@ public class DesktopInput extends InputHandler{
         int cursorX = tileX(Core.input.mouseX());
         int cursorY = tileY(Core.input.mouseY());
         int rawCursorX = World.toTile(Core.input.mouseWorld().x), rawCursorY = World.toTile(Core.input.mouseWorld().y);
+        if(isPlacing() && block == Blocks.ventCondenser){
+            Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+            if(snap != null){
+                cursorX = snap.x;
+                cursorY = snap.y;
+            }
+        }
 
         //automatically pause building if the current build queue is empty
         if(Core.settings.getBool("buildautopause") && isBuilding && !player.unit().isBuilding()){
@@ -863,7 +919,7 @@ public class DesktopInput extends InputHandler{
         }
 
         if(isPlacing() && mode == placing && (cursorX != lastLineX || cursorY != lastLineY || Core.input.keyTap(Binding.diagonalPlacement) || Core.input.keyRelease(Binding.diagonalPlacement))){
-            updateLine(selectX, selectY);
+            updateLine(selectX, selectY, cursorX, cursorY);
             lastLineX = cursorX;
             lastLineY = cursorY;
         }
@@ -896,7 +952,7 @@ public class DesktopInput extends InputHandler{
                 lastLineX = cursorX;
                 lastLineY = cursorY;
                 mode = placing;
-                updateLine(selectX, selectY);
+                updateLine(selectX, selectY, cursorX, cursorY);
             }else if(plan != null && !plan.breaking && mode == none && !plan.initialized && plan.progress <= 0f){
                 splan = plan;
                 movedPlan = false;
@@ -1032,7 +1088,7 @@ public class DesktopInput extends InputHandler{
             }
 
             if(isPlacing() && mode == placing){
-                updateLine(selectX, selectY);
+                updateLine(selectX, selectY, cursorX, cursorY);
             }else if(!selectPlans.isEmpty() && !ui.chatfrag.shown()){
                 rotatePlans(selectPlans, Mathf.sign(Core.input.axisTap(Binding.rotate)));
             }
@@ -1060,19 +1116,6 @@ public class DesktopInput extends InputHandler{
             }
 
             if(commandMode && selectedUnits.any()){
-                boolean canAttack = (cursor.build != null && !cursor.build.inFogTo(player.team()) && cursor.build.team != player.team());
-
-                if(!canAttack){
-                    var unit = selectedEnemyUnit(input.mouseWorldX(), input.mouseWorldY());
-                    if(unit != null){
-                        canAttack = selectedUnits.contains(u -> u.canTarget(unit));
-                    }
-                }
-
-                if(canAttack){
-                    cursorType = ui.targetCursor;
-                }
-
                 if(input.keyTap(Binding.commandQueue) && Binding.commandQueue.value.key.type != KeyType.mouse){
                     commandTap(input.mouseX(), input.mouseY(), true);
                 }
@@ -1090,6 +1133,16 @@ public class DesktopInput extends InputHandler{
                 Call.rotateBlock(player, cursor.build, Core.input.axisTap(Binding.rotate) > 0);
             }
         }
+
+    }
+
+    private Cursor hoverCursor(HoverInfo hover){
+        if(hover.resource != null) return ui.hoverYellowCursor;
+        Team team = hover.team;
+        if(team == null) return SystemCursor.arrow;
+        if(team == player.team()) return ui.hoverGreenCursor;
+        if(team == Team.derelict) return ui.hoverYellowCursor;
+        return team != player.team() ? ui.hoverRedCursor : ui.hoverGreenCursor;
     }
 
     @Override
@@ -1121,6 +1174,24 @@ public class DesktopInput extends InputHandler{
         float worldX = Core.camera.unproject(screenX, screenY).x;
         float worldY = Core.camera.unproject(screenX, screenY).y;
 
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST){
+            if(executeHarvestCommand(worldX, worldY)){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RALLY){
+            executeRallyCommand(worldX, worldY);
+            ui.hudfrag.abilityPanel.exitCommandMode();
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE){
+            executeBuildPlacement(worldX, worldY);
+            return;
+        }
+
         //Check if Shift is held for command queuing
         boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
 
@@ -1138,6 +1209,96 @@ public class DesktopInput extends InputHandler{
         executeCommandAtTarget(mode, worldX, worldY, false);
 
         //Exit command mode after executing
+        ui.hudfrag.abilityPanel.exitCommandMode();
+    }
+
+    private boolean executeHarvestCommand(float worldX, float worldY){
+        Tile tile = world.tileWorld(worldX, worldY);
+        Tile resource = resolveResourceTile(tile);
+        if(resource == null) return false;
+
+        Vec2 target = Tmp.v1.set(resource.worldx(), resource.worldy());
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid()) continue;
+            if(unit.controller() instanceof CommandAI){
+                ((CommandAI)unit.controller()).setHarvestTarget(target);
+            }else if(unit.controller() instanceof HarvestAI){
+                ((HarvestAI)unit.controller()).setHarvestTarget(target);
+            }
+        }
+        return true;
+    }
+
+    private void executeRallyCommand(float worldX, float worldY){
+        if(commandBuildings.isEmpty()) return;
+        int[] builds = commandBuildings.mapInt(b -> b.pos()).toArray();
+        Call.commandBuilding(player, builds, new Vec2(worldX, worldY));
+    }
+
+    private void executeBuildPlacement(float worldX, float worldY){
+        if(ui.hudfrag.abilityPanel == null) return;
+        Block block = ui.hudfrag.abilityPanel.getPlacingBlock();
+        if(block == null){
+            ui.hudfrag.abilityPanel.exitCommandMode();
+            return;
+        }
+
+        Tmp.v1.set(worldX, worldY).sub(block.offset, block.offset);
+        int tx = World.toTile(Tmp.v1.x);
+        int ty = World.toTile(Tmp.v1.y);
+        if(block == Blocks.ventCondenser){
+            Tile snap = findNearestVentCenter(worldX, worldY, 30);
+            if(snap != null){
+                tx = snap.x;
+                ty = snap.y;
+                worldX = snap.worldx();
+                worldY = snap.worldy();
+            }
+        }
+
+        int placeRotation = 0;
+        if(!validPlace(tx, ty, block, placeRotation, null, true)){
+            return;
+        }
+
+        if(!mindustry.ui.UnitAbilityPanel.canAfford(block)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+            return;
+        }
+
+        Unit chosen = null;
+        float bestDst = Float.MAX_VALUE;
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !unit.canBuild()) continue;
+            float dst = unit.dst2(worldX, worldY);
+            if(dst < bestDst){
+                bestDst = dst;
+                chosen = unit;
+            }
+        }
+
+        if(chosen == null){
+            return;
+        }
+
+        boolean queueCommand = chosen.isBuilding();
+        BuildPlan plan = new BuildPlan(tx, ty, placeRotation, block, block.saveConfig ? block.lastConfig : null);
+        plan.requireClose = true;
+        chosen.addBuild(plan);
+        chosen.updateBuilding(true);
+
+        if(!state.rules.infiniteResources && !player.team().rules().infiniteResources){
+            mindustry.ui.UnitAbilityPanel.payPlacementCost(block);
+            if(!block.instantBuild){
+                mindustry.world.blocks.ConstructBlock.markPrepaid(Point2.pack(tx, ty));
+            }
+        }
+        mindustry.world.blocks.ConstructBlock.markForceBuildTime(Point2.pack(tx, ty));
+
+        float targetX = tx * tilesize + block.offset;
+        float targetY = ty * tilesize + block.offset;
+        Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queueCommand, true);
+
         ui.hudfrag.abilityPanel.exitCommandMode();
     }
 
@@ -1217,7 +1378,8 @@ public class DesktopInput extends InputHandler{
             case ATTACK:
                 //Attack command: units move and attack
                 //Check if clicking on enemy unit or building
-                Teamc attack = world.buildWorld(worldX, worldY);
+                Building build = world.buildWorld(worldX, worldY);
+                Teamc attack = (build != null && build.within(worldX, worldY, build.hitSize() / 2f)) ? build : null;
                 if(attack == null || attack.team() == player.team()){
                     attack = selectedEnemyUnit(worldX, worldY);
                 }

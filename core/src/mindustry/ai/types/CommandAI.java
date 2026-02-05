@@ -6,11 +6,14 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.ai.*;
 import mindustry.core.*;
+import mindustry.content.Items;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
 import mindustry.gen.*;
+import mindustry.type.Item;
 import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
+import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
@@ -48,6 +51,13 @@ public class CommandAI extends AIController{
     protected @Nullable AIController commandController;
     /** Pending harvest target set by player command. */
     public @Nullable Vec2 pendingHarvestTarget;
+    /** Rally follow target, used for building rally points. */
+    public @Nullable Teamc followTarget;
+    /** Queued follow target while commands are locked. */
+    public @Nullable Teamc queuedFollowTarget;
+    /** If true, follow is paused until the target moves. */
+    private boolean followHold;
+    private float followHoldX, followHoldY, followHoldDist;
     /** Last command type assigned. Used for detecting command changes. */
     protected @Nullable UnitCommand lastCommand;
     /** Queued command while the unit is locked inside a condenser. */
@@ -68,7 +78,11 @@ public class CommandAI extends AIController{
         if(unit.type.commands.contains(command)){
             //clear old state.
             unit.mineTile = null;
-            unit.clearBuilding();
+            BuildPlan plan = unit.buildPlan();
+            boolean keepBuild = plan != null && plan.requireClose;
+            if(!keepBuild){
+                unit.clearBuilding();
+            }
             this.command = command;
             if(command != UnitCommand.harvestCommand){
                 pendingHarvestTarget = null;
@@ -127,6 +141,9 @@ public class CommandAI extends AIController{
 
     @Override
     public void updateUnit(){
+        if(!commandLocked()){
+            applyQueuedCommand();
+        }
 
         if(command == UnitCommand.mineCommand && !hasStance(UnitStance.mineAuto) && !ItemUnitStance.all().contains(this::hasStance)){
             setStance(UnitStance.mineAuto);
@@ -148,7 +165,10 @@ public class CommandAI extends AIController{
 
         //remove invalid targets
         if(commandQueue.any()){
-            commandQueue.removeAll(e -> e instanceof Healthc h && !h.isValid());
+            commandQueue.removeAll(e -> {
+                if(!(e instanceof Healthc)) return false;
+                return !((Healthc)e).isValid();
+            });
         }
 
         //assign defaults
@@ -166,8 +186,8 @@ public class CommandAI extends AIController{
         //use the command controller if it is provided, and bail out.
         if(commandController != null){
             if(commandController.unit() != unit) commandController.unit(unit);
-            if(commandController instanceof HarvestAI hai && pendingHarvestTarget != null){
-                hai.setHarvestTarget(pendingHarvestTarget);
+            if(pendingHarvestTarget != null && commandController instanceof HarvestAI){
+                ((HarvestAI)commandController).setHarvestTarget(pendingHarvestTarget);
                 pendingHarvestTarget = null;
             }
             commandController.updateUnit();
@@ -182,6 +202,7 @@ public class CommandAI extends AIController{
         commandQueue.clear();
         targetPos = null;
         attackTarget = null;
+        followTarget = null;
     }
 
     void tryPickupUnit(Payloadc pay){
@@ -200,8 +221,10 @@ public class CommandAI extends AIController{
     }
 
     public void defaultBehavior(){
+        updateFollowTarget();
 
-        if(!net.client() && unit instanceof Payloadc pay){
+        if(!net.client() && unit instanceof Payloadc){
+            Payloadc pay = (Payloadc)unit;
             payloadPickupCooldown -= Time.delta;
 
             //auto-drop everything
@@ -262,10 +285,13 @@ public class CommandAI extends AIController{
             }
             targetPos.set(attackTarget);
 
-            if(unit.isGrounded() && attackTarget instanceof Building build && build.tile.solid() && unit.type.pathCostId != ControlPathfinder.costIdLegs && !ramming){
-                Tile best = build.findClosestEdge(unit, Tile::solid);
-                if(best != null){
-                    targetPos.set(best);
+            if(unit.isGrounded() && attackTarget instanceof Building && unit.type.pathCostId != ControlPathfinder.costIdLegs && !ramming){
+                Building build = (Building)attackTarget;
+                if(build.tile.solid()){
+                    Tile best = build.findClosestEdge(unit, Tile::solid);
+                    if(best != null){
+                        targetPos.set(best);
+                    }
                 }
             }
         }
@@ -279,10 +305,59 @@ public class CommandAI extends AIController{
             boolean move = true, isFinalPoint = commandQueue.size == 0;
             vecOut.set(targetPos);
             vecMovePos.set(targetPos);
+            Vec2 pathTarget = targetPos;
+            float buildFinishRange = -1f;
 
             //the enter payload command requires an exact position
             if(group != null && group.valid && groupIndex < group.units.size && command != UnitCommand.enterPayloadCommand){
                 vecMovePos.add(group.positions[groupIndex * 2], group.positions[groupIndex * 2 + 1]);
+            }
+
+            BuildPlan plan = unit.buildPlan();
+            if(plan != null && plan.requireClose && plan.block != null && targetPos != null &&
+                Mathf.equal(targetPos.x, plan.drawx()) && Mathf.equal(targetPos.y, plan.drawy())){
+                float cx = plan.drawx(), cy = plan.drawy();
+                float half = plan.block.size * tilesize / 2f;
+                float unitRadius = unit.hitSize / 2f;
+                float edge = half + unitRadius + 0.1f;
+                float bestX = cx + edge, bestY = cy;
+                float dx = unit.x - bestX, dy = unit.y - bestY;
+                float bestDst = dx * dx + dy * dy;
+
+                float altX = cx - edge, altY = cy;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                float dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestDst = dst;
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                altX = cx;
+                altY = cy + edge;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestDst = dst;
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                altX = cx;
+                altY = cy - edge;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                vecMovePos.set(bestX, bestY);
+                pathTarget = vecMovePos;
+                buildFinishRange = edge;
             }
 
             Building targetBuild = world.buildWorld(targetPos.x, targetPos.y);
@@ -303,14 +378,19 @@ public class CommandAI extends AIController{
                     float max = unit.hitSize/2f;
                     float radius = Math.max(7f, max);
                     float margin = 4f;
-                    blockingUnit = Units.nearbyCheck(unit.x + dstPos.x - radius/2f, unit.y + dstPos.y - radius/2f, radius, radius,
-                        u -> u != unit && u.within(unit, u.hitSize/2f + unit.hitSize/2f + margin) && u.controller() instanceof CommandAI ai && ai.targetPos != null &&
+                    blockingUnit = Units.nearbyCheck(unit.x + dstPos.x - radius/2f, unit.y + dstPos.y - radius/2f, radius, radius, u -> {
+                        if(u == unit) return false;
+                        if(!u.within(unit, u.hitSize/2f + unit.hitSize/2f + margin)) return false;
+                        if(!(u.controller() instanceof CommandAI)) return false;
+                        CommandAI ai = (CommandAI)u.controller();
+                        if(ai.targetPos == null) return false;
                         //stop for other unit only if it's closer to the target
-                        (ai.targetPos.equals(targetPos) && u.dst2(targetPos) < unit.dst2(targetPos)) &&
+                        if(!(ai.targetPos.equals(targetPos) && u.dst2(targetPos) < unit.dst2(targetPos))) return false;
                         //don't stop if they're facing the same way
-                        !Angles.within(unit.rotation, u.rotation, 15f) &&
+                        if(Angles.within(unit.rotation, u.rotation, 15f)) return false;
                         //must be near an obstacle, stopping in open ground is pointless
-                        ControlPathfinder.isNearObstacle(unit, unit.tileX(), unit.tileY(), u.tileX(), u.tileY()));
+                        return ControlPathfinder.isNearObstacle(unit, unit.tileX(), unit.tileY(), u.tileX(), u.tileY());
+                    });
                 }
 
                 float maxBlockTime = 60f * 5f;
@@ -332,7 +412,7 @@ public class CommandAI extends AIController{
                     noFound[0] = false;
                     vecOut.set(vecMovePos);
                 }else{
-                    move &= controlPath.getPathPosition(unit, vecMovePos, targetPos, vecOut, noFound) && (!blockingUnit || timeSpentBlocked > maxBlockTime);
+                    move &= controlPath.getPathPosition(unit, vecMovePos, pathTarget, vecOut, noFound) && (!blockingUnit || timeSpentBlocked > maxBlockTime);
 
                     //TODO: what to do when there's a target and it can't be reached?
                     /*
@@ -349,7 +429,8 @@ public class CommandAI extends AIController{
 
                 //if the path is invalid, stop trying and record the end as unreachable
                 if(unit.team.isAI() && (noFound[0] || unit.isPathImpassable(World.toTile(vecMovePos.x), World.toTile(vecMovePos.y)))){
-                    if(attackTarget instanceof Building build){
+                    if(attackTarget instanceof Building){
+                        Building build = (Building)attackTarget;
                         unreachableBuildings.addUnique(build.pos());
                     }
                     attackTarget = null;
@@ -389,8 +470,16 @@ public class CommandAI extends AIController{
             }
 
             //reached destination, end pathfinding
-            if(attackTarget == null && unit.within(vecMovePos, command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f))){
-                finishPath();
+            if(attackTarget == null){
+                float finishRange = command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f);
+                Position finishPos = vecMovePos;
+                if(buildFinishRange > 0f && targetPos != null){
+                    finishRange = buildFinishRange;
+                    finishPos = targetPos;
+                }
+                if(finishPos != null && unit.within(finishPos, finishRange)){
+                    finishPath();
+                }
             }
 
             if(stopWhenInRange && targetPos != null && unit.within(vecMovePos, engageRange * 0.9f)){
@@ -413,8 +502,8 @@ public class CommandAI extends AIController{
         pendingHarvestTarget = target.cpy();
         if(command != UnitCommand.harvestCommand){
             command(UnitCommand.harvestCommand);
-        }else if(commandController instanceof HarvestAI hai){
-            hai.setHarvestTarget(pendingHarvestTarget);
+        }else if(commandController instanceof HarvestAI){
+            ((HarvestAI)commandController).setHarvestTarget(pendingHarvestTarget);
             pendingHarvestTarget = null;
         }
     }
@@ -425,7 +514,8 @@ public class CommandAI extends AIController{
             return;
         }
 
-        if(!net.client() && command == UnitCommand.loopPayloadCommand && unit instanceof Payloadc pay){
+        if(!net.client() && command == UnitCommand.loopPayloadCommand && unit instanceof Payloadc){
+            Payloadc pay = (Payloadc)unit;
 
             if(transferState == transferStateNone){
                 transferState = pay.hasPayload() ? transferStateUnload : transferStateLoad;
@@ -467,17 +557,47 @@ public class CommandAI extends AIController{
             }
         }
 
+        if(command == UnitCommand.moveCommand && commandQueue.size == 0 && targetPos != null && unit.hasItem()){
+            Building targetBuild = world.buildWorld(targetPos.x, targetPos.y);
+            if(targetBuild instanceof CoreBuild && targetBuild.team == unit.team){
+                CoreBuild core = (CoreBuild)targetBuild;
+                float touchRange = unit.hitSize / 2f + core.hitSize() / 2f + 1f;
+                if(unit.within(core, touchRange)){
+                    Item carried = unit.item();
+                    int accepted = core.acceptStack(unit.item(), unit.stack.amount, unit);
+                    Call.transferItemTo(unit, unit.item(), accepted, core.x, core.y, core);
+                    unit.clearItem();
+
+                    if(unit.type.commands.contains(UnitCommand.harvestCommand)){
+                        float searchRadius = tilesize * 15f;
+                        Tile next = carried == Items.highEnergyGas
+                            ? HarvestAI.findNearestGasTile(unit.x, unit.y, searchRadius, unit.team)
+                            : HarvestAI.findNearestCrystalTile(unit.x, unit.y, searchRadius);
+
+                        targetPos = null;
+                        attackTarget = null;
+                        commandQueue.clear();
+
+                        if(next != null){
+                            setHarvestTarget(Tmp.v1.set(next.worldx(), next.worldy()));
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
         transferState = transferStateNone;
 
         Vec2 prev = targetPos;
         targetPos = null;
 
         if(commandQueue.size > 0){
-            var next = commandQueue.remove(0);
-            if(next instanceof Teamc target){
-                commandTarget(target, this.stopAtTarget);
-            }else if(next instanceof Vec2 position){
-                commandPosition(position);
+            Position next = commandQueue.remove(0);
+            if(next instanceof Teamc){
+                commandTarget((Teamc)next, this.stopAtTarget);
+            }else if(next instanceof Vec2){
+                commandPosition((Vec2)next);
             }
 
             if(prev != null && (hasStance(UnitStance.patrol) || command == UnitCommand.loopPayloadCommand)){
@@ -486,13 +606,148 @@ public class CommandAI extends AIController{
 
             //make sure spot in formation is reachable
             if(group != null){
-                group.updateRaycast(groupIndex, next instanceof Vec2 position ? position : Tmp.v3.set(next));
+                if(next instanceof Vec2){
+                    group.updateRaycast(groupIndex, (Vec2)next);
+                }else{
+                    group.updateRaycast(groupIndex, Tmp.v3.set(next));
+                }
             }
         }else{
             if(group != null){
                 group = null;
             }
         }
+    }
+
+    private void updateFollowTarget(){
+        if(followTarget == null) return;
+
+        boolean valid = true;
+        if(followTarget instanceof Healthc){
+            Healthc h = (Healthc)followTarget;
+            if(!h.isValid()) valid = false;
+        }
+        if(valid && followTarget instanceof Teamc){
+            Teamc t = (Teamc)followTarget;
+            if(t.team() != unit.team) valid = false;
+        }
+
+        if(!valid){
+            followTarget = null;
+            targetPos = null;
+            return;
+        }
+
+        if(followTarget instanceof Building){
+            Building build = (Building)followTarget;
+            float targetRadius = build.hitSize() / 2f;
+            float desired = targetRadius + unit.hitSize / 2f;
+            float tx = build.x, ty = build.y;
+
+            if(unit.dst2(tx, ty) <= desired * desired){
+                followTarget = null;
+                targetPos = null;
+                return;
+            }
+
+            if(targetPos == null){
+                targetPos = new Vec2();
+                lastTargetPos = targetPos;
+            }
+
+            Tmp.v1.set(unit.x - tx, unit.y - ty);
+            if(Tmp.v1.isZero(0.001f)){
+                Tmp.v1.set(1f, 0f);
+            }
+            Tmp.v1.setLength(desired);
+            targetPos.set(tx + Tmp.v1.x, ty + Tmp.v1.y);
+            attackTarget = null;
+            return;
+        }
+
+        float tx = followTarget.getX();
+        float ty = followTarget.getY();
+        if(followHold){
+            float resumeDst = followHoldDist;
+            if(Mathf.dst2(tx, ty, followHoldX, followHoldY) > resumeDst * resumeDst){
+                followHold = false;
+            }else{
+                targetPos = null;
+                return;
+            }
+        }
+
+        float targetRadius = 0f;
+        if(followTarget instanceof Sized){
+            targetRadius = ((Sized)followTarget).hitSize() / 2f;
+        }
+        float desired = (targetRadius + unit.hitSize / 2f) * 1.05f;
+        if(unit.dst2(tx, ty) <= desired * desired){
+            followHold = true;
+            followHoldX = tx;
+            followHoldY = ty;
+            followHoldDist = desired;
+            targetPos = null;
+            return;
+        }
+
+        if(isFollowBlocked(followTarget)){
+            followHold = true;
+            followHoldX = tx;
+            followHoldY = ty;
+            followHoldDist = desired;
+            targetPos = null;
+            return;
+        }
+
+        if(targetPos == null){
+            targetPos = new Vec2();
+            lastTargetPos = targetPos;
+        }
+
+        Tmp.v1.set(unit.x - tx, unit.y - ty);
+        if(Tmp.v1.isZero(0.001f)){
+            Tmp.v1.set(1f, 0f);
+        }
+        Tmp.v1.setLength(desired);
+        targetPos.set(tx + Tmp.v1.x, ty + Tmp.v1.y);
+        attackTarget = null;
+    }
+
+    private boolean isFollowBlocked(Teamc target){
+        float unitRadius = unit.hitSize / 2f;
+        float checkRad = unitRadius + 0.5f;
+
+        boolean blocked = Units.nearbyCheck(unit.x - checkRad, unit.y - checkRad, checkRad * 2f, checkRad * 2f, u -> {
+            if(u == unit || u == target) return false;
+            if(!u.isValid()) return false;
+            float dst = unit.dst(u);
+            float min = unitRadius + u.hitSize / 2f + 0.1f;
+            return dst < min;
+        });
+        if(blocked) return true;
+
+        float range = checkRad + maxBlockSize * tilesize / 2f;
+        Tmp.r1.setCentered(unit.x, unit.y, range * 2f, range * 2f);
+        boolean[] hit = {false};
+
+        for(mindustry.game.Teams.TeamData data : state.teams.present){
+            if(hit[0]) break;
+            var tree = data.buildingTree;
+            if(tree == null) continue;
+            tree.intersect(Tmp.r1, b -> {
+                if(hit[0]) return;
+                if(b == target) return;
+                if(!(b.block.solid || b.checkSolid())) return;
+                float br = b.block.size * tilesize / 2f;
+                float rs = br + unitRadius;
+                if(Mathf.dst2(unit.x, unit.y, b.x, b.y) < rs * rs){
+                    hit[0] = true;
+                }
+            });
+        }
+
+        return hit[0];
     }
 
     @Override
@@ -502,10 +757,10 @@ public class CommandAI extends AIController{
 
     public void commandQueue(Position location){
         if(targetPos == null && attackTarget == null){
-            if(location instanceof Teamc t){
-                commandTarget(t, this.stopAtTarget);
-            }else if(location instanceof Vec2 position){
-                commandPosition(position);
+            if(location instanceof Teamc){
+                commandTarget((Teamc)location, this.stopAtTarget);
+            }else if(location instanceof Vec2){
+                commandPosition((Vec2)location);
             }
         }else if(commandQueue.size < maxCommandQueueSize && !commandQueue.contains(location)){
             commandQueue.add(location);
@@ -527,10 +782,10 @@ public class CommandAI extends AIController{
 
     @Override
     public void hit(Bullet bullet){
-        if(unit.team.isAI() && bullet.owner instanceof Teamc teamc && teamc.team() != unit.team && attackTarget == null &&
+        if(unit.team.isAI() && bullet.owner instanceof Teamc && ((Teamc)bullet.owner).team() != unit.team && attackTarget == null &&
             //can only counter-attack every few seconds to prevent rapidly changing targets
-            !(teamc instanceof Unit u && !u.checkTarget(unit.type.targetAir, unit.type.targetGround)) && timer.get(timerTarget4, 60f * 10f)){
-            commandTarget(teamc, true);
+            !(bullet.owner instanceof Unit && !((Unit)bullet.owner).checkTarget(unit.type.targetAir, unit.type.targetGround)) && timer.get(timerTarget4, 60f * 10f)){
+            commandTarget((Teamc)bullet.owner, true);
         }
     }
 
@@ -545,7 +800,11 @@ public class CommandAI extends AIController{
     }
 
     public boolean nearAttackTarget(float x, float y, float range){
-        return attackTarget != null && attackTarget.within(x, y, range + 3f + (attackTarget instanceof Sized s ? s.hitSize()/2f : 0f));
+        float extra = 0f;
+        if(attackTarget instanceof Sized){
+            extra = ((Sized)attackTarget).hitSize() / 2f;
+        }
+        return attackTarget != null && attackTarget.within(x, y, range + 3f + extra);
     }
 
     @Override
@@ -579,6 +838,8 @@ public class CommandAI extends AIController{
             return;
         }
 
+        followTarget = null;
+
         //this is an allocation, but it's relatively rarely called anyway, and outside mutations must be prevented
         targetPos = lastTargetPos = pos.cpy();
         if(command != null && command.snapToBuilding){
@@ -604,18 +865,37 @@ public class CommandAI extends AIController{
             queuedCommandTarget = moveTo;
             return;
         }
+        followTarget = null;
         attackTarget = moveTo;
         this.stopAtTarget = stopAtTarget;
     }
 
+    public void commandFollow(Teamc target){
+        if(target == null) return;
+        if(commandLocked()){
+            queuedFollowTarget = target;
+            return;
+        }
+        if(command == null || command.switchToMove){
+            command(UnitCommand.moveCommand);
+        }
+        followHold = false;
+        followTarget = target;
+        attackTarget = null;
+        targetPos = null;
+        commandQueue.clear();
+    }
+
     public void applyQueuedCommand(){
-        if(queuedCommand == null && queuedCommandPos == null && queuedCommandTarget == null) return;
+        if(queuedCommand == null && queuedCommandPos == null && queuedCommandTarget == null && queuedFollowTarget == null) return;
 
         UnitCommand next = queuedCommand != null ? queuedCommand : command;
         if(next != null){
             command(next);
         }
-        if(queuedCommandTarget != null){
+        if(queuedFollowTarget != null){
+            commandFollow(queuedFollowTarget);
+        }else if(queuedCommandTarget != null){
             commandTarget(queuedCommandTarget, false);
         }else if(queuedCommandPos != null){
             commandPosition(queuedCommandPos, false);
@@ -624,10 +904,11 @@ public class CommandAI extends AIController{
         queuedCommand = null;
         queuedCommandPos = null;
         queuedCommandTarget = null;
+        queuedFollowTarget = null;
     }
 
     private boolean commandLocked(){
-        return unit != null && unit.harvestHidden;
+        return unit != null && (unit.harvestHidden || unit.activelyBuilding());
     }
 
 }

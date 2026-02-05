@@ -5,8 +5,11 @@ import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
+import mindustry.entities.units.BuildPlan;
+import mindustry.game.Teams.TeamData;
 import mindustry.gen.*;
 import mindustry.world.*;
+import mindustry.world.blocks.ConstructBlock;
 
 import static mindustry.Vars.*;
 
@@ -16,7 +19,7 @@ public class EntityCollisions{
 
     //tile collisions
     private Vec2 vector = new Vec2(), l1 = new Vec2();
-    private Rect r1 = new Rect(), r2 = new Rect(), tmp = new Rect();
+    private Rect r1 = new Rect(), r2 = new Rect(), r3 = new Rect(), tmp = new Rect();
 
     //entity collisions
     private Seq<Hitboxc> arrOut = new Seq<>(Hitboxc.class);
@@ -80,7 +83,10 @@ public class EntityCollisions{
         for(int dx = -r; dx <= r; dx++){
             for(int dy = -r; dy <= r; dy++){
                 int wx = dx + tilex, wy = dy + tiley;
-                if(solidCheck.solid(wx, wy)){
+                Tile tile = world.tile(wx, wy);
+                boolean buildSolid = tile != null && tile.build != null && (tile.block().solid || tile.build.checkSolid());
+
+                if(!buildSolid && solidCheck.solid(wx, wy)){
                     tmp.setSize(tilesize).setCenter(wx * tilesize, wy * tilesize);
 
                     if(tmp.overlaps(r1)){
@@ -92,6 +98,7 @@ public class EntityCollisions{
             }
         }
 
+        resolveBuildingCircles(entity);
         entity.trns(r1.x - r2.x, r1.y - r2.y);
     }
 
@@ -108,15 +115,84 @@ public class EntityCollisions{
         for(int dx = -r; dx <= r; dx++){
             for(int dy = -r; dy <= r; dy++){
                 int wx = dx + tilex, wy = dy + tiley;
-                if(solidChecker.solid(wx, wy)){
+                Tile tile = world.tile(wx, wy);
+                boolean buildSolid = tile != null && tile.build != null && (tile.block().solid || tile.build.checkSolid());
 
+                if(!buildSolid && solidChecker.solid(wx, wy)){
                     if(r2.setCentered(wx * tilesize, wy * tilesize, tilesize).overlaps(rect)){
                         return true;
                     }
                 }
             }
         }
-        return false;
+        return overlapsBuildings(rect);
+    }
+
+    private static boolean overlapsCircleRect(float cx, float cy, float radius, Rect rect){
+        float closestX = Mathf.clamp(cx, rect.x, rect.x + rect.width);
+        float closestY = Mathf.clamp(cy, rect.y, rect.y + rect.height);
+        float dx = cx - closestX;
+        float dy = cy - closestY;
+        return dx * dx + dy * dy < radius * radius;
+    }
+
+    private boolean overlapsBuildings(Rect rect){
+        float maxRadius = maxBlockSize * tilesize / 2f;
+        r2.set(rect).grow(maxRadius);
+        boolean[] hit = {false};
+
+        for(TeamData data : state.teams.present){
+            if(hit[0]) break;
+            var tree = data.buildingTree;
+            if(tree == null) continue;
+            tree.intersect(r2, b -> {
+                if(hit[0]) return;
+                if(!(b.block.solid || b.checkSolid())) return;
+                float radius = b.block.size * tilesize / 2f;
+                if(overlapsCircleRect(b.x, b.y, radius, rect)){
+                    hit[0] = true;
+                }
+            });
+        }
+
+        return hit[0];
+    }
+
+    private void resolveBuildingCircles(Hitboxc entity){
+        entity.hitbox(r3);
+        float radius = r3.width / 2f;
+        vector.set(r1.x + r1.width / 2f, r1.y + r1.height / 2f);
+        float range = radius + maxBlockSize * tilesize / 2f;
+        tmp.setCentered(vector.x, vector.y, range * 2f, range * 2f);
+
+        for(TeamData data : state.teams.present){
+            var tree = data.buildingTree;
+            if(tree == null) continue;
+            tree.intersect(tmp, b -> {
+                if(!(b.block.solid || b.checkSolid())) return;
+                if(entity instanceof Builderc builder && b instanceof ConstructBlock.ConstructBuild){
+                    BuildPlan plan = builder.buildPlan();
+                    if(plan != null && plan.x == b.tile.x && plan.y == b.tile.y){
+                        return;
+                    }
+                }
+                float br = b.block.size * tilesize / 2f;
+                float dx = vector.x - b.x, dy = vector.y - b.y;
+                float rs = radius + br;
+                float dst2 = dx * dx + dy * dy;
+                if(dst2 < rs * rs){
+                    if(dst2 < 0.0001f){
+                        l1.set(rs, 0f);
+                    }else{
+                        float dst = Mathf.sqrt(dst2);
+                        l1.set(dx, dy).scl((rs - dst) / dst);
+                    }
+                    vector.add(l1);
+                }
+            });
+        }
+
+        r1.setCentered(vector.x, vector.y, r1.width, r1.height);
     }
 
     @SuppressWarnings("unchecked")

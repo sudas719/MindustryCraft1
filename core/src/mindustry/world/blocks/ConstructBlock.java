@@ -35,6 +35,13 @@ public class ConstructBlock extends Block{
     private static long lastTime = 0;
     private static int pitchSeq = 0;
     private static long lastPlayed;
+    private static final IntSet prepaidPlans = new IntSet();
+    private static final IntSet forceBuildTime = new IntSet();
+
+    static{
+        Events.on(WorldLoadEvent.class, e -> prepaidPlans.clear());
+        Events.on(WorldLoadEvent.class, e -> forceBuildTime.clear());
+    }
 
     public ConstructBlock(int size){
         super("build" + size);
@@ -55,9 +62,38 @@ public class ConstructBlock extends Block{
         return consBlocks[size - 1];
     }
 
+    public static void markPrepaid(int pos){
+        prepaidPlans.add(pos);
+    }
+
+    public static boolean isPrepaid(int pos){
+        return prepaidPlans.contains(pos);
+    }
+
+    public static boolean consumePrepaid(int pos){
+        if(prepaidPlans.contains(pos)){
+            prepaidPlans.remove(pos);
+            return true;
+        }
+        return false;
+    }
+
+    public static void markForceBuildTime(int pos){
+        forceBuildTime.add(pos);
+    }
+
+    public static boolean isForceBuildTime(int pos){
+        return forceBuildTime.contains(pos);
+    }
+
+    public static void clearForceBuildTime(int pos){
+        forceBuildTime.remove(pos);
+    }
+
     @Remote(called = Loc.server)
     public static void deconstructFinish(Tile tile, Block block, Unit builder){
         if(tile == null) return;
+        clearForceBuildTime(tile.pos());
 
         Team team = tile.team();
         if(!headless && fogControl.isVisibleTile(Vars.player.team(), tile.x, tile.y)){
@@ -71,6 +107,7 @@ public class ConstructBlock extends Block{
     @Remote(called = Loc.server)
     public static void constructFinish(Tile tile, Block block, @Nullable Unit builder, byte rotation, Team team, Object config){
         if(tile == null) return;
+        clearForceBuildTime(tile.pos());
 
         float healthf = tile.build == null ? 1f : tile.build.healthf();
         Seq<Building> prev = tile.build instanceof ConstructBuild co ? co.prevBuild : null;
@@ -270,14 +307,24 @@ public class ConstructBlock extends Block{
             wasConstructing = true;
             activeDeconstruct = false;
 
-            if(builder.isPlayer()){
-                lastBuilder = builder;
-            }
+            lastBuilder = builder;
 
             lastConfig = config;
 
             if(current.requirements.length != accumulator.length || totalAccumulator.length != current.requirements.length){
                 setConstruct(previous, current);
+            }
+
+            if(ConstructBlock.consumePrepaid(tile.pos())){
+                if(itemsLeft != null){
+                    Arrays.fill(itemsLeft, 0);
+                }
+                if(accumulator != null){
+                    Arrays.fill(accumulator, 0f);
+                }
+                if(totalAccumulator != null){
+                    Arrays.fill(totalAccumulator, 0f);
+                }
             }
 
             boolean infinite = team.rules().infiniteResources || state.rules.infiniteResources;
@@ -297,7 +344,7 @@ public class ConstructBlock extends Block{
             //Update health based on construction progress
             health = current.health * progress;
 
-            if(progress >= 1f || state.rules.infiniteResources){
+            if(progress >= 1f || (state.rules.infiniteResources && !ConstructBlock.isForceBuildTime(tile.pos()))){
                 boolean canFinish = true;
 
                 //look at leftover resources to consume, get them from the core if necessary, delay building if not
@@ -337,9 +384,7 @@ public class ConstructBlock extends Block{
             activeDeconstruct = true;
             float deconstructMultiplier = state.rules.deconstructRefundMultiplier;
 
-            if(builder.isPlayer()){
-                lastBuilder = builder;
-            }
+            lastBuilder = builder;
 
             ItemStack[] requirements = current.requirements;
             if(requirements.length != accumulator.length || totalAccumulator.length != requirements.length){

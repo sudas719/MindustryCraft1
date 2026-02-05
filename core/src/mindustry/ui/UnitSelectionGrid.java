@@ -3,11 +3,12 @@ package mindustry.ui;
 import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
+import arc.math.*;
 import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
 import arc.struct.*;
 import mindustry.ai.types.HarvestAI;
-import mindustry.content.Blocks;
+import mindustry.content.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.type.*;
@@ -16,6 +17,9 @@ import mindustry.entities.bullet.*;
 import mindustry.world.blocks.defense.turrets.*;
 import mindustry.world.blocks.environment.CrystalMineralWall;
 import mindustry.world.blocks.environment.SteamVent;
+import mindustry.world.blocks.ConstructBlock;
+import mindustry.world.blocks.storage.*;
+import mindustry.world.blocks.storage.CoreBlock.*;
 
 import static mindustry.Vars.*;
 
@@ -29,6 +33,9 @@ public class UnitSelectionGrid extends Table{
     private Table gridTable;
     private Table paginationTable;
     private Tile displayedResource;
+    private boolean lastCoreBuildPage;
+    private int lastCoreQueueHash = -1;
+    private int lastCoreId = -1;
 
     //Interface for units and buildings
     private interface Displayable{
@@ -39,6 +46,20 @@ public class UnitSelectionGrid extends Table{
         float x();
         float y();
         String name();
+    }
+
+    private static Block displayBlock(Building building){
+        if(building instanceof ConstructBlock.ConstructBuild cons && cons.current != null && cons.current != Blocks.air){
+            return cons.current;
+        }
+        return building.block;
+    }
+
+    private static float displayMaxHealth(Building building){
+        if(building instanceof ConstructBlock.ConstructBuild cons && cons.current != null && cons.current != Blocks.air){
+            return cons.current.health;
+        }
+        return building.maxHealth;
     }
 
     //StarCraft 2-style unit command
@@ -106,7 +127,7 @@ public class UnitSelectionGrid extends Table{
 
         @Override
         public TextureRegion icon(){
-            return building.block.uiIcon;
+            return displayBlock(building).uiIcon;
         }
 
         @Override
@@ -116,7 +137,7 @@ public class UnitSelectionGrid extends Table{
 
         @Override
         public float maxHealth(){
-            return building.maxHealth;
+            return displayMaxHealth(building);
         }
 
         @Override
@@ -136,7 +157,7 @@ public class UnitSelectionGrid extends Table{
 
         @Override
         public String name(){
-            return building.block.localizedName;
+            return displayBlock(building).localizedName;
         }
     }
 
@@ -256,6 +277,29 @@ public class UnitSelectionGrid extends Table{
             Tile currentResource = control.input.selectedResource;
             boolean showResource = current.isEmpty() && currentResource != null &&
                 (currentResource.block() instanceof CrystalMineralWall || currentResource.floor() instanceof SteamVent);
+            boolean forceRebuild = false;
+
+            if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size == 1){
+                Building selected = control.input.commandBuildings.first();
+                if(selected instanceof CoreBuild core){
+                    boolean coreBuildPage = ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.isCoreBuildPage();
+                    int queueHash = coreQueueHash(core);
+                    if(core.id != lastCoreId || coreBuildPage != lastCoreBuildPage || queueHash != lastCoreQueueHash){
+                        forceRebuild = true;
+                    }
+                    lastCoreId = core.id;
+                    lastCoreBuildPage = coreBuildPage;
+                    lastCoreQueueHash = queueHash;
+                }else{
+                    lastCoreId = -1;
+                    lastCoreBuildPage = false;
+                    lastCoreQueueHash = -1;
+                }
+            }else{
+                lastCoreId = -1;
+                lastCoreBuildPage = false;
+                lastCoreQueueHash = -1;
+            }
 
             if(showResource){
                 if(displayedResource != currentResource || !displayedItems.isEmpty()){
@@ -265,7 +309,7 @@ public class UnitSelectionGrid extends Table{
                 }
             }else{
                 displayedResource = null;
-                if(current.size != displayedItems.size || !itemsEqual(current, displayedItems)){
+                if(forceRebuild || current.size != displayedItems.size || !itemsEqual(current, displayedItems)){
                     displayedItems.clear();
                     displayedItems.addAll(current);
                     rebuild();
@@ -516,6 +560,12 @@ public class UnitSelectionGrid extends Table{
 
     private void buildBuildingInfoPanel(Building building){
         gridTable.clear();
+        Block display = displayBlock(building);
+        float maxHealth = displayMaxHealth(building);
+        CoreBuild core = building instanceof CoreBuild ? (CoreBuild)building : null;
+        ConstructBlock.ConstructBuild cons = building instanceof ConstructBlock.ConstructBuild ? (ConstructBlock.ConstructBuild)building : null;
+        boolean incomplete = cons != null && cons.current != null && cons.current != Blocks.air && cons.progress < 1f;
+        boolean showCoreQueue = core != null && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.isCoreBuildPage();
 
         gridTable.table(panel -> {
             panel.background(Styles.black8);
@@ -524,9 +574,11 @@ public class UnitSelectionGrid extends Table{
             //Left half: Building icon
             panel.table(leftHalf -> {
                 leftHalf.defaults().center();
-                leftHalf.image(building.block.uiIcon).size(96f).row();
+                leftHalf.image(display.uiIcon).size(96f).row();
+                leftHalf.label(() -> Mathf.round(building.health) + "/" + Mathf.round(maxHealth))
+                    .style(Styles.outlineLabel).color(Color.lightGray).padTop(6f).row();
 
-                if(building.block == Blocks.ventCondenser){
+                if(display == Blocks.ventCondenser){
                     Tile tile = building.tile;
                     if(tile != null && tile.floor() instanceof SteamVent vent){
                         Tile data = vent.dataTile(tile);
@@ -546,99 +598,211 @@ public class UnitSelectionGrid extends Table{
             panel.table(rightHalf -> {
                 rightHalf.defaults().center();
 
-                //Building name
-                rightHalf.add(building.block.localizedName).color(Color.white).style(Styles.outlineLabel).row();
+                if(showCoreQueue){
+                    buildCoreQueuePanel(rightHalf, core);
+                }else if(incomplete){
+                    buildConstructProgressPanel(rightHalf, cons);
+                }else{
+                    //Building name
+                    rightHalf.add(display.localizedName).color(Color.white).style(Styles.outlineLabel).row();
 
-                //Icons row: armor and weapons
-                rightHalf.table(iconsRow -> {
-                    iconsRow.defaults().size(28f).pad(4f);
-                    String armorLabel = Core.bundle.get("ui.armor", "Armor");
-                    String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
-                    String valueLabel = Core.bundle.get("ui.value", "Value");
-                    String speedLabel = Core.bundle.get("ui.speed", "Speed");
-                    String damageLabel = Core.bundle.get("ui.damage", "Damage");
-                    String rangeLabel = Core.bundle.get("ui.range", "Range");
-                    String targetLabel = Core.bundle.get("ui.target", "Target");
-                    String healthLabel = Core.bundle.get("ui.health", "Health");
-                    String targetAir = Core.bundle.get("ui.target.air", "Air");
-                    String targetGround = Core.bundle.get("ui.target.ground", "Ground");
-                    String targetGroundAir = Core.bundle.get("ui.target.groundair", "Ground & Air");
-                    //Armor icon
-                    iconsRow.table(armorIcon -> {
-                        armorIcon.image(Icon.defense).color(Color.orange);
-                        armorIcon.addListener(new Tooltip(t -> {
-                            t.background(Styles.black6);
-                            t.add(armorLabel).color(Color.yellow).row();
-                            t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-                            t.add(valueLabel + ": " + (int)building.block.armor).left().row();
-                            t.add(healthLabel + ": " + (int)building.maxHealth).left().row();
-                        }));
-                    });
-
-                    //Weapon icon (only if this block can attack)
-                    if(building.block.attacks){
-                        iconsRow.table(weaponIcon -> {
-                            weaponIcon.image(Icon.units);
-                            weaponIcon.addListener(new Tooltip(t -> {
+                    //Icons row: armor and weapons
+                    rightHalf.table(iconsRow -> {
+                        iconsRow.defaults().size(28f).pad(4f);
+                        String armorLabel = Core.bundle.get("ui.armor", "Armor");
+                        String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
+                        String valueLabel = Core.bundle.get("ui.value", "Value");
+                        String speedLabel = Core.bundle.get("ui.speed", "Speed");
+                        String damageLabel = Core.bundle.get("ui.damage", "Damage");
+                        String rangeLabel = Core.bundle.get("ui.range", "Range");
+                        String targetLabel = Core.bundle.get("ui.target", "Target");
+                        String healthLabel = Core.bundle.get("ui.health", "Health");
+                        String targetAir = Core.bundle.get("ui.target.air", "Air");
+                        String targetGround = Core.bundle.get("ui.target.ground", "Ground");
+                        String targetGroundAir = Core.bundle.get("ui.target.groundair", "Ground & Air");
+                        //Armor icon
+                        iconsRow.table(armorIcon -> {
+                            armorIcon.image(Icon.defense).color(Color.orange);
+                            armorIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
-                                t.add(weaponLabel).color(Color.yellow).row();
+                                t.add(armorLabel).color(Color.yellow).row();
                                 t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-
-                                float range = -1f;
-                                float reload = -1f;
-                                Float damage = null;
-                                String target = null;
-
-                                if(building instanceof BaseTurret.BaseTurretBuild baseBuild){
-                                    range = baseBuild.range();
-                                }
-
-                                if(building.block instanceof Turret turret && building instanceof Turret.TurretBuild turretBuild){
-                                    BulletType bullet = turretBuild.peekAmmo();
-                                    if(bullet != null){
-                                        float dmg = bullet.damage;
-                                        if(bullet.splashDamage > dmg) dmg = bullet.splashDamage;
-                                        damage = dmg;
-                                    }
-
-                                    reload = turret.reload;
-                                    target = turret.targetAir && turret.targetGround ? targetGroundAir :
-                                        turret.targetAir ? targetAir : targetGround;
-                                }else if(building.block instanceof TractorBeamTurret tractor){
-                                    if(tractor.damage > 0f){
-                                        damage = tractor.damage * 60f;
-                                    }
-                                    target = tractor.targetAir && tractor.targetGround ? targetGroundAir :
-                                        tractor.targetAir ? targetAir : targetGround;
-                                }else if(building.block instanceof BaseTurret){
-                                    target = targetGround;
-                                }
-
-                                if(damage != null){
-                                    t.add(damageLabel + ": " + (int)(float)damage).left().row();
-                                }
-                                if(range >= 0f){
-                                    t.add(rangeLabel + ": " + (int)(range / 8f) + " tiles").left().row();
-                                }
-                                if(reload > 0f){
-                                    t.add(speedLabel + ": " + String.format("%.1f", reload / 60f) + "s").left().row();
-                                }
-                                if(target != null){
-                                    t.add(targetLabel + ": " + target).left().row();
-                                }
+                                t.add(valueLabel + ": " + (int)display.armor).left().row();
+                                t.add(healthLabel + ": " + (int)maxHealth).left().row();
                             }));
                         });
-                    }
-                }).padTop(8f).row();
 
-                //Bottom row: armor type and building category
-                String armorName = armorTypeName(armorTypeFor(building.block));
-                String className = unitClassName(UnitClass.mechanical);
-                String buildingLabel = Core.bundle.get("ui.building", "Building");
-                rightHalf.add(armorName + " " + className + " " + buildingLabel)
-                    .color(Color.white).padTop(8f);
+                        //Weapon icon (only if this block can attack)
+                        if(building.block.attacks){
+                            iconsRow.table(weaponIcon -> {
+                                weaponIcon.image(Icon.units);
+                                weaponIcon.addListener(new Tooltip(t -> {
+                                    t.background(Styles.black6);
+                                    t.add(weaponLabel).color(Color.yellow).row();
+                                    t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+
+                                    float range = -1f;
+                                    float reload = -1f;
+                                    Float damage = null;
+                                    String target = null;
+
+                                    if(building instanceof BaseTurret.BaseTurretBuild baseBuild){
+                                        range = baseBuild.range();
+                                    }
+
+                                    if(building.block instanceof Turret turret && building instanceof Turret.TurretBuild turretBuild){
+                                        BulletType bullet = turretBuild.peekAmmo();
+                                        if(bullet != null){
+                                            float dmg = bullet.damage;
+                                            if(bullet.splashDamage > dmg) dmg = bullet.splashDamage;
+                                            damage = dmg;
+                                        }
+
+                                        reload = turret.reload;
+                                        target = turret.targetAir && turret.targetGround ? targetGroundAir :
+                                            turret.targetAir ? targetAir : targetGround;
+                                    }else if(building.block instanceof TractorBeamTurret tractor){
+                                        if(tractor.damage > 0f){
+                                            damage = tractor.damage * 60f;
+                                        }
+                                        target = tractor.targetAir && tractor.targetGround ? targetGroundAir :
+                                            tractor.targetAir ? targetAir : targetGround;
+                                    }else if(building.block instanceof BaseTurret){
+                                        target = targetGround;
+                                    }
+
+                                    if(damage != null){
+                                        t.add(damageLabel + ": " + (int)(float)damage).left().row();
+                                    }
+                                    if(range >= 0f){
+                                        t.add(rangeLabel + ": " + (int)(range / 8f) + " tiles").left().row();
+                                    }
+                                    if(reload > 0f){
+                                        t.add(speedLabel + ": " + String.format("%.1f", reload / 60f) + "s").left().row();
+                                    }
+                                    if(target != null){
+                                        t.add(targetLabel + ": " + target).left().row();
+                                    }
+                                }));
+                            });
+                        }
+                    }).padTop(8f).row();
+
+                    //Bottom row: armor type and building category
+                    String armorName = armorTypeName(armorTypeFor(display));
+                    String className = unitClassName(UnitClass.mechanical);
+                    String buildingLabel = Core.bundle.get("ui.building", "Building");
+                    rightHalf.add(armorName + " " + className + " " + buildingLabel)
+                        .color(Color.white).padTop(8f);
+                }
             }).grow().center();
         }).growX().height(120f);
+    }
+
+    private void buildCoreQueuePanel(Table rightHalf, CoreBuild core){
+        float slotSize = 34f;
+        float barWidth = 90f;
+        float barHeight = 6f;
+
+        rightHalf.table(queueRoot -> {
+            queueRoot.defaults().center();
+
+            Table slots = new Table();
+            slots.defaults().size(slotSize).pad(2f);
+            slots.add(buildQueueSlot(core, 0, slotSize)).row();
+            for(int i = 1; i < 5; i++){
+                slots.add(buildQueueSlot(core, i, slotSize));
+            }
+
+            queueRoot.add(slots);
+
+            Bar progress = new Bar(() -> "", () -> Pal.accent, () -> core.unitProgressFraction());
+            progress.setSize(barWidth, barHeight);
+            progress.addListener(new Tooltip(t -> {
+                t.background(Styles.black6);
+                t.label(() -> formatTimePair(core.unitProgressSeconds(), core.unitProgressTotalSeconds()))
+                    .style(Styles.outlineLabel).color(Color.white);
+            }));
+
+            queueRoot.add(progress).padLeft(8f).top().padTop(slotSize + 4f);
+        });
+    }
+
+    private Table buildQueueSlot(CoreBuild core, int index, float size){
+        Table slot = new Table(Styles.black6);
+        UnitType type = core == null ? null : core.queuedUnit(index);
+        if(type != null){
+            Image icon = new Image(type.uiIcon);
+            slot.add(icon).size(size - 6f);
+            slot.addListener(new Tooltip(t -> {
+                t.background(Styles.black6);
+                t.add(unitDisplayName(type)).style(Styles.outlineLabel).color(Color.white);
+            }));
+        }
+        slot.setSize(size, size);
+        return slot;
+    }
+
+    private void buildConstructProgressPanel(Table rightHalf, ConstructBlock.ConstructBuild cons){
+        if(cons == null || cons.current == null || cons.current == Blocks.air) return;
+        float boxSize = 54f;
+        float barWidth = boxSize - 12f;
+        float barHeight = 5f;
+
+        rightHalf.table(panel -> {
+            Table box = new Table(Styles.black6);
+            Image icon = new Image(cons.current.uiIcon);
+
+            Table overlay = new Table();
+            overlay.bottom().right();
+            overlay.table(barTable -> {
+                barTable.right();
+                barTable.label(() -> {
+                    float total = cons.current.buildTime / 60f;
+                    float current = total * cons.progress;
+                    return formatTimePair(current, total);
+                }).style(Styles.outlineLabel).color(Color.lightGray).right().padBottom(2f).row();
+
+                Bar bar = new Bar(() -> "", () -> Pal.accent, () -> cons.progress);
+                barTable.add(bar).size(barWidth, barHeight).right();
+            });
+
+            box.stack(icon, overlay).size(boxSize);
+            box.addListener(new Tooltip(t -> {
+                t.background(Styles.black6);
+                t.label(() -> {
+                    float total = cons.current.buildTime / 60f;
+                    float current = total * cons.progress;
+                    return formatTimePair(current, total);
+                }).style(Styles.outlineLabel).color(Color.white);
+            }));
+
+            panel.add(box);
+        });
+    }
+
+    private String unitDisplayName(UnitType type){
+        if(type == UnitTypes.nova) return "SCV";
+        return type.localizedName;
+    }
+
+    private String formatTimePair(float current, float total){
+        return formatTimeValue(current) + "/" + formatTimeValue(total);
+    }
+
+    private String formatTimeValue(float value){
+        float rounded = Math.round(value * 10f) / 10f;
+        if(Mathf.equal(rounded, (int)rounded)) return Integer.toString((int)rounded);
+        return String.format("%.1f", rounded);
+    }
+
+    private int coreQueueHash(CoreBuild core){
+        if(core == null || core.unitQueue == null) return 0;
+        int hash = core.unitQueue.size;
+        for(int i = 0; i < core.unitQueue.size; i++){
+            hash = 31 * hash + core.unitQueue.get(i);
+        }
+        return hash;
     }
 
     private void buildCrystalInfoPanel(Tile tile){

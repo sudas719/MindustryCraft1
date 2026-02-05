@@ -26,6 +26,8 @@ public class BuildPlan implements Position, QuadTreeObject{
     public float progress;
     /** Whether construction has started for this plan. */
     public boolean initialized, stuck, cachedValid;
+    /** If true, this plan requires close contact before building. */
+    public boolean requireClose;
     /** If true, this plan is in the world. If false, it is being rendered in a schematic. */
     public boolean worldContext = true;
 
@@ -118,6 +120,7 @@ public class BuildPlan implements Position, QuadTreeObject{
         copy.config = config;
         copy.progress = progress;
         copy.initialized = initialized;
+        copy.requireClose = requireClose;
         copy.animScale = animScale;
         return copy;
     }

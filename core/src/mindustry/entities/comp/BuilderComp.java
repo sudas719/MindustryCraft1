@@ -4,11 +4,13 @@ import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
+import arc.math.geom.Point2;
 import arc.struct.Queue;
 import arc.util.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
+import mindustry.entities.Units;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
@@ -18,6 +20,7 @@ import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.ConstructBlock.*;
+import mindustry.ai.types.CommandAI;
 
 import java.util.*;
 
@@ -61,6 +64,9 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
                 BuildPlan plan = it.next();
                 Tile tile = world.tile(plan.x, plan.y);
                 boolean isSameDerelict = (tile != null && tile.build != null && tile.block() == plan.block && tile.build.tileX() == plan.x && tile.build.tileY() == plan.y && tile.team() == Team.derelict);
+                if(tile != null && plan.initialized && tile.build instanceof ConstructBuild){
+                    continue;
+                }
                 if(tile == null || (plan.breaking && tile.block() == Blocks.air) || (!plan.breaking && ((tile.build != null && tile.build.rotation == plan.rotation && !isSameDerelict) || !plan.block.rotate) &&
                     //the block must be the same, but not derelict and the same
                     ((tile.block() == plan.block && !isSameDerelict) ||
@@ -152,7 +158,20 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
             buildAlpha = 1f;
             if(current.breaking) lastSize = tile.block().size;
 
-            if(!within(tile, finalPlaceDst)) continue;
+            if(current.requireClose && !current.initialized){
+                scatterUnitsForBuild(current, 1.0f);
+            }
+
+            float placeDst = current.requireClose ? Math.min(finalPlaceDst, closeRange(current)) : finalPlaceDst;
+            if(current.requireClose && current.initialized && tile != null && tile.build instanceof ConstructBuild && !within(current, placeDst)){
+                if(self() instanceof Unit){
+                    Unit unit = (Unit)self();
+                    if(unit.controller() instanceof CommandAI ai && ai.followTarget == null){
+                        ai.commandFollow(tile.build);
+                    }
+                }
+            }
+            if(!within(current, placeDst)) continue;
 
             if(!headless){
                 Vars.control.sound.loop(Sounds.loopBuild, tile, 1.3f);
@@ -160,14 +179,18 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
 
             if(!(tile.build instanceof ConstructBuild cb)){
                 if(!current.initialized && !current.breaking && Build.validPlaceIgnoreUnits(current.block, team, current.x, current.y, current.rotation, true, true)){
-                    if(Build.checkNoUnitOverlap(current.block, current.x, current.y)){
+                    if(current.requireClose || Build.checkNoUnitOverlap(current.block, current.x, current.y)){
                         boolean hasAll = infinite || current.isRotation(team) ||
-                        //derelict repair
-                        (tile.team() == Team.derelict && tile.block() == current.block && tile.build != null && tile.block().allowDerelictRepair && state.rules.derelictRepair) ||
-                        //make sure there's at least 1 item of each type first
-                        !Structs.contains(current.block.requirements, i -> !core.items.has(i.item, Math.min(Mathf.round(i.amount * state.rules.buildCostMultiplier), 1)));
+                            //derelict repair
+                            (tile.team() == Team.derelict && tile.block() == current.block && tile.build != null && tile.block().allowDerelictRepair && state.rules.derelictRepair) ||
+                            //make sure there's at least 1 item of each type first
+                            ConstructBlock.isPrepaid(tile.pos()) ||
+                            !Structs.contains(current.block.requirements, i -> !core.items.has(i.item, Math.min(Mathf.round(i.amount * state.rules.buildCostMultiplier), 1)));
 
                         if(hasAll){
+                            if(current.requireClose){
+                                scatterUnitsForBuild(current, 1.5f);
+                            }
                             Call.beginPlace(self(), current.block, team, current.x, current.y, current.rotation, current.block.instantBuild ? current.config : null);
 
                             if(!net.client() && current.block.instantBuild){
@@ -188,10 +211,16 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
                 }else if(!current.initialized && current.breaking && Build.validBreak(team, current.x, current.y)){
                     Call.beginBreak(self(), team, current.x, current.y);
                 }else{
+                    if(!current.breaking){
+                        refundPrepaid(current, core);
+                    }
                     plans.removeFirst();
                     continue;
                 }
             }else if((tile.team() != team && tile.team() != Team.derelict) || (!current.breaking && (cb.current != current.block || cb.tile != current.tile()))){
+                if(!current.breaking){
+                    refundPrepaid(current, core);
+                }
                 plans.removeFirst();
                 continue;
             }
@@ -204,6 +233,16 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
             //if there is no core to build with or no build entity, stop building!
             if(!(tile.build instanceof ConstructBuild entity)){
                 continue;
+            }
+
+            if(entity.lastBuilder != null && entity.lastBuilder != self() && entity.lastBuilder.isValid()){
+                Unit other = entity.lastBuilder;
+                if(other.activelyBuilding()){
+                    BuildPlan otherPlan = other.buildPlan();
+                    if(otherPlan != null && otherPlan.x == tile.x && otherPlan.y == tile.y){
+                        continue;
+                    }
+                }
             }
 
             float bs = 1f / entity.buildCost * type.buildSpeed * buildSpeedMultiplier * state.rules.buildSpeed(team);
@@ -225,11 +264,10 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
 
         for(int i = 0; i < 2; i++){
             for(BuildPlan plan : plans){
-                if(plan.progress > 0.01f || (buildPlan() == plan && plan.initialized && (within(plan.x * tilesize, plan.y * tilesize, type.buildRange) || state.isEditor()))) continue;
                 if(i == 0){
-                    drawPlan(plan, 1f);
+                    drawPlan(plan, 0.7f);
                 }else{
-                    drawPlanTop(plan, 1f);
+                    drawPlanTop(plan, 0.7f);
                 }
             }
         }
@@ -257,9 +295,26 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         }
     }
 
+    private void refundPrepaid(BuildPlan plan, @Nullable Building core){
+        if(plan == null || plan.block == null) return;
+        int pos = Point2.pack(plan.x, plan.y);
+        if(ConstructBlock.consumePrepaid(pos)){
+            ConstructBlock.clearForceBuildTime(pos);
+            if(core == null) return;
+            for(ItemStack stack : plan.block.requirements){
+                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
+                if(amount > 0){
+                    core.items.add(stack.item, amount);
+                }
+            }
+        }
+    }
+
     /** @return whether this plan should be skipped, in favor of the next one. */
     boolean shouldSkip(BuildPlan plan, @Nullable Building core){
         if(state.rules.infiniteResources || team.rules().infiniteResources || plan.breaking || core == null || plan.isRotation(team) || plan.isDerelictRepair()) return false;
+
+        if(ConstructBlock.isPrepaid(Point2.pack(plan.x, plan.y))) return false;
 
         return (plan.stuck && !core.items.has(plan.block.requirements)) ||
             (Structs.contains(plan.block.requirements, i -> !core.items.has(i.item, Math.min(i.amount, 15)) && Mathf.round(i.amount * state.rules.buildCostMultiplier) > 0));
@@ -317,11 +372,44 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         //not actively building when not near the build plan
         if(isBuilding()){
             var plan = buildPlan();
-            if(!state.isEditor() && plan != null && !within(plan, state.rules.infiniteResources ? Float.MAX_VALUE : type.buildRange)){
+            if(!state.isEditor() && plan != null && !within(plan, buildRangeFor(plan))){
                 return false;
             }
         }
         return isBuilding() && updateBuilding;
+    }
+
+    private void scatterUnitsForBuild(BuildPlan plan, float power){
+        float cx = plan.drawx(), cy = plan.drawy();
+        float baseRadius = plan.block.size * tilesize / 2f;
+        float scatterRadius = baseRadius + 12f;
+        if(!within(cx, cy, scatterRadius + 24f)) return;
+
+        Units.nearby(null, cx, cy, scatterRadius + 24f, other -> {
+            if(other == self()) return;
+            float dx = other.x - cx, dy = other.y - cy;
+            float rs = scatterRadius + other.hitSize / 2f;
+            if(dx * dx + dy * dy < rs * rs){
+                if(Mathf.zero(dx) && Mathf.zero(dy)){
+                    dy = -1f;
+                }
+                other.velAddNet(Tmp.v1.set(dx, dy).setLength(1.2f * power * Time.delta));
+            }
+        });
+    }
+
+    private float buildRangeFor(@Nullable BuildPlan plan){
+        float range = state.rules.infiniteResources ? Float.MAX_VALUE : type.buildRange;
+        if(plan != null && plan.requireClose){
+            range = Math.min(range, closeRange(plan));
+        }
+        return range;
+    }
+
+    private float closeRange(@Nullable BuildPlan plan){
+        if(plan == null || plan.block == null) return tilesize * 0.6f;
+        float unitRadius = type.hitSize / 2f;
+        return plan.block.size * tilesize / 2f + unitRadius + 0.1f;
     }
 
     /** @return  the build plan currently active, or the one at the top of the queue.*/
@@ -340,15 +428,15 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         Tile tile = plan.tile();
         var core = team.core();
 
-        if(tile == null || !within(plan, state.rules.infiniteResources ? Float.MAX_VALUE : type.buildRange)){
+        if(tile == null || !within(plan, buildRangeFor(plan))){
             return;
         }
 
         //draw remote plans.
         if(core != null && active && !isLocal() && !(tile.block() instanceof ConstructBlock)){
             Draw.z(Layer.plans - 1f);
-            drawPlan(plan, 0.5f);
-            drawPlanTop(plan, 0.5f);
+            drawPlan(plan, 0.7f);
+            drawPlanTop(plan, 0.7f);
             Draw.z(Layer.flyingUnit);
         }
 
@@ -370,7 +458,7 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         BuildPlan plan = active ? buildPlan() : lastActive;
         Tile tile = world.tile(plan.x, plan.y);
 
-        if(tile == null || !within(plan, state.rules.infiniteResources ? Float.MAX_VALUE : type.buildRange)){
+        if(tile == null || !within(plan, buildRangeFor(plan))){
             return;
         }
 

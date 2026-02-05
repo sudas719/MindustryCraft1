@@ -82,6 +82,8 @@ public class UI implements ApplicationListener, Loadable{
     public IntMap<Dialog> followUpMenus;
 
     public Cursor drillCursor, unloadCursor, targetCursor, repairCursor;
+    public Cursor hoverGreenCursor, hoverRedCursor, hoverYellowCursor;
+    public TextureRegion rallyPointRegion;
 
     private @Nullable Element lastAnnouncement;
 
@@ -144,6 +146,11 @@ public class UI implements ApplicationListener, Loadable{
         unloadCursor = Core.graphics.newCursor("unload", Fonts.cursorScale());
         targetCursor = Core.graphics.newCursor("target", Fonts.cursorScale());
         repairCursor = Core.graphics.newCursor("repair", Fonts.cursorScale());
+        hoverGreenCursor = Core.graphics.newCursor("hover-green", Fonts.cursorScale());
+        hoverRedCursor = Core.graphics.newCursor("hover-red", Fonts.cursorScale());
+        hoverYellowCursor = Core.graphics.newCursor("hover-yellow", Fonts.cursorScale());
+
+        rallyPointRegion = new TextureRegion(new Texture(Core.files.internal("cursors/rallypoint.png")));
     }
 
     @Override

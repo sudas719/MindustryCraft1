@@ -16,6 +16,7 @@ import arc.util.*;
 import arc.util.io.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
+import mindustry.ai.types.*;
 import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.ctype.*;
@@ -30,6 +31,7 @@ import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
+import mindustry.world.blocks.environment.*;
 import mindustry.world.meta.*;
 import mindustry.world.modules.*;
 
@@ -38,6 +40,9 @@ import static mindustry.Vars.*;
 public class CoreBlock extends StorageBlock{
     public static final float cloudScaling = 1700f, cfinScl = -2f, cfinOffset = 0.3f, calphaFinOffset = 0.25f, cloudAlpha = 0.81f;
     public static final float[] cloudAlphas = {0, 0.5f, 1f, 0.1f, 0, 0f};
+    public static final int maxUnitQueue = 5;
+    public static final int scvCost = 50;
+    public static final float scvBuildTime = 12f * 60f;
 
     //hacky way to pass item modules between methods
     private static ItemModule nextItems;
@@ -93,6 +98,33 @@ public class CoreBlock extends StorageBlock{
         //Disabled: Core units are no longer spawned
         //Players cannot possess units anymore
         return;
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreQueueUnit(Player player, int buildPos, int unitId){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        if(unitId != UnitTypes.nova.id) return;
+        core.queueUnit(unitId);
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreCancelUnit(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        core.cancelCurrentUnit();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreLaunch(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        if(!headless){
+            renderer.showLaunch(core);
+        }
     }
 
     @Override
@@ -169,10 +201,18 @@ public class CoreBlock extends StorageBlock{
             return true;
         }
 
-        //must have all requirements
-        if(core == null || (!state.rules.infiniteResources && !core.items.has(requirements, state.rules.buildCostMultiplier))) return false;
+        //must have all requirements (unless infinite)
+        if(core == null || (!state.rules.infiniteResources && !core.items.has(requirements, state.rules.buildCostMultiplier))){
+            return false;
+        }
 
-        return tile.block() instanceof CoreBlock && size > tile.block().size && (!requiresCoreZone || tempTiles.allMatch(o -> o.floor().allowCorePlacement));
+        //allow upgrades on existing cores
+        if(tile.block() instanceof CoreBlock){
+            return size > tile.block().size;
+        }
+
+        //allow placing cores on any valid floor if resources are available
+        return true;
     }
 
     @Override
@@ -235,12 +275,14 @@ public class CoreBlock extends StorageBlock{
         public float iframes = -1f;
         public float thrusterTime = 0f;
         public @Nullable Vec2 commandPos;
+        public IntSeq unitQueue = new IntSeq();
+        public float unitProgress = 0f;
 
         protected float cloudSeed, landParticleTimer;
 
         @Override
         public boolean isCommandable(){
-            return team != state.rules.defaultTeam && state.rules.editor;
+            return block.commandable;
         }
 
         @Override
@@ -250,7 +292,29 @@ public class CoreBlock extends StorageBlock{
 
         @Override
         public void onCommand(Vec2 target){
-            commandPos = target;
+            if(target == null) return;
+            Tile tile = world.tileWorld(target.x, target.y);
+            Tile resource = resolveResourceTile(tile);
+            if(resource != null){
+                commandPos = new Vec2(resource.worldx(), resource.worldy());
+                return;
+            }
+
+            Building build = world.buildWorld(target.x, target.y);
+            if(build != null && build.block == Blocks.ventCondenser && build.team == team){
+                Tile ventTile = findVentTile(build);
+                if(ventTile != null){
+                    commandPos = new Vec2(ventTile.worldx(), ventTile.worldy());
+                    return;
+                }
+            }
+
+            if(build != null){
+                commandPos = new Vec2(build.x, build.y);
+                return;
+            }
+
+            commandPos = new Vec2(target);
         }
 
         @Override
@@ -568,6 +632,190 @@ public class CoreBlock extends StorageBlock{
         public void updateTile(){
             iframes -= Time.delta;
             thrusterTime -= Time.delta/90f;
+            updateUnitQueue();
+        }
+
+        public boolean canQueueUnit(UnitType type){
+            if(type == null) return false;
+            if(unitQueue.size >= maxUnitQueue) return false;
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
+            return items.has(Items.graphite, scvCost);
+        }
+
+        public boolean queueUnit(int unitId){
+            if(unitQueue == null) unitQueue = new IntSeq();
+            if(unitQueue.size >= maxUnitQueue) return false;
+            if(unitId != UnitTypes.nova.id) return false;
+            UnitType type = content.unit(unitId);
+            if(type == null || !canQueueUnit(type)) return false;
+
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.remove(Items.graphite, scvCost);
+            }
+
+            unitQueue.add(unitId);
+            return true;
+        }
+
+        public boolean cancelCurrentUnit(){
+            if(unitQueue == null || unitQueue.isEmpty()) return false;
+            unitQueue.removeIndex(0);
+            unitProgress = 0f;
+
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.add(Items.graphite, scvCost);
+            }
+            return true;
+        }
+
+        public @Nullable UnitType queuedUnit(int index){
+            if(unitQueue == null || index < 0 || index >= unitQueue.size) return null;
+            return content.unit(unitQueue.get(index));
+        }
+
+        public float unitProgressFraction(){
+            if(unitQueue == null || unitQueue.isEmpty()) return 0f;
+            float time = unitBuildTime(queuedUnit(0));
+            if(time <= 0f) return 0f;
+            return Mathf.clamp(unitProgress / time);
+        }
+
+        public float unitProgressSeconds(){
+            return unitProgress / 60f;
+        }
+
+        public float unitProgressTotalSeconds(){
+            return unitBuildTime(queuedUnit(0)) / 60f;
+        }
+
+        public float unitBuildTime(@Nullable UnitType type){
+            return scvBuildTime;
+        }
+
+        private void updateUnitQueue(){
+            if(unitQueue == null || unitQueue.isEmpty()){
+                unitProgress = 0f;
+                return;
+            }
+
+            UnitType type = queuedUnit(0);
+            if(type == null || type.isBanned()){
+                unitQueue.removeIndex(0);
+                unitProgress = 0f;
+                return;
+            }
+
+            unitProgress += edelta() * Vars.state.rules.unitBuildSpeed(team);
+            float time = unitBuildTime(type);
+
+            if(unitProgress >= time){
+                unitProgress = 0f;
+                unitQueue.removeIndex(0);
+                spawnUnit(type);
+            }
+        }
+
+        private void spawnUnit(UnitType type){
+            if(type == null) return;
+            Unit unit = type.create(team);
+            Vec2 spawn = getSpawnPosition(unit);
+            unit.set(spawn.x, spawn.y);
+            unit.add();
+            applyRally(unit);
+            Events.fire(new UnitCreateEvent(unit, this));
+        }
+
+        private Vec2 getSpawnPosition(Unit unit){
+            float offset = hitSize() / 2f + unit.hitSize / 2f + 2f;
+            Vec2 dir = Tmp.v1.set(0f, -1f);
+            if(commandPos != null){
+                dir.set(commandPos).sub(x, y);
+                if(dir.len2() < 0.001f){
+                    dir.set(0f, -1f);
+                }
+            }
+            dir.setLength(offset);
+            return Tmp.v2.set(x + dir.x, y + dir.y);
+        }
+
+        private void applyRally(Unit unit){
+            if(commandPos == null || unit == null) return;
+            Tile tile = world.tileWorld(commandPos.x, commandPos.y);
+            Tile resource = resolveResourceTile(tile);
+            if(resource != null){
+                setHarvestTarget(unit, resource.worldx(), resource.worldy());
+                return;
+            }
+
+            Building build = world.buildWorld(commandPos.x, commandPos.y);
+            if(build != null && build.block == Blocks.ventCondenser && build.team == team){
+                Tile ventTile = findVentTile(build);
+                if(ventTile != null){
+                    setHarvestTarget(unit, ventTile.worldx(), ventTile.worldy());
+                    return;
+                }
+            }
+
+            if(unit.controller() instanceof CommandAI ai){
+                if(build != null){
+                    if(build.team == team){
+                        ai.commandFollow(build);
+                    }else if(unit.type.targetGround){
+                        ai.commandTarget(build);
+                    }else{
+                        ai.commandPosition(commandPos);
+                    }
+                }else{
+                    ai.commandPosition(commandPos);
+                }
+            }
+        }
+
+        private void setHarvestTarget(Unit unit, float worldx, float worldy){
+            if(unit.controller() instanceof CommandAI ai){
+                ai.setHarvestTarget(Tmp.v3.set(worldx, worldy));
+            }else if(unit.controller() instanceof HarvestAI ai){
+                ai.setHarvestTarget(Tmp.v3.set(worldx, worldy));
+            }
+        }
+
+        @Override
+        public byte version(){
+            return 1;
+        }
+
+        @Override
+        public void write(Writes write){
+            super.write(write);
+            TypeIO.writeVecNullable(write, commandPos);
+            write.f(unitProgress);
+            write.s(unitQueue == null ? 0 : unitQueue.size);
+            if(unitQueue != null){
+                for(int i = 0; i < unitQueue.size; i++){
+                    write.s(unitQueue.get(i));
+                }
+            }
+        }
+
+        @Override
+        public void read(Reads read, byte revision){
+            super.read(read, revision);
+
+            if(revision >= 1){
+                commandPos = TypeIO.readVecNullable(read);
+                unitProgress = read.f();
+                int count = read.s();
+                if(unitQueue == null) unitQueue = new IntSeq();
+                unitQueue.clear();
+                for(int i = 0; i < count; i++){
+                    unitQueue.add(read.s());
+                }
+            }else{
+                if(unitQueue == null) unitQueue = new IntSeq();
+                unitQueue.clear();
+                unitProgress = 0f;
+                commandPos = null;
+            }
         }
 
         /** @return Camera zoom while landing or launching. May optionally do other things such as setting camera position to itself. */
@@ -835,24 +1083,40 @@ public class CoreBlock extends StorageBlock{
                 noEffect = false;
             }
         }
+    }
 
-        @Override
-        public byte version(){
-            return 1;
+    static @Nullable Tile resolveResourceTile(Tile tile){
+        if(tile == null) return null;
+        if(tile.block() instanceof CrystalMineralWall) return tile;
+        if(tile.floor() instanceof SteamVent vent){
+            Tile dataTile = vent.dataTile(tile);
+            if(dataTile == null || !vent.checkAdjacent(dataTile)) return null;
+            Tile center = dataTile.nearby(-1, -1);
+            if(center != null && center.floor() == vent) return center;
+            return dataTile;
         }
+        return null;
+    }
 
-        @Override
-        public void write(Writes write){
-            super.write(write);
-            TypeIO.writeVecNullable(write, commandPos);
-        }
+    static @Nullable Tile findVentTile(Building build){
+        if(build == null || build.tile == null) return null;
+        int size = build.block.size;
+        int bx = build.tile.x;
+        int by = build.tile.y;
 
-        @Override
-        public void read(Reads read, byte revision){
-            super.read(read, revision);
-            if(revision >= 1){
-                commandPos = TypeIO.readVecNullable(read);
+        for(int x = 0; x < size; x++){
+            for(int y = 0; y < size; y++){
+                Tile tile = world.tile(bx + x, by + y);
+                if(tile == null || !(tile.floor() instanceof SteamVent)) continue;
+                SteamVent vent = (SteamVent)tile.floor();
+                Tile data = vent.dataTile(tile);
+                if(data != null && vent.checkAdjacent(data)){
+                    Tile center = data.nearby(-1, -1);
+                    if(center != null && center.floor() == vent) return center;
+                    return data;
+                }
             }
         }
+        return null;
     }
 }

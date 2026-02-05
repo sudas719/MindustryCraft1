@@ -363,6 +363,7 @@ public class UnitTypes{
             health = 45f;
             armor = 1f;
 
+            buildSpeed = 1f;
             commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand);
 
             ammoType = new PowerAmmoType(1000);
@@ -1360,7 +1361,7 @@ public class UnitTypes{
         }};
 
         poly = new UnitType("poly"){{
-            defaultCommand = UnitCommand.rebuildCommand;
+            defaultCommand = UnitCommand.moveCommand;
 
             flying = true;
             drag = 0.05f;

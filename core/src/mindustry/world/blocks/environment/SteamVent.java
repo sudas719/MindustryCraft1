@@ -406,6 +406,7 @@ public class SteamVent extends Floor{
     private static void setSpoutArea(Tile center){
         for(int dx = -1; dx <= 1; dx++){
             for(int dy = -1; dy <= 1; dy++){
+                if(Math.abs(dx) + Math.abs(dy) > 1) continue;
                 Tile other = world.tile(center.x + dx, center.y + dy);
                 if(other != null && other.block() != Blocks.ventSpout){
                     other.setNet(Blocks.ventSpout);

@@ -1019,11 +1019,6 @@ public class Blocks{
             wallOre = true;
         }};
 
-        graphiticWall = new CrystalMineralWall("graphitic-wall"){{
-            itemDrop = Items.graphite;
-            variants = 3;
-        }};
-
         wallOreGraphite = new OreBlock("ore-wall-graphite", Items.graphite){{
             wallOre = true;
         }};
@@ -1048,7 +1043,8 @@ public class Blocks{
         }};
 
         multiPress = new GenericCrafter("multi-press"){{
-            requirements(Category.crafting, with(Items.titanium, 100, Items.silicon, 25, Items.lead, 100, Items.graphite, 50));
+            requirements(Category.crafting, with(Items.graphite, 125));
+            buildTime = 25f * 60f;
 
             craftEffect = Fx.pulverizeMedium;
             outputItem = new ItemStack(Items.graphite, 2);
@@ -1081,7 +1077,8 @@ public class Blocks{
         }};
 
         siliconCrucible = new AttributeCrafter("silicon-crucible"){{
-            requirements(Category.crafting, with(Items.titanium, 120, Items.metaglass, 80, Items.plastanium, 35, Items.silicon, 60));
+            requirements(Category.crafting, with(Items.graphite, 150, Items.highEnergyGas, 50));
+            buildTime = 46f * 60f;
             craftEffect = Fx.smeltsmoke;
             outputItem = new ItemStack(Items.silicon, 8);
             craftTime = 90f;
@@ -1394,7 +1391,8 @@ public class Blocks{
         }};
 
         atmosphericConcentrator = new HeatCrafter("atmospheric-concentrator"){{
-            requirements(Category.crafting, with(Items.oxide, 60, Items.beryllium, 180, Items.silicon, 150));
+            requirements(Category.crafting, with(Items.graphite, 100));
+            buildTime = 29f * 60f;
             size = 3;
             hasLiquids = true;
 
@@ -1581,7 +1579,8 @@ public class Blocks{
         }};
 
         surgeCrucible = new HeatCrafter("surge-crucible"){{
-            requirements(Category.crafting, with(Items.silicon, 100, Items.graphite, 80, Items.tungsten, 80, Items.oxide, 80));
+            requirements(Category.crafting, with(Items.graphite, 150, Items.highEnergyGas, 150));
+            buildTime = 46f * 60f;
 
             size = 3;
 
@@ -1781,11 +1780,13 @@ public class Blocks{
 
         door = new Door("door"){{
             requirements(Category.defense, with(Items.titanium, 6, Items.silicon, 4));
+            buildTime = 21f * 60f;
             health = 100 * wallHealthMultiplier;
         }};
 
         doorLarge = new Door("door-large"){{
-            requirements(Category.defense, ItemStack.mult(door.requirements, 4));
+            requirements(Category.defense, with(Items.graphite, 100));
+            buildTime = 21f * 60f;
             openfx = Fx.dooropenlarge;
             closefx = Fx.doorcloselarge;
             health = 100 * 4 * wallHealthMultiplier;
@@ -2987,7 +2988,8 @@ public class Blocks{
         }};
 
         ventCondenser = new AttributeCrafter("vent-condenser"){{
-            requirements(Category.production, with(Items.graphite, 20, Items.beryllium, 60));
+            requirements(Category.production, with(Items.graphite, 75));
+            buildTime = 21f * 60f;
             attribute = Attribute.steam;
             group = BlockGroup.liquids;
             minEfficiency = 9f - 0.0001f;
@@ -3005,7 +3007,32 @@ public class Blocks{
             outputLiquid = new LiquidStack(Liquids.water, 30f / 60f);
             consumePower(0.5f);
             liquidCapacity = 60f;
-        }};
+            solid = false;
+        }
+
+        @Override
+        public boolean canPlaceOn(Tile tile, Team team, int rotation){
+            if(tile == null) return false;
+            if(!(tile.floor() instanceof SteamVent vent)) return false;
+            for(int dx = -1; dx <= 1; dx++){
+                for(int dy = -1; dy <= 1; dy++){
+                    Tile other = Vars.world.tile(tile.x + dx, tile.y + dy);
+                    if(other == null || other.floor() != vent) return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public boolean environmentBuildable(){
+            return true;
+        }
+
+        @Override
+        public boolean canReplace(Block other){
+            return other == Blocks.ventSpout || super.canReplace(other);
+        }
+        };
 
         cliffCrusher = new WallCrafter("cliff-crusher"){{
             requirements(Category.production, with(Items.graphite, 25, Items.beryllium, 20));
@@ -3159,7 +3186,8 @@ public class Blocks{
         }};
 
         coreNucleus = new CoreBlock("core-nucleus"){{
-            requirements(Category.effect, with(Items.copper, 8000, Items.lead, 8000, Items.silicon, 5000, Items.thorium, 4000));
+            requirements(Category.effect, with(Items.graphite, 400));
+            buildTime = 71f * 60f;
 
             unitType = UnitTypes.gamma;
             health = 6000;
@@ -3469,7 +3497,8 @@ public class Blocks{
         }};
 
         hail = new ItemTurret("hail"){{
-            requirements(Category.turret, with(Items.copper, 40, Items.graphite, 17));
+            requirements(Category.turret, with(Items.graphite, 100, Items.highEnergyGas, 50));
+            buildTime = 18f * 60f;
             ammo(
                 Items.graphite, new ArtilleryBulletType(3f, 20){{
                     knockback = 0.8f;
@@ -3661,7 +3690,8 @@ public class Blocks{
         }};
 
         swarmer = new ItemTurret("swarmer"){{
-            requirements(Category.turret, with(Items.graphite, 35, Items.titanium, 35, Items.plastanium, 45, Items.silicon, 30));
+            requirements(Category.turret, with(Items.graphite, 100));
+            buildTime = 18f * 60f;
             ammo(
                 Items.blastCompound, new MissileBulletType(3.7f, 10){{
                     width = 8f;
@@ -6210,7 +6240,8 @@ public class Blocks{
         //region units
 
         groundFactory = new UnitFactory("ground-factory"){{
-            requirements(Category.units, with(Items.copper, 50, Items.lead, 120, Items.silicon, 80));
+            requirements(Category.units, with(Items.graphite, 150));
+            buildTime = 46f * 60f;
             plans = Seq.with(
                 new UnitPlan(UnitTypes.dagger, 60f * 15, with(Items.silicon, 10, Items.lead, 10)),
                 new UnitPlan(UnitTypes.crawler, 60f * 10, with(Items.silicon, 8, Items.coal, 10)),
@@ -6356,7 +6387,8 @@ public class Blocks{
         //region units - erekir
 
         tankFabricator = new UnitFactory("tank-fabricator"){{
-            requirements(Category.units, with(Items.silicon, 200, Items.beryllium, 150));
+            requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
+            buildTime = 43f * 60f;
             size = 3;
             configurable = false;
             plans.add(new UnitPlan(UnitTypes.stell, 60f * 35f, with(Items.beryllium, 40, Items.silicon, 50)));
@@ -6367,7 +6399,8 @@ public class Blocks{
         }};
 
         shipFabricator = new UnitFactory("ship-fabricator"){{
-            requirements(Category.units, with(Items.silicon, 250, Items.beryllium, 200));
+            requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
+            buildTime = 36f * 60f;
 
             size = 3;
             configurable = false;
@@ -6732,7 +6765,8 @@ public class Blocks{
         //region campaign
 
         launchPad = new LaunchPad("launch-pad"){{
-            requirements(Category.effect, BuildVisibility.legacyLaunchPadOnly, with(Items.copper, 350, Items.silicon, 140, Items.lead, 200, Items.titanium, 150));
+            requirements(Category.effect, BuildVisibility.legacyLaunchPadOnly, with(Items.graphite, 150, Items.highEnergyGas, 50));
+            buildTime = 29f * 60f;
             size = 3;
             itemCapacity = 100;
             launchTime = 60f * 20;
@@ -6893,6 +6927,11 @@ public class Blocks{
 
             targetable = false;
             privileged = true;
+        }};
+
+        graphiticWall = new CrystalMineralWall("graphitic-wall"){{
+            itemDrop = Items.graphite;
+            variants = 3;
         }};
 
         ventSpout = new VentSpout("vent-spout");

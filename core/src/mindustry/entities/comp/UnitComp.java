@@ -18,6 +18,7 @@ import mindustry.entities.*;
 import mindustry.entities.abilities.*;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
+import mindustry.entities.EntityCollisions.SolidPred;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
@@ -66,6 +67,8 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private transient boolean wasPlayer;
     private transient boolean wasHealed;
     private transient boolean wasHarvestCollision;
+    private transient boolean wasBuilding;
+    private transient float buildEjectTime;
     transient float harvestSoftTime;
     public boolean harvestHidden;
 
@@ -168,6 +171,47 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     /** @return whether there is solid, un-occupied ground under this unit. */
     public boolean canLand(){
         return !onSolid() && Units.count(x, y, physicSize(), f -> f != self() && f.isGrounded()) == 0;
+    }
+
+    @Override
+    public boolean canPass(int tileX, int tileY){
+        SolidPred s = solidity();
+        if(s == null) return true;
+
+        Tile tile = world.tile(tileX, tileY);
+        if(tile == null) return false;
+
+        Building build = tile.build;
+        if(build != null && (tile.block().solid || build.checkSolid())){
+            if(build instanceof ConstructBlock.ConstructBuild){
+                ConstructBlock.ConstructBuild cons = (ConstructBlock.ConstructBuild)build;
+                BuildPlan plan = buildPlan();
+                if(plan != null && plan.requireClose && plan.x == cons.tile.x && plan.y == cons.tile.y){
+                    return true;
+                }
+            }
+            if(buildEjectTime > 0f){
+                float unitSize = Math.min(hitSize * 0.66f, 7.8f);
+                float ur = unitSize / 2f;
+                float br = build.block.size * tilesize / 2f;
+                float dx = x - build.x, dy = y - build.y;
+                float rs = ur + br;
+                if(dx * dx + dy * dy < rs * rs){
+                    return true;
+                }
+            }
+            float unitSize = Math.min(hitSize * 0.66f, 7.8f);
+            float ur = unitSize / 2f;
+            float br = build.block.size * tilesize / 2f;
+            float dx = x - build.x, dy = y - build.y;
+            float rs = ur + br;
+            if(dx * dx + dy * dy < rs * rs){
+                return false;
+            }
+            return true;
+        }
+
+        return !s.solid(tileX, tileY);
     }
 
     public boolean inRange(Position other){
@@ -417,6 +461,12 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public boolean collides(Hitboxc other){
+        if(other instanceof Unit){
+            Unit unit = (Unit)other;
+            if(isBuilding() && unit.isBuilding()){
+                return false;
+            }
+        }
         return hittable();
     }
 
@@ -653,8 +703,43 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         type.update(self());
 
+        boolean building = isBuilding();
+        if(wasBuilding && !building){
+            harvestSoftTime = harvestSoftDuration;
+            buildEjectTime = 60f;
+        }
+        wasBuilding = building;
+
         if(harvestSoftTime > 0f){
             harvestSoftTime = Math.max(0f, harvestSoftTime - Time.delta);
+        }
+        if(buildEjectTime > 0f){
+            buildEjectTime = Math.max(0f, buildEjectTime - Time.delta);
+            Tile tile = tileOn();
+            if(tile != null && tile.build != null && tile.build.checkSolid()){
+                float ur = hitSize / 2f;
+                float br = tile.build.block.size * tilesize / 2f;
+                float dx = x - tile.build.x, dy = y - tile.build.y;
+                float rs = ur + br;
+                if(dx * dx + dy * dy < rs * rs){
+                    if(Mathf.zero(dx) && Mathf.zero(dy)){
+                        dx = 1f;
+                    }
+                    tmp1.set(dx, dy).setLength(0.4f * Time.delta);
+                    velAddNet(tmp1);
+                    if(!net.client()){
+                        float sx = x - tile.build.x, sy = y - tile.build.y;
+                        if(sx * sx + sy * sy < rs * rs){
+                            if(Mathf.zero(sx) && Mathf.zero(sy)){
+                                sx = 1f;
+                            }
+                            tmp1.set(sx, sy).setLength(rs + 0.2f);
+                            x = tile.build.x + tmp1.x;
+                            y = tile.build.y + tmp1.y;
+                        }
+                    }
+                }
+            }
         }
 
         //update bounds
@@ -836,11 +921,33 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         //kill entities on tiles that are solid to them
         if(tile != null && !canPassOn()){
-            //boost if possible
-            if(type.canBoost){
-                elevation = 1f;
-            }else if(!net.client()){
-                kill();
+            if(buildEjectTime <= 0f){
+                BuildPlan plan = buildPlan();
+                if(plan != null && plan.requireClose && plan.x == tile.x && plan.y == tile.y){
+                    buildEjectTime = 30f;
+                }
+            }
+            if(buildEjectTime <= 0f && tile.build != null && tile.build.team == team && type.buildSpeed > 0f && !(tile.build instanceof ConstructBlock.ConstructBuild)){
+                if(!net.client()){
+                    float ur = hitSize / 2f;
+                    float br = tile.build.block.size * tilesize / 2f;
+                    float dx = x - tile.build.x, dy = y - tile.build.y;
+                    if(Mathf.zero(dx) && Mathf.zero(dy)){
+                        dx = 1f;
+                    }
+                    tmp1.set(dx, dy).setLength(ur + br + 0.2f);
+                    x = tile.build.x + tmp1.x;
+                    y = tile.build.y + tmp1.y;
+                    buildEjectTime = 30f;
+                }
+            }
+            if(buildEjectTime <= 0f){
+                //boost if possible
+                if(type.canBoost){
+                    elevation = 1f;
+                }else if(!net.client()){
+                    kill();
+                }
             }
         }
 

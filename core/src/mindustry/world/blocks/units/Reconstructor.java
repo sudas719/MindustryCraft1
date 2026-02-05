@@ -153,6 +153,10 @@ public class Reconstructor extends UnitBlock{
 
     public class ReconstructorBuild extends UnitBuild{
         public @Nullable Vec2 commandPos;
+        public @Nullable Teamc commandTarget;
+        public int commandTargetUnit = -1;
+        public int commandTargetBuilding = -1;
+        private final Vec2 commandPosDynamic = new Vec2();
         public @Nullable UnitCommand command;
 
         boolean constructing;
@@ -163,12 +167,23 @@ public class Reconstructor extends UnitBlock{
 
         @Override
         public Vec2 getCommandPosition(){
+            Teamc target = resolveCommandTarget();
+            if(target != null){
+                return commandPosDynamic.set(target.getX(), target.getY());
+            }
             return commandPos;
         }
 
         @Override
         public void onCommand(Vec2 target){
-            commandPos = target;
+            Teamc found = findCommandTarget(target);
+            if(found != null){
+                setCommandTarget(found);
+                commandPos = null;
+            }else{
+                clearCommandTarget();
+                commandPos = target;
+            }
         }
 
         @Override
@@ -226,10 +241,11 @@ public class Reconstructor extends UnitBlock{
             if(!(this.payload == null
             && (this.enabled || source == this)
             && relativeTo(source) != rotation
-            && payload instanceof UnitPayload pay)){
+            && payload instanceof UnitPayload)){
                 return false;
             }
 
+            UnitPayload pay = (UnitPayload)payload;
             var upgrade = upgrade(pay.unit.type);
 
             if(upgrade != null){
@@ -305,6 +321,8 @@ public class Reconstructor extends UnitBlock{
             constructing = constructing();
             boolean valid = false;
 
+            updateCommandTarget();
+
             if(payload != null){
                 //check if offloading
                 if(!hasUpgrade(payload.unit.type)){
@@ -321,11 +339,14 @@ public class Reconstructor extends UnitBlock{
                             payload.unit = upgrade(payload.unit.type).create(payload.unit.team());
 
                             if(payload.unit.isCommandable()){
-                                if(commandPos != null){
-                                    payload.unit.command().commandPosition(commandPos);
-                                }
                                 //this already checks if it is a valid command for the unit type
                                 payload.unit.command().command(command == null && payload.unit.type.defaultCommand != null ? payload.unit.type.defaultCommand : command);
+                                Teamc target = resolveCommandTarget();
+                                if(target != null){
+                                    payload.unit.command().commandFollow(target);
+                                }else if(commandPos != null){
+                                    payload.unit.command().commandPosition(commandPos);
+                                }
                             }
 
                             createSound.at(this, 1f + Mathf.range(0.06f), createSoundVolume);
@@ -383,7 +404,7 @@ public class Reconstructor extends UnitBlock{
 
         @Override
         public byte version(){
-            return 3;
+            return 4;
         }
 
         @Override
@@ -393,6 +414,8 @@ public class Reconstructor extends UnitBlock{
             write.f(progress);
             TypeIO.writeVecNullable(write, commandPos);
             TypeIO.writeCommand(write, command);
+            write.i(commandTargetUnit);
+            write.i(commandTargetBuilding);
         }
 
         @Override
@@ -410,6 +433,80 @@ public class Reconstructor extends UnitBlock{
             if(revision >= 3){
                 command = TypeIO.readCommand(read);
             }
+            if(revision >= 4){
+                commandTargetUnit = read.i();
+                commandTargetBuilding = read.i();
+            }
+        }
+
+        private void updateCommandTarget(){
+            boolean hadTarget = commandTargetUnit != -1 || commandTargetBuilding != -1 || commandTarget != null;
+            if(hadTarget && resolveCommandTarget() == null){
+                clearCommandTarget();
+                commandPos = new Vec2(x, y);
+            }
+        }
+
+        private @Nullable Teamc resolveCommandTarget(){
+            Teamc target = commandTarget;
+            if(target instanceof Unit){
+                Unit u = (Unit)target;
+                if(!u.isValid() || u.team != team) target = null;
+            }else if(target instanceof Building){
+                Building b = (Building)target;
+                if(!b.isValid() || b.team != team) target = null;
+            }
+
+            if(target == null){
+                if(commandTargetUnit != -1){
+                    Unit u = Groups.unit.getByID(commandTargetUnit);
+                    if(u != null && u.team == team){
+                        target = u;
+                    }else{
+                        commandTargetUnit = -1;
+                    }
+                }else if(commandTargetBuilding != -1){
+                    Building b = world.build(commandTargetBuilding);
+                    if(b != null && b.team == team){
+                        target = b;
+                    }else{
+                        commandTargetBuilding = -1;
+                    }
+                }
+                commandTarget = target;
+            }
+
+            return target;
+        }
+
+        private void clearCommandTarget(){
+            commandTarget = null;
+            commandTargetUnit = -1;
+            commandTargetBuilding = -1;
+        }
+
+        private void setCommandTarget(Teamc target){
+            clearCommandTarget();
+            commandTarget = target;
+            if(target instanceof Unit){
+                commandTargetUnit = ((Unit)target).id;
+            }else if(target instanceof Building){
+                commandTargetBuilding = ((Building)target).pos();
+            }
+        }
+
+        private @Nullable Teamc findCommandTarget(Vec2 target){
+            Building build = world.buildWorld(target.x, target.y);
+            if(build != null && build.team == team && build.within(target.x, target.y, build.hitSize() / 2f)){
+                return build;
+            }
+
+            Unit unit = Units.closest(team, target.x, target.y, 40f, u -> u.team == team);
+            if(unit != null && unit.within(target.x, target.y, unit.hitSize / 2f)){
+                return unit;
+            }
+
+            return null;
         }
 
     }

@@ -181,8 +181,19 @@ public class MapView extends Element implements GestureListener{
         if(Core.scene.getKeyboardFocus() == null || !Core.scene.hasField() && !Core.input.keyDown(KeyCode.controlLeft)){
             float ax = Core.input.axis(Binding.moveX);
             float ay = Core.input.axis(Binding.moveY);
-            offsetx -= ax * 15 * Time.delta / zoom;
-            offsety -= ay * 15 * Time.delta / zoom;
+            float keyX = 0f, keyY = 0f;
+            if(Core.input.keyDown(KeyCode.left)) keyX -= 1f;
+            if(Core.input.keyDown(KeyCode.right)) keyX += 1f;
+            if(Core.input.keyDown(KeyCode.up)) keyY += 1f;
+            if(Core.input.keyDown(KeyCode.down)) keyY -= 1f;
+            if(Core.input.keyDown(KeyCode.a)) keyX -= 1f;
+            if(Core.input.keyDown(KeyCode.d)) keyX += 1f;
+            if(Core.input.keyDown(KeyCode.w)) keyY += 1f;
+            if(Core.input.keyDown(KeyCode.s)) keyY -= 1f;
+            float moveX = ax + keyX;
+            float moveY = ay + keyY;
+            offsetx -= moveX * 15 * Time.delta / zoom;
+            offsety -= moveY * 15 * Time.delta / zoom;
         }
 
         if(Core.input.keyTap(KeyCode.shiftLeft) || Core.input.keyTap(KeyCode.altLeft)){

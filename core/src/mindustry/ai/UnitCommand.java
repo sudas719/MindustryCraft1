@@ -29,6 +29,8 @@ public class UnitCommand extends MappableContent{
     public boolean snapToBuilding = false;
     /** */
     public boolean exactArrival = false;
+    /** If true, this command is hidden and cannot be selected. */
+    public boolean hidden = false;
     /** If true, this command refreshes the list of stances when selected TODO: do not use, this will likely be removed later!*/
     public boolean refreshOnSelect = false;
     /** Key to press for this command. */
@@ -76,6 +78,8 @@ public class UnitCommand extends MappableContent{
         }};
         repairCommand = new UnitCommand("repair", "modeSurvival", Binding.unitCommandRepair, u -> new RepairAI());
         rebuildCommand = new UnitCommand("rebuild", "hammer", Binding.unitCommandRebuild, u -> new BuilderAI());
+        rebuildCommand.hidden = true;
+        rebuildCommand.keybind = null;
         assistCommand = new UnitCommand("assist", "players", Binding.unitCommandAssist, u -> {
             var ai = new BuilderAI();
             ai.onlyAssist = true;

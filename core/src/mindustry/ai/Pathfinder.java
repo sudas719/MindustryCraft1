@@ -160,16 +160,16 @@ public class Pathfinder implements Runnable{
 
             Tile tile = event.tile;
 
-            if(tile.solid()){
+            if(pathSolid(tile)){
                 for(int i = 0; i < 4; i++){
                     Tile other = tile.nearby(i);
                     if(other != null){
                         //other tile needs to update its nearSolid to be false if it's not solid and this tile just got un-solidified
-                        if(!other.solid()){
+                        if(!pathSolid(other)){
                             boolean otherNearSolid = false;
                             for(int j = 0; j < 4; j++){
                                 Tile othernear = other.nearby(j);
-                                if(othernear != null && othernear.solid()){
+                                if(othernear != null && pathSolid(othernear)){
                                     otherNearSolid = true;
                                     break;
                                 }
@@ -220,13 +220,13 @@ public class Pathfinder implements Runnable{
 
     /** Packs a tile into its internal representation. */
     public int packTile(Tile tile){
-        boolean nearLiquid = false, nearSolid = false, nearLegSolid = false, nearGround = false, solid = tile.solid(), allDeep = tile.floor().isDeep(), nearDeep = allDeep;
+        boolean nearLiquid = false, nearSolid = false, nearLegSolid = false, nearGround = false, solid = pathSolid(tile), allDeep = tile.floor().isDeep(), nearDeep = allDeep;
 
         for(int i = 0; i < 4; i++){
             Tile other = tile.nearby(i);
             if(other != null){
                 Floor floor = other.floor();
-                boolean osolid = other.solid();
+                boolean osolid = pathSolid(other);
                 if(floor.isLiquid && floor.isDeep()) nearLiquid = true;
                 //TODO potentially strange behavior when teamPassable is false for other teams?
                 if(osolid && !other.block().teamPassable) nearSolid = true;
@@ -274,6 +274,14 @@ public class Pathfinder implements Runnable{
         nearDeep,
         tile.block().teamPassable
         );
+    }
+
+    private boolean pathSolid(Tile tile){
+        if(tile == null) return true;
+        if(tile.floor().solid) return true;
+        //ignore placed buildings for pathing; collision is handled by circle physics
+        if(tile.build != null) return false;
+        return tile.block().solid;
     }
 
     public int get(int x, int y){

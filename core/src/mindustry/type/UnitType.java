@@ -677,7 +677,7 @@ public class UnitType extends UnlockableContent implements Senseable{
     }
 
     public boolean allowCommand(Unit unit, UnitCommand command){
-        return commands.contains(command);
+        return command != null && !command.hidden && commands.contains(command);
     }
 
     public void update(Unit unit){
@@ -1072,7 +1072,6 @@ public class UnitType extends UnlockableContent implements Senseable{
                 commands.add(UnitCommand.boostCommand);
 
                 if(buildSpeed > 0f){
-                    commands.add(UnitCommand.rebuildCommand, UnitCommand.assistCommand);
                 }
                 if(mineTier > 0){
                     commands.add(UnitCommand.mineCommand);
@@ -1086,7 +1085,6 @@ public class UnitType extends UnlockableContent implements Senseable{
                 }
 
                 if(buildSpeed > 0){
-                    commands.add(UnitCommand.rebuildCommand, UnitCommand.assistCommand);
                 }
 
                 if(mineTier > 0){

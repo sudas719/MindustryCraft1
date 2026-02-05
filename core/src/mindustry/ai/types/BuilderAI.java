@@ -53,31 +53,8 @@ public class BuilderAI extends AIController{
 
         unit.updateBuilding = true;
 
-        if(assistFollowing != null && !assistFollowing.isValid()) assistFollowing = null;
-        if(following != null && !following.isValid()) following = null;
-
-        if(assistFollowing != null && assistFollowing.activelyBuilding()){
-            following = assistFollowing;
-        }
-
         boolean moving = false;
-
-        if(following != null){
-            retreatTimer = 0f;
-            //try to follow and mimic someone
-
-            //validate follower
-            if(!following.isValid() || !following.activelyBuilding()){
-                following = null;
-                unit.plans.clear();
-                return;
-            }
-
-            //set to follower's first build plan, whatever that is
-            unit.plans.clear();
-            unit.plans.addFirst(following.buildPlan());
-            lastPlan = null;
-        }else if(unit.buildPlan() == null || alwaysFlee){
+        if(unit.buildPlan() == null || alwaysFlee){
             //not following anyone or building
             if(timer.get(timerTarget4, 40)){
                 enemy = target(unit.x, unit.y, fleeRange, true, true);
@@ -122,6 +99,11 @@ public class BuilderAI extends AIController{
 
             if(valid){
                 float range = Math.min(unit.type.buildRange - unit.type.hitSize * 2f, buildRadius);
+                if(req.requireClose && req.block != null){
+                    float unitRadius = unit.hitSize / 2f;
+                    float closeRange = req.block.size * tilesize / 2f + unitRadius + 0.1f;
+                    range = Math.min(range, closeRange);
+                }
                 //move toward the plan
                 moveTo(req.tile(), range, 20f);
                 moving = !unit.within(req.tile(), range);
@@ -131,54 +113,8 @@ public class BuilderAI extends AIController{
                 lastPlan = null;
             }
         }else{
-
-            if(assistFollowing != null){
-                moveTo(assistFollowing, assistFollowing.type.hitSize + unit.type.hitSize/2f + 60f);
-                moving = !unit.within(assistFollowing, assistFollowing.type.hitSize + unit.type.hitSize/2f + 65f);
-            }
-
-            //follow someone and help them build
-            if(timer.get(timerTarget2, 20f)){
-                found = false;
-
-                Units.nearby(unit.team, unit.x, unit.y, buildRadius, u -> {
-                    if(found) return;
-
-                    if(u.canBuild() && u != unit && u.activelyBuilding()){
-                        BuildPlan plan = u.buildPlan();
-
-                        Building build = world.build(plan.x, plan.y);
-                        if(build instanceof ConstructBuild cons){
-                            float dist = Math.min(cons.dst(unit) - unit.type.buildRange, 0);
-
-                            //make sure you can reach the plan in time
-                            if(dist / unit.speed() < cons.buildCost * 0.9f){
-                                following = u;
-                                found = true;
-                            }
-                        }
-                    }
-                });
-
-                if(onlyAssist){
-                    float minDst = Float.MAX_VALUE;
-                    Player closest = null;
-                    for(var player : Groups.player){
-                        if(!player.dead() && player.isBuilder() && player.team() == unit.team){
-                            float dst = player.dst2(unit);
-                            if(dst < minDst){
-                                closest = player;
-                                minDst = dst;
-                            }
-                        }
-                    }
-
-                    assistFollowing = closest == null ? null : closest.unit();
-                }
-            }
-
             //find new plan
-            if(!onlyAssist && !unit.team.data().plans.isEmpty() && following == null && timer.get(timerTarget3, rebuildPeriod)){
+            if(!unit.team.data().plans.isEmpty() && timer.get(timerTarget3, rebuildPeriod)){
                 Queue<BlockPlan> blocks = unit.team.data().plans;
                 BlockPlan block = blocks.first();
 

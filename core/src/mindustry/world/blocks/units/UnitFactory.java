@@ -212,6 +212,10 @@ public class UnitFactory extends UnitBlock{
 
     public class UnitFactoryBuild extends UnitBuild{
         public @Nullable Vec2 commandPos;
+        public @Nullable Teamc commandTarget;
+        public int commandTargetUnit = -1;
+        public int commandTargetBuilding = -1;
+        private final Vec2 commandPosDynamic = new Vec2();
         public @Nullable UnitCommand command;
         public int currentPlan = -1;
 
@@ -244,12 +248,23 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public Vec2 getCommandPosition(){
+            Teamc target = resolveCommandTarget();
+            if(target != null){
+                return commandPosDynamic.set(target.getX(), target.getY());
+            }
             return commandPos;
         }
 
         @Override
         public void onCommand(Vec2 target){
-            commandPos = target;
+            Teamc found = findCommandTarget(target);
+            if(found != null){
+                setCommandTarget(found);
+                commandPos = null;
+            }else{
+                clearCommandTarget();
+                commandPos = target;
+            }
         }
 
         @Override
@@ -291,6 +306,7 @@ public class UnitFactory extends UnitBlock{
                         commands.image(Tex.whiteui, Pal.gray).height(4f).growX().colspan(columns).row();
 
                         for(var item : list){
+                            if(item.hidden) continue;
                             ImageButton button = commands.button(item.getIcon(), Styles.clearNoneTogglei, 40f, () -> {
                                 configure(item);
                             }).tooltip(item.localized()).group(group).get();
@@ -302,8 +318,8 @@ public class UnitFactory extends UnitBlock{
                             }
                         }
 
-                        if(list.size < columns){
-                            for(int j = 0; j < (columns - list.size); j++){
+                        if(i > 0 && i < columns){
+                            for(int j = 0; j < (columns - i); j++){
                                 commands.add().size(40f);
                             }
                         }
@@ -390,6 +406,8 @@ public class UnitFactory extends UnitBlock{
                 currentPlan = -1;
             }
 
+            updateCommandTarget();
+
             if(efficiency > 0 && currentPlan != -1){
                 time += edelta() * speedScl * Vars.state.rules.unitBuildSpeed(team);
                 progress += edelta() * Vars.state.rules.unitBuildSpeed(team);
@@ -414,11 +432,13 @@ public class UnitFactory extends UnitBlock{
 
                     Unit unit = plan.unit.create(team);
                     if(unit.isCommandable()){
-                        if(commandPos != null){
+                        unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);
+                        Teamc target = resolveCommandTarget();
+                        if(target != null){
+                            unit.command().commandFollow(target);
+                        }else if(commandPos != null){
                             unit.command().commandPosition(commandPos);
                         }
-
-                        unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);
                     }
 
                     createSound.at(this, 1f + Mathf.range(0.06f), createSoundVolume);
@@ -457,7 +477,7 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public byte version(){
-            return 3;
+            return 4;
         }
 
         @Override
@@ -467,6 +487,8 @@ public class UnitFactory extends UnitBlock{
             write.s(currentPlan);
             TypeIO.writeVecNullable(write, commandPos);
             TypeIO.writeCommand(write, command);
+            write.i(commandTargetUnit);
+            write.i(commandTargetBuilding);
         }
 
         @Override
@@ -481,6 +503,80 @@ public class UnitFactory extends UnitBlock{
             if(revision >= 3){
                 command = TypeIO.readCommand(read);
             }
+            if(revision >= 4){
+                commandTargetUnit = read.i();
+                commandTargetBuilding = read.i();
+            }
+        }
+
+        private void updateCommandTarget(){
+            boolean hadTarget = commandTargetUnit != -1 || commandTargetBuilding != -1 || commandTarget != null;
+            if(hadTarget && resolveCommandTarget() == null){
+                clearCommandTarget();
+                commandPos = new Vec2(x, y);
+            }
+        }
+
+        private @Nullable Teamc resolveCommandTarget(){
+            Teamc target = commandTarget;
+            if(target instanceof Unit){
+                Unit u = (Unit)target;
+                if(!u.isValid() || u.team != team) target = null;
+            }else if(target instanceof Building){
+                Building b = (Building)target;
+                if(!b.isValid() || b.team != team) target = null;
+            }
+
+            if(target == null){
+                if(commandTargetUnit != -1){
+                    Unit u = Groups.unit.getByID(commandTargetUnit);
+                    if(u != null && u.team == team){
+                        target = u;
+                    }else{
+                        commandTargetUnit = -1;
+                    }
+                }else if(commandTargetBuilding != -1){
+                    Building b = world.build(commandTargetBuilding);
+                    if(b != null && b.team == team){
+                        target = b;
+                    }else{
+                        commandTargetBuilding = -1;
+                    }
+                }
+                commandTarget = target;
+            }
+
+            return target;
+        }
+
+        private void clearCommandTarget(){
+            commandTarget = null;
+            commandTargetUnit = -1;
+            commandTargetBuilding = -1;
+        }
+
+        private void setCommandTarget(Teamc target){
+            clearCommandTarget();
+            commandTarget = target;
+            if(target instanceof Unit){
+                commandTargetUnit = ((Unit)target).id;
+            }else if(target instanceof Building){
+                commandTargetBuilding = ((Building)target).pos();
+            }
+        }
+
+        private @Nullable Teamc findCommandTarget(Vec2 target){
+            Building build = world.buildWorld(target.x, target.y);
+            if(build != null && build.team == team && build.within(target.x, target.y, build.hitSize() / 2f)){
+                return build;
+            }
+
+            Unit unit = Units.closest(team, target.x, target.y, 40f, u -> u.team == team);
+            if(unit != null && unit.within(target.x, target.y, unit.hitSize / 2f)){
+                return unit;
+            }
+
+            return null;
         }
     }
 }

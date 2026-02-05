@@ -245,6 +245,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
 
             if(build != null && isAdded()
                 && checkUnderBuild(build, x * tilesize, y * tilesize)
+                && intersectsBuildingCircle(build, lastX, lastY, this.x, this.y)
                 && build.collide(self()) && type.testCollision(self(), build)
                 && !build.dead() && (type.collidesTeam || build.team != team) && !(type.pierceBuilding && hasCollided(build.id))){
 
@@ -303,6 +304,25 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 y += sy;
             }
         }
+    }
+
+    private boolean intersectsBuildingCircle(Building build, float x1, float y1, float x2, float y2){
+        float radius = build.hitSize() / 2f;
+        float cx = build.x, cy = build.y;
+        float rs = radius * radius;
+
+        if(Mathf.dst2(x1, y1, cx, cy) <= rs || Mathf.dst2(x2, y2, cx, cy) <= rs){
+            return true;
+        }
+
+        float dx = x2 - x1, dy = y2 - y1;
+        float len2 = dx * dx + dy * dy;
+        if(len2 < 0.0001f) return false;
+
+        float t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
+        t = Mathf.clamp(t, 0f, 1f);
+        float px = x1 + dx * t, py = y1 + dy * t;
+        return Mathf.dst2(px, py, cx, cy) <= rs;
     }
 
     @Override

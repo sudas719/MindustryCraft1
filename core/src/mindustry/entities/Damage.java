@@ -147,7 +147,11 @@ public class Damage{
         tmpBuilding = null;
 
         boolean found = World.raycast(World.toTile(x1), World.toTile(y1), World.toTile(x2), World.toTile(y2),
-        (x, y) -> (tmpBuilding = world.build(x, y)) != null && tmpBuilding.team != team && tmpBuilding.block.absorbLasers);
+        (x, y) -> {
+            tmpBuilding = world.build(x, y);
+            return tmpBuilding != null && tmpBuilding.team != team && tmpBuilding.block.absorbLasers
+                && intersectsCircle(x1, y1, x2, y2, tmpBuilding.x, tmpBuilding.y, tmpBuilding.hitSize() / 2f);
+        });
 
         return found ? tmpBuilding : null;
     }
@@ -168,7 +172,13 @@ public class Damage{
         furthest = null;
 
         boolean found = World.raycast(b.tileX(), b.tileY(), World.toTile(b.x + vec.x), World.toTile(b.y + vec.y),
-        (x, y) -> (furthest = world.tile(x, y)) != null && furthest.team() != b.team && (furthest.build != null && furthest.build.absorbLasers()));
+        (x, y) -> {
+            furthest = world.tile(x, y);
+            if(furthest == null || furthest.team() == b.team) return false;
+            Building build = furthest.build;
+            return build != null && build.absorbLasers()
+                && intersectsCircle(b.x, b.y, b.x + vec.x, b.y + vec.y, build.x, build.y, build.hitSize() / 2f);
+        });
 
         return found && furthest != null ? Math.max(6f, b.dst(furthest.worldx(), furthest.worldy())) : length;
     }
@@ -190,7 +200,8 @@ public class Damage{
                 //add distance to list so it can be processed
                 var build = world.build(x, y);
 
-                if(build != null && build.team != b.team && build.collide(b) && b.checkUnderBuild(build, x * tilesize, y * tilesize)){
+                if(build != null && build.team != b.team && build.collide(b) && b.checkUnderBuild(build, x * tilesize, y * tilesize)
+                    && intersectsCircle(b.x, b.y, b.x + vec.x, b.y + vec.y, build.x, build.y, build.hitSize() / 2f)){
                     distances.add(b.dst(build));
 
                     if(laser && build.absorbLasers()){
@@ -265,7 +276,9 @@ public class Damage{
             seg2.set(seg1).add(vec);
             World.raycastEachWorld(x, y, seg2.x, seg2.y, (cx, cy) -> {
                 Building tile = world.build(cx, cy);
-                boolean collide = tile != null && tile.collide(hitter) && hitter.checkUnderBuild(tile, cx * tilesize, cy * tilesize)
+                boolean collide = tile != null
+                    && intersectsCircle(seg1.x, seg1.y, seg2.x, seg2.y, tile.x, tile.y, tile.hitSize() / 2f)
+                    && tile.collide(hitter) && hitter.checkUnderBuild(tile, cx * tilesize, cy * tilesize)
                     && ((tile.team != team && tile.collide(hitter)) || hitter.type.testCollision(hitter, tile)) && collidedBlocks.add(tile.pos());
                 if(collide){
                     collided.add(collidePool.obtain().set(cx * tilesize, cy * tilesize, tile));
@@ -274,7 +287,9 @@ public class Damage{
                         Tile other = world.tile(p.x + cx, p.y + cy);
                         if(other != null && (large || Intersector.intersectSegmentRectangle(seg1, seg2, other.getBounds(Tmp.r1)))){
                             Building build = other.build;
-                            if(build != null && hitter.checkUnderBuild(build, cx * tilesize, cy * tilesize) && collidedBlocks.add(build.pos())){
+                            if(build != null
+                                && intersectsCircle(seg1.x, seg1.y, seg2.x, seg2.y, build.x, build.y, build.hitSize() / 2f)
+                                && hitter.checkUnderBuild(build, cx * tilesize, cy * tilesize) && collidedBlocks.add(build.pos())){
                                 collided.add(collidePool.obtain().set((p.x + cx * tilesize), (p.y + cy) * tilesize, build));
                             }
                         }
@@ -339,7 +354,7 @@ public class Damage{
         if(hitter.type.collidesGround){
             Building build = world.build(World.toTile(x), World.toTile(y));
 
-            if(build != null && hitter.damage > 0){
+            if(build != null && hitter.damage > 0 && build.within(x, y, build.hitSize() / 2f)){
                 float health = build.health;
 
                 if(build.team != team && build.collide(hitter)){
@@ -368,13 +383,14 @@ public class Damage{
      */
     public static Healthc linecast(Bullet hitter, float x, float y, float angle, float length){
         vec.trns(angle, length);
+        float x2 = x + vec.x, y2 = y + vec.y;
 
         tmpBuilding = null;
 
         if(hitter.type.collidesGround){
-            World.raycastEachWorld(x, y, x + vec.x, y + vec.y, (cx, cy) -> {
+            World.raycastEachWorld(x, y, x2, y2, (cx, cy) -> {
                 Building tile = world.build(cx, cy);
-                if(tile != null && tile.team != hitter.team){
+                if(tile != null && tile.team != hitter.team && intersectsCircle(x, y, x2, y2, tile.x, tile.y, tile.hitSize() / 2f)){
                     tmpBuilding = tile;
                     return true;
                 }
@@ -383,7 +399,6 @@ public class Damage{
         }
 
         rect.setPosition(x, y).setSize(vec.x, vec.y);
-        float x2 = vec.x + x, y2 = vec.y + y;
 
         if(rect.width < 0){
             rect.x += rect.width;
@@ -430,6 +445,22 @@ public class Damage{
         }
 
         return tmpUnit;
+    }
+
+    private static boolean intersectsCircle(float x1, float y1, float x2, float y2, float cx, float cy, float radius){
+        float rs = radius * radius;
+        if(Mathf.dst2(x1, y1, cx, cy) <= rs || Mathf.dst2(x2, y2, cx, cy) <= rs){
+            return true;
+        }
+
+        float dx = x2 - x1, dy = y2 - y1;
+        float len2 = dx * dx + dy * dy;
+        if(len2 < 0.0001f) return false;
+
+        float t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
+        t = Mathf.clamp(t, 0f, 1f);
+        float px = x1 + dx * t, py = y1 + dy * t;
+        return Mathf.dst2(px, py, cx, cy) <= rs;
     }
 
     /** Damages all entities and blocks in a radius that are enemies of the team. */

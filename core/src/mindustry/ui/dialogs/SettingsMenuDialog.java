@@ -496,6 +496,9 @@ public class SettingsMenuDialog extends BaseDialog{
         //Control panel height setting (extended range for background drawing)
         graphics.sliderPref("controlpanelheight", 200, 600, 2000, 10, s -> s + "px");
 
+        //Chat panel vertical offset (can move above or below control panel top)
+        graphics.sliderPref("chatpaneloffset", 0, -1000, 1000, 1, s -> s + "px");
+
         //Control panel background image path (file picker with multiple extensions)
         graphics.filePickerPref("controlpanelbg", "", "png", "jpg", "jpeg");
 

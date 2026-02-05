@@ -290,14 +290,14 @@ public class UnitAssembler extends PayloadBlock{
 
     @Remote(called = Loc.server)
     public static void assemblerUnitSpawned(Tile tile){
-        if(tile == null || !(tile.build instanceof UnitAssemblerBuild build)) return;
-        build.spawned();
+        if(tile == null || !(tile.build instanceof UnitAssemblerBuild)) return;
+        ((UnitAssemblerBuild)tile.build).spawned();
     }
 
     @Remote(called = Loc.server)
     public static void assemblerDroneSpawned(Tile tile, int id){
-        if(tile == null || !(tile.build instanceof UnitAssemblerBuild build)) return;
-        build.droneSpawned(id);
+        if(tile == null || !(tile.build instanceof UnitAssemblerBuild)) return;
+        ((UnitAssemblerBuild)tile.build).droneSpawned(id);
     }
 
     public class UnitAssemblerBuild extends PayloadBlockBuild<Payload>{
@@ -306,6 +306,10 @@ public class UnitAssembler extends PayloadBlock{
         protected IntSeq whenSyncedUnits = new IntSeq();
 
         public @Nullable Vec2 commandPos;
+        public @Nullable Teamc commandTarget;
+        public int commandTargetUnit = -1;
+        public int commandTargetBuilding = -1;
+        private final Vec2 commandPosDynamic = new Vec2();
         public Seq<Unit> units = new Seq<>();
         public Seq<UnitAssemblerModuleBuild> modules = new Seq<>();
         public PayloadSeq blocks = new PayloadSeq();
@@ -425,6 +429,8 @@ public class UnitAssembler extends PayloadBlock{
                 readUnits.clear();
             }
 
+            updateCommandTarget();
+
             if(lastTier != currentTier){
                 if(lastTier >= 0f){
                     progress = 0f;
@@ -461,8 +467,8 @@ public class UnitAssembler extends PayloadBlock{
             if(units.size < dronesCreated && enabled && (droneProgress += delta() * state.rules.unitBuildSpeed(team) * powerStatus / droneConstructTime) >= 1f){
                 if(!net.client()){
                     var unit = droneType.create(team);
-                    if(unit instanceof BuildingTetherc bt){
-                        bt.building(this);
+                    if(unit instanceof BuildingTetherc){
+                        ((BuildingTetherc)unit).building(this);
                     }
                     unit.set(x, y);
                     unit.rotation = 90f;
@@ -527,8 +533,13 @@ public class UnitAssembler extends PayloadBlock{
             consume();
 
             var unit = plan.unit.create(team);
-            if(unit.isCommandable() && commandPos != null){
-                unit.command().commandPosition(commandPos);
+            if(unit.isCommandable()){
+                Teamc target = resolveCommandTarget();
+                if(target != null){
+                    unit.command().commandFollow(target);
+                }else if(commandPos != null){
+                    unit.command().commandPosition(commandPos);
+                }
             }
             unit.set(spawn.x + Mathf.range(0.001f), spawn.y + Mathf.range(0.001f));
             unit.rotation = rotdeg();
@@ -706,17 +717,28 @@ public class UnitAssembler extends PayloadBlock{
 
         @Override
         public Vec2 getCommandPosition(){
+            Teamc target = resolveCommandTarget();
+            if(target != null){
+                return commandPosDynamic.set(target.getX(), target.getY());
+            }
             return commandPos;
         }
 
         @Override
         public void onCommand(Vec2 target){
-            commandPos = target;
+            Teamc found = findCommandTarget(target);
+            if(found != null){
+                setCommandTarget(found);
+                commandPos = null;
+            }else{
+                clearCommandTarget();
+                commandPos = target;
+            }
         }
 
         @Override
         public byte version(){
-            return 1;
+            return 2;
         }
 
         @Override
@@ -731,6 +753,8 @@ public class UnitAssembler extends PayloadBlock{
 
             blocks.write(write);
             TypeIO.writeVecNullable(write, commandPos);
+            write.i(commandTargetUnit);
+            write.i(commandTargetBuilding);
         }
 
         @Override
@@ -748,6 +772,80 @@ public class UnitAssembler extends PayloadBlock{
             if(revision >= 1){
                 commandPos = TypeIO.readVecNullable(read);
             }
+            if(revision >= 2){
+                commandTargetUnit = read.i();
+                commandTargetBuilding = read.i();
+            }
+        }
+
+        private void updateCommandTarget(){
+            boolean hadTarget = commandTargetUnit != -1 || commandTargetBuilding != -1 || commandTarget != null;
+            if(hadTarget && resolveCommandTarget() == null){
+                clearCommandTarget();
+                commandPos = new Vec2(x, y);
+            }
+        }
+
+        private @Nullable Teamc resolveCommandTarget(){
+            Teamc target = commandTarget;
+            if(target instanceof Unit){
+                Unit u = (Unit)target;
+                if(!u.isValid() || u.team != team) target = null;
+            }else if(target instanceof Building){
+                Building b = (Building)target;
+                if(!b.isValid() || b.team != team) target = null;
+            }
+
+            if(target == null){
+                if(commandTargetUnit != -1){
+                    Unit u = Groups.unit.getByID(commandTargetUnit);
+                    if(u != null && u.team == team){
+                        target = u;
+                    }else{
+                        commandTargetUnit = -1;
+                    }
+                }else if(commandTargetBuilding != -1){
+                    Building b = world.build(commandTargetBuilding);
+                    if(b != null && b.team == team){
+                        target = b;
+                    }else{
+                        commandTargetBuilding = -1;
+                    }
+                }
+                commandTarget = target;
+            }
+
+            return target;
+        }
+
+        private void clearCommandTarget(){
+            commandTarget = null;
+            commandTargetUnit = -1;
+            commandTargetBuilding = -1;
+        }
+
+        private void setCommandTarget(Teamc target){
+            clearCommandTarget();
+            commandTarget = target;
+            if(target instanceof Unit){
+                commandTargetUnit = ((Unit)target).id;
+            }else if(target instanceof Building){
+                commandTargetBuilding = ((Building)target).pos();
+            }
+        }
+
+        private @Nullable Teamc findCommandTarget(Vec2 target){
+            Building build = world.buildWorld(target.x, target.y);
+            if(build != null && build.team == team && build.within(target.x, target.y, build.hitSize() / 2f)){
+                return build;
+            }
+
+            Unit unit = Units.closest(team, target.x, target.y, 40f, u -> u.team == team);
+            if(unit != null && unit.within(target.x, target.y, unit.hitSize / 2f)){
+                return unit;
+            }
+
+            return null;
         }
     }
 }
