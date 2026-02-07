@@ -265,6 +265,8 @@ public class UnitFactory extends UnitBlock{
         private final Vec2 commandPosDynamic = new Vec2();
         public @Nullable UnitCommand command;
         public int currentPlan = -1;
+        public int currentPlan2 = -1;
+        public IntSeq planQueue = new IntSeq();
         public int queued = 0;
         public float progress2 = 0f;
         public float speedScl2 = 0f;
@@ -277,7 +279,11 @@ public class UnitFactory extends UnitBlock{
 
         public float fraction(){
             if(sc2Queue && queued <= 0) return 0f;
-            return currentPlan == -1 ? 0 : progress / plans.get(currentPlan).time;
+            int planIndex = activePlanIndex();
+            if(planIndex == -1) return 0f;
+            float planTime = plans.get(planIndex).time;
+            if(planTime <= 0f) return 0f;
+            return (currentPlan != -1 ? progress : progress2) / planTime;
         }
 
         public boolean canSetCommand(){
@@ -290,7 +296,7 @@ public class UnitFactory extends UnitBlock{
         @Override
         public void created(){
             //auto-set to the first plan, it's better than nothing.
-            if(currentPlan == -1){
+            if(!sc2Queue && currentPlan == -1){
                 currentPlan = plans.indexOf(u -> u.unit.unlockedNow());
             }
         }
@@ -415,16 +421,17 @@ public class UnitFactory extends UnitBlock{
             super.display(table);
 
             TextureRegionDrawable reg = new TextureRegionDrawable();
+            int planIndex = activePlanIndex();
 
             table.row();
             table.table(t -> {
                 t.left();
                 t.image().update(i -> {
-                    i.setDrawable(currentPlan == -1 ? Icon.cancel : reg.set(plans.get(currentPlan).unit.uiIcon));
+                    i.setDrawable(planIndex == -1 ? Icon.cancel : reg.set(plans.get(planIndex).unit.uiIcon));
                     i.setScaling(Scaling.fit);
-                    i.setColor(currentPlan == -1 ? Color.lightGray : Color.white);
+                    i.setColor(planIndex == -1 ? Color.lightGray : Color.white);
                 }).size(32).padBottom(-4).padRight(2);
-                t.label(() -> currentPlan == -1 ? "@none" : plans.get(currentPlan).unit.localizedName).wrap().width(230f).color(Color.lightGray);
+                t.label(() -> planIndex == -1 ? "@none" : plans.get(planIndex).unit.localizedName).wrap().width(230f).color(Color.lightGray);
             }).left();
         }
 
@@ -438,9 +445,12 @@ public class UnitFactory extends UnitBlock{
             Draw.rect(region, x, y);
             Draw.rect(outRegion, x, y, rotdeg());
 
-            if(currentPlan != -1){
-                UnitPlan plan = plans.get(currentPlan);
-                Draw.draw(Layer.blockOver, () -> Drawf.construct(this, plan.unit, rotdeg() - 90f, progress / plan.time, speedScl, time));
+            int planIndex = activePlanIndex();
+            if(planIndex != -1){
+                UnitPlan plan = plans.get(planIndex);
+                float planProgress = currentPlan != -1 ? progress : progress2;
+                float planScl = currentPlan != -1 ? speedScl : speedScl2;
+                Draw.draw(Layer.blockOver, () -> Drawf.construct(this, plan.unit, rotdeg() - 90f, planProgress / plan.time, planScl, time));
             }
 
             Draw.z(Layer.blockOver);
@@ -525,17 +535,19 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public boolean acceptItem(Building source, Item item){
-            return currentPlan != -1 && items.get(item) < getMaximumAccepted(item) &&
-                Structs.contains(plans.get(currentPlan).requirements, stack -> stack.item == item);
+            int planIndex = activePlanIndex();
+            return planIndex != -1 && items.get(item) < getMaximumAccepted(item) &&
+                Structs.contains(plans.get(planIndex).requirements, stack -> stack.item == item);
         }
 
         public @Nullable UnitType unit(){
-            return currentPlan == - 1 ? null : plans.get(currentPlan).unit;
+            int planIndex = activePlanIndex();
+            return planIndex == -1 ? null : plans.get(planIndex).unit;
         }
 
         @Override
         public byte version(){
-            return 7;
+            return 8;
         }
 
         @Override
@@ -543,6 +555,11 @@ public class UnitFactory extends UnitBlock{
             super.write(write);
             write.f(progress);
             write.s(currentPlan);
+            write.s(currentPlan2);
+            write.i(planQueue.size);
+            for(int i = 0; i < planQueue.size; i++){
+                write.s(planQueue.get(i));
+            }
             TypeIO.writeVecNullable(write, commandPos);
             TypeIO.writeCommand(write, command);
             write.i(commandTargetUnit);
@@ -562,6 +579,17 @@ public class UnitFactory extends UnitBlock{
             super.read(read, revision);
             progress = read.f();
             currentPlan = read.s();
+            if(revision >= 8){
+                currentPlan2 = read.s();
+                int qsize = read.i();
+                planQueue.clear();
+                for(int i = 0; i < qsize; i++){
+                    planQueue.add(read.s());
+                }
+            }else{
+                currentPlan2 = -1;
+                planQueue.clear();
+            }
             if(revision >= 2){
                 commandPos = TypeIO.readVecNullable(read);
             }
@@ -597,6 +625,21 @@ public class UnitFactory extends UnitBlock{
                 hadDoubleAddon = read.bool();
             }else{
                 hadDoubleAddon = false;
+            }
+
+            if(revision < 8 && queued > 1 && currentPlan != -1){
+                planQueue.clear();
+                for(int i = 0; i < queued - 1; i++){
+                    planQueue.add(currentPlan);
+                }
+            }
+            if(queued <= 0){
+                currentPlan = -1;
+                currentPlan2 = -1;
+                planQueue.clear();
+            }
+            if(sc2Queue){
+                queued = queuedTotal();
             }
         }
 
@@ -679,9 +722,19 @@ public class UnitFactory extends UnitBlock{
                 progress2 = 0f;
                 speedScl = 0f;
                 speedScl2 = 0f;
+                currentPlan2 = -1;
+                planQueue.clear();
+            }
+            if(queued > 0){
+                planQueue.add(planIndex);
+            }
+            if(activeUnitSlots() > 1 && currentPlan2 == -1 && planQueue.size > 0){
+                currentPlan2 = planQueue.removeIndex(0);
+                progress2 = 0f;
+                speedScl2 = 0f;
             }
             payForPlan(plan, 1);
-            queued++;
+            queued = queuedTotal();
             return true;
         }
 
@@ -691,8 +744,7 @@ public class UnitFactory extends UnitBlock{
             UnitPlan plan = plans.get(planIndex);
             if(plan.unit.isBanned()) return false;
             if(!canProduce(plan.unit)) return false;
-            if(queued > 0 && currentPlan != planIndex) return false;
-            if(queued >= queueSlots()) return false;
+            if(queuedTotal() >= queueSlots()) return false;
             if(!canAffordPlan(plan, 1)) return false;
             return true;
         }
@@ -710,16 +762,27 @@ public class UnitFactory extends UnitBlock{
 
         public boolean cancelLastQueued(){
             if(!sc2Queue || queued <= 0) return false;
-            if(currentPlan != -1){
-                refundPlan(plans.get(currentPlan), 1);
-            }
-            queued--;
-            if(queued < 2){
+            if(planQueue.size > 0){
+                int planIndex = planQueue.removeIndex(planQueue.size - 1);
+                refundPlan(plans.get(planIndex), 1);
+            }else if(currentPlan2 != -1){
+                refundPlan(plans.get(currentPlan2), 1);
+                currentPlan2 = -1;
                 progress2 = 0f;
-            }
-            if(queued == 0){
+                speedScl2 = 0f;
+            }else if(currentPlan != -1){
+                refundPlan(plans.get(currentPlan), 1);
                 currentPlan = -1;
                 progress = 0f;
+                speedScl = 0f;
+            }
+            queued = queuedTotal();
+            if(queued == 0){
+                currentPlan = -1;
+                currentPlan2 = -1;
+                planQueue.clear();
+                progress = 0f;
+                progress2 = 0f;
                 speedScl = 0f;
                 speedScl2 = 0f;
             }
@@ -746,45 +809,53 @@ public class UnitFactory extends UnitBlock{
         }
 
         public @Nullable UnitType queuedUnit(int index){
-            if(!sc2Queue || currentPlan == -1) return null;
+            if(!sc2Queue) return null;
             if(index < 0) return null;
-            UnitType unit = plans.get(currentPlan).unit;
-            boolean slot2Running = activeUnitSlots() > 1 && progress2 > 0f;
+            int activeSlots = activeUnitSlots();
             if(index == 0){
-                if(slot2Running && queued == 1 && progress <= 0f) return null;
-                if(queued >= 1 || progress > 0f) return unit;
-                return null;
+                return currentPlan == -1 ? null : plans.get(currentPlan).unit;
             }
             if(index == 1){
-                if(activeUnitSlots() > 1 && (queued >= 2 || progress2 > 0f)) return unit;
-                return null;
+                if(activeSlots > 1){
+                    return currentPlan2 == -1 ? null : plans.get(currentPlan2).unit;
+                }else{
+                    return planQueue.size > 0 ? plans.get(planQueue.get(0)).unit : null;
+                }
             }
-            int total = queued;
-            if(index >= total) return null;
-            return unit;
+            int queueIndex = index - activeSlots;
+            if(queueIndex < 0 || queueIndex >= planQueue.size) return null;
+            return plans.get(planQueue.get(queueIndex)).unit;
         }
 
         public float unitProgressFraction(int slot){
-            if(currentPlan == -1 || queued <= 0) return 0f;
-            UnitPlan plan = plans.get(currentPlan);
-            if(plan.time <= 0f) return 0f;
-            if(slot == 0) return Mathf.clamp(progress / plan.time);
-            if(slot == 1) return Mathf.clamp(progress2 / plan.time);
+            if(queued <= 0) return 0f;
+            if(slot == 0 && currentPlan != -1){
+                UnitPlan plan = plans.get(currentPlan);
+                if(plan.time <= 0f) return 0f;
+                return Mathf.clamp(progress / plan.time);
+            }
+            if(slot == 1 && currentPlan2 != -1){
+                UnitPlan plan = plans.get(currentPlan2);
+                if(plan.time <= 0f) return 0f;
+                return Mathf.clamp(progress2 / plan.time);
+            }
             return 0f;
         }
 
         public float unitProgressSeconds(int slot){
-            if(currentPlan == -1) return 0f;
-            UnitPlan plan = plans.get(currentPlan);
-            if(slot == 0) return progress / 60f;
-            if(slot == 1) return progress2 / 60f;
+            if(slot == 0 && currentPlan != -1) return progress / 60f;
+            if(slot == 1 && currentPlan2 != -1) return progress2 / 60f;
             return 0f;
         }
 
         public float unitProgressTotalSeconds(int slot){
-            if(currentPlan == -1) return 0f;
-            UnitPlan plan = plans.get(currentPlan);
-            return plan.time / 60f;
+            if(slot == 0 && currentPlan != -1){
+                return plans.get(currentPlan).time / 60f;
+            }
+            if(slot == 1 && currentPlan2 != -1){
+                return plans.get(currentPlan2).time / 60f;
+            }
+            return 0f;
         }
 
         public boolean isAddonBuilding(){
@@ -903,18 +974,19 @@ public class UnitFactory extends UnitBlock{
             if(hadDoubleAddon && !doubleAddon){
                 handleDoubleAddonLoss();
             }
+            if(!doubleAddon && currentPlan2 != -1){
+                handleDoubleAddonLoss();
+            }
             hadDoubleAddon = doubleAddon;
 
-            int maxQueue = queueSlots();
-            if(queued > maxQueue){
-                if(currentPlan != -1){
-                    refundPlan(plans.get(currentPlan), queued - maxQueue);
-                }
-                queued = maxQueue;
-            }
+            trimQueueTo(queueSlots());
+            fillSlotsFromQueue();
 
-            if(currentPlan == -1 || queued <= 0){
+            if(queued <= 0 || (currentPlan == -1 && currentPlan2 == -1)){
                 queued = 0;
+                currentPlan = -1;
+                currentPlan2 = -1;
+                planQueue.clear();
                 progress = 0f;
                 progress2 = 0f;
                 speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
@@ -922,26 +994,25 @@ public class UnitFactory extends UnitBlock{
                 return;
             }
 
-            UnitPlan plan = plans.get(currentPlan);
-            if(plan.unit.isBanned()){
-                if(queued <= 0){
-                    queued = 0;
-                    currentPlan = -1;
-                    progress = 0f;
-                    progress2 = 0f;
-                    return;
-                }
+            UnitPlan plan = currentPlan == -1 ? null : plans.get(currentPlan);
+            UnitPlan plan2 = currentPlan2 == -1 ? null : plans.get(currentPlan2);
+            if(plan != null && plan.unit.isBanned()){
+                currentPlan = -1;
+                progress = 0f;
+                speedScl = 0f;
+            }
+            if(plan2 != null && plan2.unit.isBanned()){
+                currentPlan2 = -1;
+                progress2 = 0f;
+                speedScl2 = 0f;
             }
 
             boolean canBuild = efficiency > 0 && payload == null;
             float speed = Vars.state.rules.unitBuildSpeed(team);
             int activeSlots = activeUnitSlots();
-            if(activeSlots <= 1){
-                progress2 = 0f;
-            }
 
-            boolean slot2Active = activeSlots > 1 && (queued >= 2 || progress2 > 0f);
-            boolean slot1Active = queued >= 1 && (progress > 0f || !slot2Active);
+            boolean slot1Active = currentPlan != -1;
+            boolean slot2Active = activeSlots > 1 && currentPlan2 != -1;
 
             if(canBuild){
                 if(slot1Active){
@@ -964,30 +1035,36 @@ public class UnitFactory extends UnitBlock{
             }
 
             if(payload == null){
-                if(slot1Active && progress >= plan.time){
+                if(slot1Active && plan != null && progress >= plan.time){
                     spawnUnit(plan);
-                    queued--;
                     progress = 0f;
                     speedScl = 0f;
+                    currentPlan = -1;
                 }
 
-                if(payload == null && slot2Active && progress2 >= plan.time){
-                    spawnUnit(plan);
-                    queued--;
+                if(payload == null && slot2Active && plan2 != null && progress2 >= plan2.time){
+                    spawnUnit(plan2);
                     progress2 = 0f;
                     speedScl2 = 0f;
+                    currentPlan2 = -1;
                 }
             }
 
-            if(queued <= 0){
+            fillSlotsFromQueue();
+
+            if(queuedTotal() <= 0){
                 currentPlan = -1;
+                currentPlan2 = -1;
                 progress = 0f;
                 progress2 = 0f;
-            }else if(queued < 2){
             }
 
-            progress = Mathf.clamp(progress, 0, plan.time);
-            progress2 = Mathf.clamp(progress2, 0, plan.time);
+            if(plan != null){
+                progress = Mathf.clamp(progress, 0, plan.time);
+            }
+            if(plan2 != null){
+                progress2 = Mathf.clamp(progress2, 0, plan2.time);
+            }
         }
 
         private void updateAddonBuild(){
@@ -1083,25 +1160,63 @@ public class UnitFactory extends UnitBlock{
         }
 
         private void handleDoubleAddonLoss(){
+            if(currentPlan2 != -1){
+                refundPlan(plans.get(currentPlan2), 1);
+            }
+            currentPlan2 = -1;
             progress2 = 0f;
             speedScl2 = 0f;
-            if(currentPlan == -1 || queued <= 0) return;
+            trimQueueTo(UnitFactory.this.sc2QueueSlots);
+        }
 
-            UnitPlan plan = plans.get(currentPlan);
-            int refund = 0;
+        private int activePlanIndex(){
+            if(currentPlan != -1) return currentPlan;
+            if(sc2Queue && currentPlan2 != -1) return currentPlan2;
+            return -1;
+        }
 
-            if(queued >= 2){
-                queued--;
-                refund++;
+        private int queuedTotal(){
+            int total = 0;
+            if(currentPlan != -1) total++;
+            if(currentPlan2 != -1) total++;
+            total += planQueue.size;
+            return total;
+        }
+
+        private void fillSlotsFromQueue(){
+            if(currentPlan == -1 && planQueue.size > 0){
+                currentPlan = planQueue.removeIndex(0);
+                progress = 0f;
+                speedScl = 0f;
             }
-
-            int maxQueue = UnitFactory.this.sc2QueueSlots;
-            if(queued > maxQueue){
-                refund += queued - maxQueue;
-                queued = maxQueue;
+            if(activeUnitSlots() > 1 && currentPlan2 == -1 && planQueue.size > 0){
+                currentPlan2 = planQueue.removeIndex(0);
+                progress2 = 0f;
+                speedScl2 = 0f;
             }
+            queued = queuedTotal();
+        }
 
-            refundPlan(plan, refund);
+        private void trimQueueTo(int maxQueue){
+            while(queuedTotal() > maxQueue){
+                if(planQueue.size > 0){
+                    int planIndex = planQueue.removeIndex(planQueue.size - 1);
+                    refundPlan(plans.get(planIndex), 1);
+                }else if(currentPlan2 != -1){
+                    refundPlan(plans.get(currentPlan2), 1);
+                    currentPlan2 = -1;
+                    progress2 = 0f;
+                    speedScl2 = 0f;
+                }else if(currentPlan != -1){
+                    refundPlan(plans.get(currentPlan), 1);
+                    currentPlan = -1;
+                    progress = 0f;
+                    speedScl = 0f;
+                }else{
+                    break;
+                }
+            }
+            queued = queuedTotal();
         }
 
         private void spawnUnit(UnitPlan plan){
