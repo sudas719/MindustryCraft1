@@ -1,15 +1,20 @@
 package mindustry.ui;
 
 import arc.*;
+import arc.func.*;
 import arc.graphics.*;
 import arc.input.*;
 import arc.math.*;
 import arc.math.geom.*;
+import arc.scene.*;
 import arc.scene.event.*;
+import arc.scene.style.*;
 import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
+import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Lines;
 import mindustry.content.*;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
@@ -21,12 +26,17 @@ import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
 import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
+import mindustry.world.blocks.units.*;
 
 import static mindustry.Vars.*;
 
 public class UnitAbilityPanel extends Table{
     private static final int COLS = 5;
     private static final int ROWS = 3;
+    public static float abilityButtonSize = 64f;
+    public static float abilityIconSize = 40f;
+    public static float abilityKeyScale = 0.6f;
+    public static final Color abilityBorderColor = Color.valueOf("2f5f2f");
 
     //RTS command mode state
     public enum CommandMode{
@@ -64,12 +74,14 @@ public class UnitAbilityPanel extends Table{
     private static class RTSCommand{
         String name;
         String key;
+        Drawable icon;
         String description;
         CommandMode mode;
 
-        RTSCommand(String name, String key, String description, CommandMode mode){
+        RTSCommand(String name, String key, Drawable icon, String description, CommandMode mode){
             this.name = name;
             this.key = key;
+            this.icon = icon;
             this.description = description;
             this.mode = mode;
         }
@@ -77,6 +89,7 @@ public class UnitAbilityPanel extends Table{
 
     private static class BuildInfo{
         Block block;
+        UnitType unit;
         String key;
         String name;
         int crystalCost;
@@ -85,11 +98,11 @@ public class UnitAbilityPanel extends Table{
     }
 
     private RTSCommand[] commands = {
-        new RTSCommand("Move", "m", "Commands the selected unit to move to a target area or follow a target unit. Units that are moving will not engage enemies.", CommandMode.MOVE),
-        new RTSCommand("Stop", "s", "Commands the selected unit to stop executing any commands and halt movement.", CommandMode.STOP),
-        new RTSCommand("Hold", "h", "Commands the selected unit to stay in place and attack enemy targets within range. Units receiving this command will not chase enemies or move toward them to engage.", CommandMode.HOLD),
-        new RTSCommand("Patrol", "p", "Commands the selected unit to patrol between its current position and a target area. Patrolling units will attack enemies or move toward nearby enemies to engage.", CommandMode.PATROL),
-        new RTSCommand("Attack", "a", "Commands the selected unit to move to a target location and attack enemies encountered along the way. After receiving an attack command on a target, the unit will continue attacking that target until it is destroyed.", CommandMode.ATTACK)
+        new RTSCommand("Move", "m", Icon.move, "Commands the selected unit to move to a target area or follow a target unit. Units that are moving will not engage enemies.", CommandMode.MOVE),
+        new RTSCommand("Stop", "s", Icon.cancel, "Commands the selected unit to stop executing any commands and halt movement.", CommandMode.STOP),
+        new RTSCommand("Hold", "h", Icon.pause, "Commands the selected unit to stay in place and attack enemy targets within range. Units receiving this command will not chase enemies or move toward them to engage.", CommandMode.HOLD),
+        new RTSCommand("Patrol", "p", Icon.refresh, "Commands the selected unit to patrol between its current position and a target area. Patrolling units will attack enemies or move toward nearby enemies to engage.", CommandMode.PATROL),
+        new RTSCommand("Attack", "a", Icon.warning, "Commands the selected unit to move to a target location and attack enemies encountered along the way. After receiving an attack command on a target, the unit will continue attacking that target until it is destroyed.", CommandMode.ATTACK)
     };
 
     public UnitAbilityPanel(){
@@ -197,12 +210,7 @@ public class UnitAbilityPanel extends Table{
         if(hasUnits){
             for(int i = 0; i < commands.length; i++){
                 final RTSCommand cmd = commands[i];
-                button(b -> {
-                    b.table(t -> {
-                        t.add("[" + cmd.key + "]").style(Styles.outlineLabel).color(Color.yellow).row();
-                        t.add(cmd.name).style(Styles.outlineLabel);
-                    }).pad(4f);
-                }, Styles.clearTogglei, () -> {
+                addIconButton(this, cmd.key, cmd.icon, () -> true, () -> {
                     if(cmd.mode == CommandMode.STOP){
                         executeStopCommand();
                     }else if(cmd.mode == CommandMode.HOLD){
@@ -210,7 +218,7 @@ public class UnitAbilityPanel extends Table{
                     }else{
                         enterCommandMode(cmd.mode);
                     }
-                }).size(64f).pad(2f);
+                });
             }
             row();
         }
@@ -220,24 +228,24 @@ public class UnitAbilityPanel extends Table{
         Seq<String> addedAbilities = new Seq<>();
 
         for(Unit unit : control.input.selectedUnits){
-            if(unit.isValid()){
-                if(unit.type.canBoost && !addedAbilities.contains("Boost")){
-                    addAbilityButton("Boost", "Boost speed", () -> {});
+                if(unit.isValid()){
+                    if(unit.type.canBoost && !addedAbilities.contains("Boost")){
+                    addAbilityButton("", Icon.upOpen, () -> true, () -> {});
                     addedAbilities.add("Boost");
                     col++;
                 }
                 if(unit instanceof Payloadc && !addedAbilities.contains("Pickup")){
-                    addAbilityButton("Pickup", "Pick up units/blocks", () -> {});
+                    addAbilityButton("", Icon.upload, () -> true, () -> {});
                     addedAbilities.add("Pickup");
                     col++;
                 }
                 if(unit instanceof Payloadc && !addedAbilities.contains("Drop")){
-                    addAbilityButton("Drop", "Drop payload", () -> {});
+                    addAbilityButton("", Icon.download, () -> true, () -> {});
                     addedAbilities.add("Drop");
                     col++;
                 }
                 if(unit.type.mineTier >= 0 && !addedAbilities.contains("Mine")){
-                    addAbilityButton("Mine", "Mine resources", () -> {});
+                    addAbilityButton("", Icon.terrain, () -> true, () -> {});
                     addedAbilities.add("Mine");
                     col++;
                 }
@@ -245,7 +253,7 @@ public class UnitAbilityPanel extends Table{
                 if(unit.type.buildSpeed > 0 && !addedAbilities.contains("Build") &&
                    !unit.type.name.equals("poly") && !unit.type.name.equals("mega") &&
                    !unit.type.name.equals("quad") && !unit.type.name.equals("oct")){
-                    addAbilityButton("Build", "Construct buildings", () -> {});
+                    addAbilityButton("", Icon.hammer, () -> true, () -> {});
                     addedAbilities.add("Build");
                     col++;
                 }
@@ -259,7 +267,7 @@ public class UnitAbilityPanel extends Table{
         //Fill remaining slots in second row if we have abilities
         if(col > 0){
             while(col < COLS){
-                add().size(64f).pad(2f);
+                add().size(abilityButtonSize).pad(2f);
                 col++;
             }
             row();
@@ -268,7 +276,7 @@ public class UnitAbilityPanel extends Table{
         //Third row: Additional abilities or empty
         //Fill third row with empty slots to maintain 3-row layout
         for(int i = 0; i < COLS; i++){
-            add().size(64f).pad(2f);
+            add().size(abilityButtonSize).pad(2f);
         }
     }
 
@@ -291,12 +299,7 @@ public class UnitAbilityPanel extends Table{
         //Row 1: RTS commands M/S/H/P/A
         for(int i = 0; i < COLS; i++){
             final RTSCommand cmd = commands[i];
-            grid.button(b -> {
-                b.table(t -> {
-                    t.add("[" + cmd.key + "]").style(Styles.outlineLabel).color(Color.yellow).row();
-                    t.add(cmd.name).style(Styles.outlineLabel);
-                }).pad(4f);
-            }, Styles.clearTogglei, () -> {
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
                 if(cmd.mode == CommandMode.STOP){
                     executeStopCommand();
                 }else if(cmd.mode == CommandMode.HOLD){
@@ -304,18 +307,18 @@ public class UnitAbilityPanel extends Table{
                 }else{
                     enterCommandMode(cmd.mode);
                 }
-            }).size(64f).pad(2f);
+            });
         }
         grid.row();
 
         //Row 2
-        addGridButton(grid, 1, 0, "g", Core.bundle.get("ability.mine", "Mine"), () -> enterCommandMode(CommandMode.HARVEST));
+        addIconButton(grid, "g", Icon.terrain, () -> true, () -> enterCommandMode(CommandMode.HARVEST));
         fillRow(grid, 1, 1);
         grid.row();
 
         //Row 3
-        addGridButton(grid, 2, 0, "b", Core.bundle.get("ability.build", "Build"), () -> novaPanel = NovaPanel.BUILD_BASIC);
-        addGridButton(grid, 2, 1, "v", Core.bundle.get("ability.build.advanced", "Advanced"), () -> novaPanel = NovaPanel.BUILD_ADV);
+        addIconButton(grid, "b", Icon.hammer, () -> true, () -> novaPanel = NovaPanel.BUILD_BASIC);
+        addIconButton(grid, "v", Icon.wrench, () -> true, () -> novaPanel = NovaPanel.BUILD_ADV);
         fillRow(grid, 2, 2);
 
         add(grid);
@@ -342,22 +345,22 @@ public class UnitAbilityPanel extends Table{
         Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
-        addBuildButton(grid, 0, 0, "c", Blocks.coreNucleus.localizedName, Blocks.coreNucleus, () -> startPlacement(Blocks.coreNucleus));
-        addBuildButton(grid, 0, 1, "r", Blocks.ventCondenser.localizedName, Blocks.ventCondenser, () -> startPlacement(Blocks.ventCondenser));
-        addBuildButton(grid, 0, 2, "s", Blocks.doorLarge.localizedName, Blocks.doorLarge, () -> startPlacement(Blocks.doorLarge));
+        addBuildButton(grid, "c", Blocks.coreNucleus, () -> true, () -> startPlacement(Blocks.coreNucleus));
+        addBuildButton(grid, "r", Blocks.ventCondenser, () -> true, () -> startPlacement(Blocks.ventCondenser));
+        addBuildButton(grid, "s", Blocks.doorLarge, () -> Build.meetsPrerequisites(Blocks.doorLarge, player.team()), () -> startPlacement(Blocks.doorLarge));
         fillRow(grid, 0, 3);
         grid.row();
 
         //Row 2
-        addBuildButton(grid, 1, 0, "b", Blocks.groundFactory.localizedName, Blocks.groundFactory, () -> startPlacement(Blocks.groundFactory));
-        addBuildButton(grid, 1, 1, "e", Blocks.multiPress.localizedName, Blocks.multiPress, () -> startPlacement(Blocks.multiPress));
+        addBuildButton(grid, "b", Blocks.groundFactory, () -> Build.meetsPrerequisites(Blocks.groundFactory, player.team()), () -> startPlacement(Blocks.groundFactory));
+        addBuildButton(grid, "e", Blocks.multiPress, () -> Build.meetsPrerequisites(Blocks.multiPress, player.team()), () -> startPlacement(Blocks.multiPress));
         fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
-        addBuildButton(grid, 2, 0, "u", Blocks.atmosphericConcentrator.localizedName, Blocks.atmosphericConcentrator, () -> startPlacement(Blocks.atmosphericConcentrator));
-        addBuildButton(grid, 2, 1, "t", Blocks.swarmer.localizedName, Blocks.swarmer, () -> startPlacement(Blocks.swarmer));
-        addBuildButton(grid, 2, 2, "n", Blocks.hail.localizedName, Blocks.hail, () -> startPlacement(Blocks.hail));
+        addBuildButton(grid, "u", Blocks.atmosphericConcentrator, () -> Build.meetsPrerequisites(Blocks.atmosphericConcentrator, player.team()), () -> startPlacement(Blocks.atmosphericConcentrator));
+        addBuildButton(grid, "t", Blocks.swarmer, () -> Build.meetsPrerequisites(Blocks.swarmer, player.team()), () -> startPlacement(Blocks.swarmer));
+        addBuildButton(grid, "n", Blocks.hail, () -> Build.meetsPrerequisites(Blocks.hail, player.team()), () -> startPlacement(Blocks.hail));
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
 
@@ -371,19 +374,19 @@ public class UnitAbilityPanel extends Table{
         Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
-        addBuildButton(grid, 0, 0, "g", Blocks.launchPad.localizedName, Blocks.launchPad, () -> startPlacement(Blocks.launchPad));
+        addBuildButton(grid, "g", Blocks.launchPad, () -> Build.meetsPrerequisites(Blocks.launchPad, player.team()), () -> startPlacement(Blocks.launchPad));
         fillRow(grid, 0, 1);
         grid.row();
 
         //Row 2
-        addBuildButton(grid, 1, 0, "f", Blocks.tankFabricator.localizedName, Blocks.tankFabricator, () -> startPlacement(Blocks.tankFabricator));
-        addBuildButton(grid, 1, 1, "a", Blocks.siliconCrucible.localizedName, Blocks.siliconCrucible, () -> startPlacement(Blocks.siliconCrucible));
+        addBuildButton(grid, "f", Blocks.tankFabricator, () -> Build.meetsPrerequisites(Blocks.tankFabricator, player.team()), () -> startPlacement(Blocks.tankFabricator));
+        addBuildButton(grid, "a", Blocks.siliconCrucible, () -> Build.meetsPrerequisites(Blocks.siliconCrucible, player.team()), () -> startPlacement(Blocks.siliconCrucible));
         fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
-        addBuildButton(grid, 2, 0, "s", Blocks.shipFabricator.localizedName, Blocks.shipFabricator, () -> startPlacement(Blocks.shipFabricator));
-        addBuildButton(grid, 2, 1, "c", Blocks.surgeCrucible.localizedName, Blocks.surgeCrucible, () -> startPlacement(Blocks.surgeCrucible));
+        addBuildButton(grid, "s", Blocks.shipFabricator, () -> Build.meetsPrerequisites(Blocks.shipFabricator, player.team()), () -> startPlacement(Blocks.shipFabricator));
+        addBuildButton(grid, "c", Blocks.surgeCrucible, () -> Build.meetsPrerequisites(Blocks.surgeCrucible, player.team()), () -> startPlacement(Blocks.surgeCrucible));
         addEmpty(grid);
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
@@ -406,6 +409,11 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
+        if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
+            buildFactoryPanel(factory);
+            return;
+        }
+
         if(!(build instanceof ConstructBuild)){
             add(build.block.localizedName).color(Color.lightGray).pad(10f);
             return;
@@ -420,42 +428,87 @@ public class UnitAbilityPanel extends Table{
                 if(r == 1 && c == 3 && incomplete){
                     Unit builder = findActiveBuilder(cons);
                     if(builder != null){
-                        grid.button(b -> {
-                            b.table(t -> {
-                                t.add("[q]").style(Styles.outlineLabel).color(Color.yellow).row();
-                                t.add("Select").style(Styles.outlineLabel);
-                            }).pad(4f);
-                        }, Styles.clearTogglei, () -> selectBuilder(builder)).size(64f).pad(2f);
+                        addIconButton(grid, "q", Icon.zoom, () -> true, () -> selectBuilder(builder));
                     }else{
-                        grid.add().size(64f).pad(2f);
+                        grid.add().size(abilityButtonSize).pad(2f);
                     }
                 }else if(r == 2 && c == 3 && incomplete){
                     Unit builder = findActiveBuilder(cons);
                     if(builder != null){
-                        grid.button(b -> {
-                            b.table(t -> {
-                                t.add("[t]").style(Styles.outlineLabel).color(Color.yellow).row();
-                                t.add("Pause").style(Styles.outlineLabel);
-                            }).pad(4f);
-                        }, Styles.clearTogglei, () -> pauseBuilder(builder)).size(64f).pad(2f);
+                        addIconButton(grid, "t", Icon.pause, () -> true, () -> pauseBuilder(builder));
                     }else{
-                        grid.add().size(64f).pad(2f);
+                        grid.add().size(abilityButtonSize).pad(2f);
                     }
                 }else if(r == 2 && c == 4 && incomplete){
-                    grid.button(b -> {
-                        b.table(t -> {
-                            t.add("[Esc]").style(Styles.outlineLabel).color(Color.yellow).row();
-                            t.add("Cancel").style(Styles.outlineLabel);
-                        }).pad(4f);
-                    }, Styles.clearTogglei, () -> cancelConstruct(cons)).size(64f).pad(2f);
+                    addIconButton(grid, "Esc", Icon.cancel, () -> true, () -> cancelConstruct(cons));
                 }else{
-                    grid.add().size(64f).pad(2f);
+                    grid.add().size(abilityButtonSize).pad(2f);
                 }
             }
             grid.row();
         }
 
         add(grid);
+    }
+
+    private void buildFactoryPanel(UnitFactory.UnitFactoryBuild factory){
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+        boolean showAddonButtons = factory.canShowAddonButtons();
+        UnitFactory block = (UnitFactory)factory.block;
+        int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
+        int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
+        int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
+        int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
+
+        //Row 1
+        if(daggerIndex != -1){
+            addUnitButton(grid, "a", block.plans.get(daggerIndex), () -> factory.canQueuePlan(daggerIndex), () -> factory.configure(daggerIndex));
+        }else{
+            addEmpty(grid);
+        }
+        if(reaperIndex != -1){
+            addUnitButton(grid, "r", block.plans.get(reaperIndex), () -> factory.canQueuePlan(reaperIndex), () -> factory.configure(reaperIndex));
+        }else{
+            addEmpty(grid);
+        }
+        if(fortressIndex != -1){
+            addUnitButton(grid, "d", block.plans.get(fortressIndex), () -> factory.canQueuePlan(fortressIndex), () -> factory.configure(fortressIndex));
+        }else{
+            addEmpty(grid);
+        }
+        if(ghostIndex != -1){
+            addUnitButton(grid, "g", block.plans.get(ghostIndex), () -> factory.canQueuePlan(ghostIndex), () -> factory.configure(ghostIndex));
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        grid.row();
+
+        //Row 2
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        //Row 3
+        if(showAddonButtons){
+            addAddonBuildButton(grid, "x", "Tech Addon", Blocks.memoryBank,
+                UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost, UnitFactory.sc2AddonTechTime,
+                () -> true, () -> factory.configure(UnitFactory.sc2AddonTechConfig));
+            addAddonBuildButton(grid, "c", "Double Addon", Blocks.rotaryPump,
+                UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost, UnitFactory.sc2AddonDoubleTime,
+                () -> true, () -> factory.configure(UnitFactory.sc2AddonDoubleConfig));
+        }else{
+            addEmpty(grid);
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addCancelButton(grid, () -> factory.configure(UnitFactory.sc2AddonCancelConfig));
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
     }
 
     private void buildCorePanel(CoreBuild core){
@@ -470,14 +523,14 @@ public class UnitAbilityPanel extends Table{
         Table grid = new Table();
 
         //Row 1
-        addGridButton(grid, 0, 0, "s", "SCV", () -> {
+        addIconButton(grid, "s", new TextureRegionDrawable(UnitTypes.nova.uiIcon), () -> true, () -> {
             queueCoreUnit(core);
             corePanel = CorePanel.BUILD;
         });
         addEmpty(grid);
         addEmpty(grid);
-        addGridButton(grid, 0, 3, "b", "Starport", this::showNotImplemented);
-        addGridButton(grid, 0, 4, "p", "Planetary Fortress", this::showNotImplemented);
+        addIconButton(grid, "b", new TextureRegionDrawable(Blocks.shipFabricator.uiIcon), () -> true, this::showNotImplemented);
+        addIconButton(grid, "p", new TextureRegionDrawable(Blocks.coreNucleus.uiIcon), () -> true, this::showNotImplemented);
         grid.row();
 
         //Row 2
@@ -485,14 +538,14 @@ public class UnitAbilityPanel extends Table{
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
-        addGridButton(grid, 1, 4, "y", "Rally", () -> enterCommandMode(CommandMode.RALLY));
+        addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
         grid.row();
 
         //Row 3
-        addGridButton(grid, 2, 0, "o", "Load", this::showNotImplemented);
+        addIconButton(grid, "o", Icon.upload, () -> true, this::showNotImplemented);
         addEmpty(grid);
         addEmpty(grid);
-        addGridButton(grid, 2, 3, "l", "Launch", () -> launchCore(core));
+        addIconButton(grid, "l", Icon.export, () -> true, () -> launchCore(core));
         addEmpty(grid);
 
         add(grid);
@@ -517,28 +570,61 @@ public class UnitAbilityPanel extends Table{
         add(grid);
     }
 
-    private void addAbilityButton(String name, String desc, Runnable action){
-        button(b -> {
-            b.add(name).style(Styles.outlineLabel);
-        }, Styles.clearTogglei, action).size(64f).pad(2f);
+    private Element borderElement(){
+        return new Element(){
+            @Override
+            public void draw(){
+                Draw.color(abilityBorderColor);
+                Lines.stroke(1.5f);
+                float inset = 1.5f;
+                float innerInset = 4.5f;
+                Lines.rect(x + inset, y + inset, width - inset * 2f, height - inset * 2f);
+                Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+                Draw.reset();
+            }
+        };
     }
 
-    private void addGridButton(Table grid, int row, int col, String key, String label, Runnable action){
-        grid.button(b -> {
-            b.table(t -> {
-                t.add("[" + key + "]").style(Styles.outlineLabel).color(Color.yellow).row();
-                t.add(label).style(Styles.outlineLabel);
-            }).pad(4f);
-        }, Styles.clearTogglei, action).size(64f).pad(2f);
+    private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action){
+        Boolp allowed = enabled == null ? () -> true : enabled;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(allowed.get()) action.run();
+        });
+        button.update(() -> button.setDisabled(!allowed.get()));
+
+        Stack stack = new Stack();
+        stack.add(borderElement());
+
+        Image image = new Image(icon);
+        image.setScaling(Scaling.fit);
+        image.update(() -> image.setColor(allowed.get() ? Color.white : Color.gray));
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        if(key != null && !key.isEmpty()){
+            Table keyTable = new Table();
+            keyTable.top().left();
+            Label keyLabel = new Label(key);
+            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
+            keyTable.add(keyLabel).pad(3f);
+            stack.add(keyTable);
+        }
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        return button;
     }
 
-    private void addBuildButton(Table grid, int row, int col, String key, String label, Block block, Runnable action){
-        var button = grid.button(b -> {
-            b.table(t -> {
-                t.add("[" + key + "]").style(Styles.outlineLabel).color(Color.yellow).row();
-                t.add(label).style(Styles.outlineLabel);
-            }).pad(4f);
-        }, Styles.clearTogglei, action).size(64f).pad(2f).get();
+    private void addAbilityButton(String key, Drawable icon, Boolp enabled, Runnable action){
+        addIconButton(this, key, icon, enabled, action);
+    }
+
+    private Button addBuildButton(Table grid, String key, Block block, Boolp enabled, Runnable action){
+        Button button = addIconButton(grid, key, new TextureRegionDrawable(block.uiIcon), enabled, action);
         BuildInfo info = makeBuildInfo(block, key);
         button.update(() -> {
             if(button.isOver()){
@@ -547,6 +633,33 @@ public class UnitAbilityPanel extends Table{
                 hoverBuildInfo = null;
             }
         });
+        return button;
+    }
+
+    private Button addAddonBuildButton(Table grid, String key, String label, Block block, int crystalCost, int gasCost, float buildTime, Boolp enabled, Runnable action){
+        Button button = addIconButton(grid, key, new TextureRegionDrawable(block.uiIcon), enabled, action);
+        BuildInfo info = makeAddonInfo(block, key, label, crystalCost, gasCost, buildTime);
+        button.update(() -> {
+            if(button.isOver()){
+                hoverBuildInfo = info;
+            }else if(hoverBuildInfo == info){
+                hoverBuildInfo = null;
+            }
+        });
+        return button;
+    }
+
+    private Button addUnitButton(Table grid, String key, UnitFactory.UnitPlan plan, Boolp enabled, Runnable action){
+        Button button = addIconButton(grid, key, new TextureRegionDrawable(plan.unit.uiIcon), enabled, action);
+        BuildInfo info = makeUnitInfo(plan, key);
+        button.update(() -> {
+            if(button.isOver()){
+                hoverBuildInfo = info;
+            }else if(hoverBuildInfo == info){
+                hoverBuildInfo = null;
+            }
+        });
+        return button;
     }
 
     private Table buildBuildInfoTable(){
@@ -558,7 +671,7 @@ public class UnitAbilityPanel extends Table{
 
         info.label(() -> {
             if(hoverBuildInfo == null) return "";
-            return "建造" + hoverBuildInfo.name + " (" + hoverBuildInfo.key + ")";
+            return "Build " + hoverBuildInfo.name + " (" + hoverBuildInfo.key + ")";
         }).left().row();
 
         info.table(t -> {
@@ -580,9 +693,20 @@ public class UnitAbilityPanel extends Table{
 
         info.label(() -> {
             if(hoverBuildInfo == null) return "";
-            return "时间 " + hoverBuildInfo.timeSeconds + "s";
+            return "Time " + hoverBuildInfo.timeSeconds + "s";
         }).left();
 
+        return info;
+    }
+
+    private BuildInfo makeAddonInfo(Block block, String key, String name, int crystalCost, int gasCost, float buildTime){
+        BuildInfo info = new BuildInfo();
+        info.block = block;
+        info.key = key;
+        info.name = name;
+        info.crystalCost = crystalCost;
+        info.gasCost = gasCost;
+        info.timeSeconds = Math.round(buildTime / 60f);
         return info;
     }
 
@@ -597,6 +721,17 @@ public class UnitAbilityPanel extends Table{
         return info;
     }
 
+    private BuildInfo makeUnitInfo(UnitFactory.UnitPlan plan, String key){
+        BuildInfo info = new BuildInfo();
+        info.unit = plan.unit;
+        info.key = key;
+        info.name = sc2Name(plan.unit);
+        info.crystalCost = getCost(plan.requirements, Items.graphite);
+        info.gasCost = getCost(plan.requirements, Items.highEnergyGas);
+        info.timeSeconds = Math.round(plan.time / 60f);
+        return info;
+    }
+
     private int getCost(Block block, Item item){
         if(block == null || item == null) return 0;
         int total = 0;
@@ -608,6 +743,18 @@ public class UnitAbilityPanel extends Table{
         return total;
     }
 
+    private int getCost(ItemStack[] requirements, Item item){
+        if(requirements == null || item == null) return 0;
+        int total = 0;
+        for(ItemStack stack : requirements){
+            if(stack.item == item){
+                total += stack.amount;
+            }
+        }
+        return total;
+    }
+
+    /*
     private String sc2Name(Block block){
         if(block == Blocks.coreNucleus) return "基地";
         if(block == Blocks.ventCondenser) return "精炼厂";
@@ -625,26 +772,37 @@ public class UnitAbilityPanel extends Table{
         return block.localizedName;
     }
 
+    private String sc2Name(UnitType unit){
+        if(unit == UnitTypes.dagger) return "枪兵";
+        if(unit == UnitTypes.reaper) return "死神";
+        if(unit == UnitTypes.fortress) return "劫掠者";
+        if(unit == UnitTypes.ghost) return "幽灵";
+        return unit.localizedName;
+    }
+
+    */
+    private String sc2Name(Block block){
+        return block == null ? "" : block.localizedName;
+    }
+
+    private String sc2Name(UnitType unit){
+        return unit == null ? "" : unit.localizedName;
+    }
+
     private void addEmpty(Table grid){
-        grid.add().size(64f).pad(2f);
+        grid.add().size(abilityButtonSize).pad(2f);
+    }
+
+    private void addCancelButton(Table grid, Runnable action){
+        addIconButton(grid, "Esc", Icon.cancel, () -> true, action);
     }
 
     private void addEscButton(Table grid, Runnable action){
-        grid.button(b -> {
-            b.table(t -> {
-                t.add("[Esc]").style(Styles.outlineLabel).color(Color.yellow).row();
-                t.add("Back").style(Styles.outlineLabel);
-            }).pad(4f);
-        }, Styles.clearTogglei, action).size(64f).pad(2f);
+        addIconButton(grid, "Esc", Icon.left, () -> true, action);
     }
 
     private void addStopBuildButton(Table grid){
-        grid.button(b -> {
-            b.table(t -> {
-                t.add("[t]").style(Styles.outlineLabel).color(Color.yellow).row();
-                t.add("Stop").style(Styles.outlineLabel);
-            }).pad(4f);
-        }, Styles.clearTogglei, this::stopSelectedBuilders).size(64f).pad(2f);
+        addIconButton(grid, "t", Icon.pause, () -> true, this::stopSelectedBuilders);
     }
 
     private void fillRow(Table grid, int row, int startCol){
@@ -781,6 +939,35 @@ public class UnitAbilityPanel extends Table{
     private void handleBuildingHotkeys(){
         if(control.input.commandBuildings.isEmpty()) return;
         Building build = control.input.commandBuildings.first();
+        if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
+            UnitFactory block = (UnitFactory)factory.block;
+            int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
+            int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
+            int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
+            int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
+
+            if(Core.input.keyTap(KeyCode.a) && daggerIndex != -1 && factory.canQueuePlan(daggerIndex)){
+                factory.configure(daggerIndex);
+            }else if(Core.input.keyTap(KeyCode.r) && reaperIndex != -1 && factory.canQueuePlan(reaperIndex)){
+                factory.configure(reaperIndex);
+            }else if(Core.input.keyTap(KeyCode.d) && fortressIndex != -1 && factory.canQueuePlan(fortressIndex)){
+                factory.configure(fortressIndex);
+            }else if(Core.input.keyTap(KeyCode.g) && ghostIndex != -1 && factory.canQueuePlan(ghostIndex)){
+                factory.configure(ghostIndex);
+            }
+
+            if(factory.canShowAddonButtons()){
+                if(Core.input.keyTap(KeyCode.x)){
+                    factory.configure(UnitFactory.sc2AddonTechConfig);
+                }else if(Core.input.keyTap(KeyCode.c)){
+                    factory.configure(UnitFactory.sc2AddonDoubleConfig);
+                }
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                factory.configure(UnitFactory.sc2AddonCancelConfig);
+            }
+            return;
+        }
         if(!(build instanceof ConstructBuild)) return;
 
         ConstructBuild cons = (ConstructBuild)build;
@@ -804,7 +991,7 @@ public class UnitAbilityPanel extends Table{
     private void queueCoreUnit(CoreBuild core){
         if(core == null) return;
         if(!core.canQueueUnit(UnitTypes.nova)){
-            if(core.unitQueue != null && core.unitQueue.size >= CoreBlock.maxUnitQueue){
+            if(core.unitQueue != null && core.unitQueue.size >= core.queueSlots()){
                 ui.hudfrag.setHudText("Queue full");
             }else{
                 ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
@@ -830,6 +1017,7 @@ public class UnitAbilityPanel extends Table{
 
     private void startPlacement(Block block){
         if(block == null) return;
+        if(!Build.meetsPrerequisites(block, player.team())) return;
         if(!canAfford(block)){
             ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
             return;
@@ -956,9 +1144,9 @@ public class UnitAbilityPanel extends Table{
         Table buttonGrid = new Table();
         for(int i = 0; i < ROWS * COLS; i++){
             if(i == 14){ //Row 3, Column 5 (0-indexed: row 2, col 4)
-                buttonGrid.button("[Esc]", Styles.cleart, () -> exitCommandMode()).size(64f).pad(2f);
+                addIconButton(buttonGrid, "Esc", Icon.cancel, () -> true, this::exitCommandMode);
             }else{
-                buttonGrid.add().size(64f).pad(2f);
+                addEmpty(buttonGrid);
             }
 
             if((i + 1) % COLS == 0){

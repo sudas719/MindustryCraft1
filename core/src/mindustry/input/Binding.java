@@ -39,7 +39,19 @@ public class Binding{
     commandQueue = KeyBind.add("command_queue", KeyCode.mouseMiddle),
     createControlGroup = KeyBind.add("create_control_group", KeyCode.controlLeft),
 
-    selectAllUnits = KeyBind.add("select_all_units", KeyCode.g),
+    controlGroup01 = KeyBind.add("control_group_01", KeyCode.num1),
+    controlGroup02 = KeyBind.add("control_group_02", KeyCode.num2),
+    controlGroup03 = KeyBind.add("control_group_03", KeyCode.num3),
+    controlGroup04 = KeyBind.add("control_group_04", KeyCode.num4),
+    controlGroup05 = KeyBind.add("control_group_05", KeyCode.num5),
+    controlGroup06 = KeyBind.add("control_group_06", KeyCode.num6),
+    controlGroup07 = KeyBind.add("control_group_07", KeyCode.num7),
+    controlGroup08 = KeyBind.add("control_group_08", KeyCode.num8),
+    controlGroup09 = KeyBind.add("control_group_09", KeyCode.num9),
+    controlGroup10 = KeyBind.add("control_group_10", KeyCode.num0),
+
+    selectAllUnits = KeyBind.add("select_all_units", KeyCode.f2),
+    selectIdleWorkers = KeyBind.add("select_idle_workers", KeyCode.f1),
     selectAllUnitFactories = KeyBind.add("select_all_unit_factories", KeyCode.unset),  //Disabled: conflicts with RTS Hold command
     selectAllUnitTransport = KeyBind.add("select_all_unit_transport", KeyCode.unset),
     selectAcrossScreen = KeyBind.add("select_across_screen", KeyCode.altLeft),
@@ -111,10 +123,14 @@ public class Binding{
     detachCamera = KeyBind.add("detach_camera", KeyCode.unset),
 
     //View presets: Ctrl+F1-F4 to save, F1-F4 to jump
-    viewPreset1 = KeyBind.add("view_preset_1", KeyCode.f1),
-    viewPreset2 = KeyBind.add("view_preset_2", KeyCode.f2),
+    viewPreset1 = KeyBind.add("view_preset_1", KeyCode.unset),
+    viewPreset2 = KeyBind.add("view_preset_2", KeyCode.unset),
     viewPreset3 = KeyBind.add("view_preset_3", KeyCode.f3),
     viewPreset4 = KeyBind.add("view_preset_4", KeyCode.f4),
+    viewPresetSet1 = KeyBind.add("view_preset_set_1", KeyCode.unset),
+    viewPresetSet2 = KeyBind.add("view_preset_set_2", KeyCode.unset),
+    viewPresetSet3 = KeyBind.add("view_preset_set_3", KeyCode.unset),
+    viewPresetSet4 = KeyBind.add("view_preset_set_4", KeyCode.unset),
 
     menu = KeyBind.add("menu", Vars.android ? KeyCode.back : KeyCode.f10),
     fullscreen = KeyBind.add("fullscreen", KeyCode.f11),

@@ -295,19 +295,14 @@ public class OverlayRenderer{
         if(input == null) return;
         var hover = input.updateHover(false);
         Building hoverBuild = hover != null && hover.build != null && hover.build.isValid() ? hover.build : null;
+        Unit hoverUnit = hover != null && hover.unit != null && hover.unit.isValid() ? hover.unit : null;
 
         Draw.draw(Layer.blockOver + 1f, () -> {
-            for(Building build : Groups.build){
-                if(build == null || !build.isValid()) continue;
-
-                if(build instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
-                    float size = cons.current.size * tilesize;
-                    drawProgressBar(build.x, build.y, size, cons.progress);
-                }
-            }
-
             if(hoverBuild != null){
-                if(hoverBuild instanceof CoreBuild core){
+                if(hoverBuild instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
+                    float size = cons.current.size * tilesize;
+                    drawProgressBar(hoverBuild.x, hoverBuild.y, size, cons.progress);
+                }else if(hoverBuild instanceof CoreBuild core){
                     if(core.unitQueue != null && !core.unitQueue.isEmpty()){
                         drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.unitProgressFraction());
                     }
@@ -316,6 +311,9 @@ public class OverlayRenderer{
                         drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), factory.fraction());
                     }
                 }
+            }
+            if(hoverUnit != null && hoverUnit.type.energyCapacity > 0f){
+                drawEnergyBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, hoverUnit.energy / hoverUnit.type.energyCapacity);
             }
             Draw.reset();
         });
@@ -330,6 +328,18 @@ public class OverlayRenderer{
         Draw.color(Color.black, 0.6f);
         Fill.rect(x, y + offset, barWidth, barHeight);
         Draw.color(Pal.accent);
+        Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
+    }
+
+    private void drawEnergyBar(float x, float y, float size, float progress){
+        float barWidth = size;
+        float barHeight = 3.5f;
+        float offset = size / 2f + 8f;
+        float clamped = Mathf.clamp(progress);
+
+        Draw.color(Color.black, 0.6f);
+        Fill.rect(x, y + offset, barWidth, barHeight);
+        Draw.color(Color.valueOf("b57aff"));
         Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
     }
 

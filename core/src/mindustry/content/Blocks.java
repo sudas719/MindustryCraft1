@@ -1053,9 +1053,8 @@ public class Blocks{
             size = 3;
             hasItems = true;
             hasLiquids = true;
-            hasPower = true;
+            hasPower = false;
 
-            consumePower(1.8f);
             consumeItem(Items.coal, 3);
             consumeLiquid(Liquids.water, 0.1f);
         }};
@@ -1083,7 +1082,7 @@ public class Blocks{
             outputItem = new ItemStack(Items.silicon, 8);
             craftTime = 90f;
             size = 3;
-            hasPower = true;
+            hasPower = false;
             hasLiquids = false;
             itemCapacity = 30;
             boostScale = 0.15f;
@@ -1092,7 +1091,6 @@ public class Blocks{
             ambientSoundVolume = 0.07f;
 
             consumeItems(with(Items.coal, 4, Items.sand, 6, Items.pyratite, 1));
-            consumePower(4f);
         }};
 
         kiln = new GenericCrafter("kiln"){{
@@ -1612,7 +1610,6 @@ public class Blocks{
 
             consumeItem(Items.silicon, 3);
             consumeLiquid(Liquids.slag, 160f / 60f);
-            consumePower(1.5f);
         }};
 
         cyanogenSynthesizer = new HeatCrafter("cyanogen-synthesizer"){{
@@ -1787,10 +1784,12 @@ public class Blocks{
         doorLarge = new Door("door-large"){{
             requirements(Category.defense, with(Items.graphite, 100));
             buildTime = 21f * 60f;
+            buildCostMultiplier = 1f;
             openfx = Fx.dooropenlarge;
             closefx = Fx.doorcloselarge;
             health = 100 * 4 * wallHealthMultiplier;
             size = 2;
+            unitCapModifier = 8;
         }};
 
         scrapWall = new Wall("scrap-wall"){{
@@ -2313,13 +2312,19 @@ public class Blocks{
         }};
 
         rotaryPump = new Pump("rotary-pump"){{
-            requirements(Category.liquid, with(Items.copper, 70, Items.metaglass, 50, Items.silicon, 20, Items.titanium, 35));
+            requirements(Category.liquid, with(Items.graphite, 50, Items.highEnergyGas, 50));
+            buildTime = 36f * 60f;
             pumpAmount = 0.2f;
             consumePower(0.3f);
             liquidCapacity = 80f;
             hasPower = true;
             size = 2;
-        }};
+        }
+        @Override
+        public boolean canPlaceOn(Tile tile, Team team, int rotation){
+            return true;
+        }
+        };
 
         impulsePump = new Pump("impulse-pump"){{
             requirements(Category.liquid, with(Items.copper, 80, Items.metaglass, 90, Items.silicon, 30, Items.titanium, 40, Items.thorium, 35));
@@ -3195,7 +3200,7 @@ public class Blocks{
             size = 5;
             thrusterLength = 40/4f;
 
-            unitCapModifier = 24;
+            unitCapModifier = 16;
             researchCostMultiplier = 0.11f;
         }};
 
@@ -6242,13 +6247,18 @@ public class Blocks{
         groundFactory = new UnitFactory("ground-factory"){{
             requirements(Category.units, with(Items.graphite, 150));
             buildTime = 46f * 60f;
+            hasPower = false;
+            sc2Queue = true;
+            sc2AddonSupport = true;
+            sc2QueueSlots = 6;
+            sc2QueueSlotsAddon = 8;
             plans = Seq.with(
-                new UnitPlan(UnitTypes.dagger, 60f * 15, with(Items.silicon, 10, Items.lead, 10)),
-                new UnitPlan(UnitTypes.crawler, 60f * 10, with(Items.silicon, 8, Items.coal, 10)),
-                new UnitPlan(UnitTypes.nova, 60f * 40, with(Items.silicon, 30, Items.lead, 20, Items.titanium, 20))
+                new UnitPlan(UnitTypes.dagger, 60f * 18f, with(Items.graphite, 50)),
+                new UnitPlan(UnitTypes.reaper, 60f * 32f, with(Items.graphite, 50, Items.highEnergyGas, 50)),
+                new UnitPlan(UnitTypes.fortress, 60f * 21f, with(Items.graphite, 100, Items.highEnergyGas, 25)),
+                new UnitPlan(UnitTypes.ghost, 60f * 29f, with(Items.graphite, 150, Items.highEnergyGas, 125))
             );
             size = 3;
-            consumePower(1.2f);
             researchCostMultiplier = 0.5f;
         }};
 
@@ -6390,12 +6400,16 @@ public class Blocks{
             requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
             buildTime = 43f * 60f;
             size = 3;
-            configurable = false;
+            configurable = true;
+            hasPower = false;
+            sc2Queue = true;
+            sc2AddonSupport = true;
+            sc2QueueSlots = 6;
+            sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.stell, 60f * 35f, with(Items.beryllium, 40, Items.silicon, 50)));
             researchCost = with(Items.beryllium, 200, Items.graphite, 80, Items.silicon, 80);
             regionSuffix = "-dark";
             fogRadius = 3;
-            consumePower(1.5f);
         }};
 
         shipFabricator = new UnitFactory("ship-fabricator"){{
@@ -6403,12 +6417,16 @@ public class Blocks{
             buildTime = 36f * 60f;
 
             size = 3;
-            configurable = false;
+            configurable = true;
+            hasPower = false;
+            sc2Queue = true;
+            sc2AddonSupport = true;
+            sc2QueueSlots = 6;
+            sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.elude, 60f * 40f, with(Items.graphite, 50, Items.silicon, 70)));
             regionSuffix = "-dark";
             fogRadius = 3;
             researchCostMultiplier = 0.5f;
-            consumePower(1.5f);
         }};
 
         mechFabricator = new UnitFactory("mech-fabricator"){{
@@ -6765,14 +6783,13 @@ public class Blocks{
         //region campaign
 
         launchPad = new LaunchPad("launch-pad"){{
-            requirements(Category.effect, BuildVisibility.legacyLaunchPadOnly, with(Items.graphite, 150, Items.highEnergyGas, 50));
+            requirements(Category.effect, with(Items.graphite, 150, Items.highEnergyGas, 50));
             buildTime = 29f * 60f;
             size = 3;
             itemCapacity = 100;
             launchTime = 60f * 20;
-            hasPower = true;
+            hasPower = false;
             acceptMultipleItems = true;
-            consumePower(4f);
         }};
 
         advancedLaunchPad = new LaunchPad("advanced-launch-pad"){{
@@ -6853,7 +6870,8 @@ public class Blocks{
         }};
 
         memoryBank = new MemoryBlock("memory-bank"){{
-            requirements(Category.logic, with(Items.graphite, 80, Items.silicon, 80, Items.phaseFabric, 30, Items.copper, 30));
+            requirements(Category.logic, with(Items.graphite, 50, Items.highEnergyGas, 25));
+            buildTime = 18f * 60f;
 
             memoryCapacity = 512;
             size = 2;

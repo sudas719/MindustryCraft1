@@ -6,15 +6,19 @@ import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
+import arc.Events;
+import arc.Core;
 import mindustry.ai.*;
 import mindustry.ai.types.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.entities.*;
+import mindustry.entities.units.WeaponMount;
 import mindustry.entities.abilities.*;
 import mindustry.entities.bullet.*;
 import mindustry.entities.effect.*;
 import mindustry.entities.part.*;
 import mindustry.entities.pattern.*;
+import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.type.*;
@@ -31,8 +35,10 @@ import static mindustry.Vars.*;
 public class UnitTypes{
     //region standard
 
+    private static final UnitDamageEvent unitDamageEvent = new UnitDamageEvent();
+
     //mech
-    public static @EntityDef({Unitc.class, Mechc.class}) UnitType mace, dagger, crawler, fortress, scepter, reign, vela;
+    public static @EntityDef({Unitc.class, Mechc.class}) UnitType mace, dagger, reaper, crawler, fortress, ghost, scepter, reign, vela;
 
     //mech, legacy
     public static @EntityDef(value = {Unitc.class, Mechc.class}, legacy = true) UnitType nova, pulsar, quasar;
@@ -98,25 +104,80 @@ public class UnitTypes{
         //region ground attack
 
         dagger = new UnitType("dagger"){{
-            researchCostMultiplier = 0.5f;
-            speed = 3.75f;
-            hitSize = 8f;
-            health = 150;
-            stepSoundVolume = 0.4f;
+            speed = 3.15f;
+            health = 45f;
+            armor = 0f;
+            rotateSpeed = 6f;
+            range = maxRange = 5f * tilesize;
+            targetAir = true;
+            targetGround = true;
+            armorType = ArmorType.light;
+            unitClass = UnitClass.biological;
+            population = 1;
 
-            weapons.add(new Weapon("large-weapon"){{
-                reload = 13f;
-                x = 4f;
-                y = 2f;
-                top = false;
-                ejectEffect = Fx.casing1;
-                bullet = new BasicBulletType(2.5f, 9){{
-                    width = 7f;
-                    height = 9f;
-                    lifetime = 60f;
-                }};
+            weapons.add(new Weapon(){{
+                reload = 0.61f * 60f;
+                bullet = new PointBulletType(){
+                    {
+                        damage = 6f;
+                    }
+
+                @Override
+                public void hitEntity(Bullet b, Hitboxc entity, float health){
+                    Unit unit = entity instanceof Unit ? (Unit)entity : null;
+                    float armor = unit != null ? unit.armor : 0f;
+                    float effective = Math.max(b.damage - armor, 0.5f);
+                    if(entity instanceof Healthc){
+                        ((Healthc)entity).damagePierce(effective);
+                    }
+                    if(unit != null){
+                        Tmp.v3.set(unit).sub(b).nor().scl(knockback * 80f);
+                        if(impact) Tmp.v3.setAngle(b.rotation() + (knockback < 0 ? 180f : 0f));
+                        unit.impulse(Tmp.v3);
+                        unit.apply(status, statusDuration);
+                        Events.fire(unitDamageEvent.set(unit, b));
+                    }
+                    handlePierce(b, health, entity.x(), entity.y());
+                }
+                };
             }});
         }};
+
+        reaper = new UnitType("reaper"){{
+            speed = 5.25f;
+            health = 60f;
+            armor = 0f;
+            rotateSpeed = 6f;
+            range = maxRange = 5f * tilesize;
+            targetAir = false;
+            targetGround = true;
+            armorType = ArmorType.light;
+            unitClass = UnitClass.biological;
+            population = 1;
+            canPassWalls = true;
+            regenDelay = 3f;
+            regenRate = 2.5f;
+
+            weapons.add(new Weapon(){{
+                reload = 0.79f * 60f;
+                shoot.shots = 2;
+                bullet = new PointBulletType(){{
+                    damage = 4f;
+                }};
+            }});
+        }
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("alpha");
+            outlineRegion = region;
+            baseRegion = region;
+            fullIcon = Core.atlas.find("unit-alpha-full", region);
+            uiIcon = Core.atlas.find("unit-alpha-ui", fullIcon);
+            shadowRegion = fullIcon;
+            clipSize = Math.max(region.width * 2f, clipSize);
+        }
+        };
 
         mace = new UnitType("mace"){{
             speed = 3.75f;
@@ -152,42 +213,154 @@ public class UnitTypes{
         }};
 
         fortress = new UnitType("fortress"){{
-            speed = 3.225f;
-            hitSize = 13f;
             rotateSpeed = 3f; // 180°/sec
             targetAir = false;
-            health = 900;
-            armor = 9f;
-            mechFrontSway = 0.55f;
-            ammoType = new ItemAmmoType(Items.graphite);
-            stepSound = Sounds.mechStepSmall;
-            stepSoundPitch = 0.8f;
-            stepSoundVolume = 0.65f;
+            speed = 3.15f;
+            health = 125f;
+            armor = 1f;
+            rotateSpeed = 6f;
+            range = maxRange = 6f * tilesize;
+            targetGround = true;
+            armorType = ArmorType.heavy;
+            unitClass = UnitClass.biological;
+            population = 2;
 
-            weapons.add(new Weapon("artillery"){{
-                top = false;
-                y = 1f;
-                x = 9f;
-                reload = 60f;
-                recoil = 4f;
-                shake = 2f;
-                ejectEffect = Fx.casing2;
-                shootSound = Sounds.shootArtillery;
-                bullet = new ArtilleryBulletType(2f, 20, "shell"){{
-                    hitEffect = Fx.blastExplosion;
-                    knockback = 0.8f;
-                    lifetime = 120f - 35f / 2f;
-                    rangeOverride = 240f;
-                    width = height = 14f;
-                    collides = true;
-                    collidesTiles = true;
-                    splashDamageRadius = 35f;
-                    splashDamage = 80f;
-                    backColor = Pal.bulletYellowBack;
-                    frontColor = Pal.bulletYellow;
-                }};
-            }});
+            weapons.add(new Weapon(){{
+                reload = 1.07f * 60f;
+                bullet = new BasicBulletType(10f * tilesize / 60f, 10f){
+                    float heavyDamage = 20f;
+
+                    {
+                        collides = false;
+                        collidesTiles = false;
+                        pierce = true;
+                        pierceBuilding = true;
+                        keepVelocity = true;
+                        lifetime = 60f;
+                    }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        return heavyDamage;
+                    }
+
+                    @Override
+                    public void update(Bullet b){
+                        super.update(b);
+                        Teamc target = b.data instanceof Teamc ? (Teamc)b.data : null;
+                        if(target == null) return;
+                        if(target instanceof Healthc && !((Healthc)target).isValid()){
+                            b.remove();
+                            return;
+                        }
+                        if(target instanceof Teamc && ((Teamc)target).team() == b.team){
+                            b.remove();
+                            return;
+                        }
+                        if(target instanceof Position){
+                            Position p = (Position)target;
+                            b.vel.setAngle(Angles.moveToward(b.vel.angle(), b.angleTo(p), 0.08f * Time.delta * 50f));
+                            b.vel.setLength(speed);
+                            float hitRange = (target instanceof Sized ? ((Sized)target).hitSize() / 2f : 0f) + hitSize;
+                            if(b.within(p, hitRange)){
+                                if(target instanceof Unit){
+                                    Unit u = (Unit)target;
+                                    hitEntity(b, u, u.health());
+                                }else if(target instanceof Building){
+                                    Building build = (Building)target;
+                                    if(build.team != b.team){
+                                        build.collision(b);
+                                        hit(b);
+                                    }
+                                }
+                                b.remove();
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void hitEntity(Bullet b, Hitboxc entity, float health){
+                        float prev = b.damage;
+                        if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.heavy){
+                            b.damage = heavyDamage;
+                        }
+                        super.hitEntity(b, entity, health);
+                        b.damage = prev;
+                    }
+                };
+            }
+            @Override
+            protected void bullet(Unit unit, WeaponMount mount, float xOffset, float yOffset, float angleOffset, Mover mover){
+                if(!unit.isAdded()) return;
+
+                mount.charging = false;
+                float
+                xSpread = Mathf.range(xRand),
+                ySpread = Mathf.range(yRand),
+                weaponRotation = unit.rotation - 90 + (rotate ? mount.rotation : baseRotation),
+                mountX = unit.x + Angles.trnsx(unit.rotation - 90, x, y),
+                mountY = unit.y + Angles.trnsy(unit.rotation - 90, x, y),
+                bulletX = mountX + Angles.trnsx(weaponRotation, this.shootX + xOffset + xSpread, this.shootY + yOffset + ySpread),
+                bulletY = mountY + Angles.trnsy(weaponRotation, this.shootX + xOffset + xSpread, this.shootY + yOffset + ySpread),
+                shootAngle = bulletRotation(unit, mount, bulletX, bulletY) + angleOffset,
+                lifeScl = bullet.scaleLife ? Mathf.clamp(Mathf.dst(bulletX, bulletY, mount.aimX, mount.aimY) / bullet.range) : 1f,
+                angle = shootAngle + Mathf.range(inaccuracy + bullet.inaccuracy);
+
+                Entityc shooter = unit;
+                if(unit.controller() instanceof MissileAI){
+                    shooter = ((MissileAI)unit.controller()).shooter;
+                }
+                mount.bullet = bullet.create(unit, shooter, unit.team, bulletX, bulletY, angle, -1f, (1f - velocityRnd) + Mathf.random(velocityRnd) + extraVelocity, lifeScl, mount.target, mover, mount.aimX, mount.aimY, mount.target);
+            }
+            });
         }};
+
+        ghost = new UnitType("ghost"){{
+            speed = 3.15f;
+            health = 100f;
+            armor = 0f;
+            rotateSpeed = 6f;
+            range = maxRange = 6f * tilesize;
+            targetAir = true;
+            targetGround = true;
+            armorType = ArmorType.light;
+            unitClass = UnitClass.biological;
+            population = 2;
+            energyCapacity = 200f;
+            energyInit = 20f;
+            energyRegen = 1f;
+
+            weapons.add(new Weapon(){{
+                reload = 1.07f * 60f;
+                bullet = new PointBulletType(){
+                    {
+                        damage = 10f;
+                    }
+
+                @Override
+                public void hitEntity(Bullet b, Hitboxc entity, float health){
+                    float prev = b.damage;
+                    if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.light){
+                        b.damage = 20f;
+                    }
+                    super.hitEntity(b, entity, health);
+                    b.damage = prev;
+                }
+                };
+            }});
+        }
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("atrax");
+            outlineRegion = region;
+            baseRegion = Core.atlas.find("atrax-base", region);
+            fullIcon = Core.atlas.find("unit-atrax-full", region);
+            uiIcon = Core.atlas.find("unit-atrax-ui", fullIcon);
+            shadowRegion = fullIcon;
+            clipSize = Math.max(region.width * 2f, clipSize);
+        }
+        };
 
         scepter = new UnitType("scepter"){{
             speed = 2.7f;
@@ -2757,7 +2930,8 @@ public class UnitTypes{
                     });
 
                     lineEffect = new Effect(20f, e -> {
-                        if(!(e.data instanceof Vec2 v)) return;
+                        if(!(e.data instanceof Vec2)) return;
+                        Vec2 v = (Vec2)e.data;
 
                         color(e.color);
                         stroke(e.fout() * 0.9f + 0.6f);

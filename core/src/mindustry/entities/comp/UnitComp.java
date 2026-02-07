@@ -42,7 +42,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private static final float harvestSoftScale = 3f;
 
     @Import boolean dead, disarmed;
-    @Import float x, y, rotation, maxHealth, drag, armor, hitSize, health, shield, ammo, dragMultiplier, armorOverride, speedMultiplier;
+    @Import float x, y, rotation, maxHealth, drag, armor, hitSize, health, shield, ammo, dragMultiplier, armorOverride, speedMultiplier, hitTime;
     @Import Team team;
     @Import int id;
     @Import @Nullable Tile mineTile;
@@ -55,6 +55,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     UnitType type = UnitTypes.alpha;
     boolean spawnedByCore;
     double flag;
+    float energy;
 
     transient @Nullable Trail trail;
     //TODO could be better represented as a unit
@@ -71,6 +72,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private transient float buildEjectTime;
     transient float harvestSoftTime;
     public boolean harvestHidden;
+    private transient boolean energyInitialized;
+    private transient float regenTimer;
+    private transient float lastHitTime;
 
     @SyncLocal float elevation;
     private transient boolean wasFlying;
@@ -180,6 +184,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         Tile tile = world.tile(tileX, tileY);
         if(tile == null) return false;
+        if(type.canPassWalls && tile.build == null && tile.block().solid && !tile.block().synthetic() && tile.block().size == 1){
+            return true;
+        }
 
         Building build = tile.build;
         if(build != null && (tile.block().solid || build.checkSolid())){
@@ -597,6 +604,15 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
                 abilities[i] = type.abilities.get(i).copy();
             }
         }
+        if(type.energyCapacity > 0f){
+            if(!energyInitialized){
+                energy = type.energyInit >= 0f ? type.energyInit : type.energyCapacity;
+                energyInitialized = true;
+            }
+            energy = Mathf.clamp(energy, 0f, type.energyCapacity);
+        }else{
+            energy = 0f;
+        }
         if(controller == null) controller(type.createController(self()));
     }
 
@@ -643,7 +659,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         team.data().updateCount(type, 1);
 
         //check if over unit cap
-        if(type.useUnitCap && count() > cap() && !spawnedByCore && !dead && !state.rules.editor){
+        if(type.useUnitCap && team.data().popCount > cap() && !spawnedByCore && !dead && !state.rules.editor){
             Call.unitCapDeath(self());
             team.data().updateCount(type, -1);
         }
@@ -810,6 +826,22 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         }
 
         updateDrowning();
+
+        if(type.energyCapacity > 0f){
+            energy = Mathf.clamp(energy + type.energyRegen * Time.delta / 60f, 0f, type.energyCapacity);
+        }
+
+        if(type.regenRate > 0f){
+            if(hitTime > lastHitTime){
+                regenTimer = 0f;
+            }else{
+                regenTimer += Time.delta / 60f;
+                if(regenTimer >= type.regenDelay && health < maxHealth){
+                    heal(type.regenRate * Time.delta / 60f);
+                }
+            }
+            lastHitTime = hitTime;
+        }
 
         if(wasHealed && healTime <= -1f){
             healTime = 1f;

@@ -67,16 +67,16 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     final static Seq<Building> tmpBuildings = new Seq<>(false);
     final static Color rallyColor = Color.valueOf("c9752e");
     final static KeyBind[] controlGroupBindings = {
-    Binding.blockSelect01,
-    Binding.blockSelect02,
-    Binding.blockSelect03,
-    Binding.blockSelect04,
-    Binding.blockSelect05,
-    Binding.blockSelect06,
-    Binding.blockSelect07,
-    Binding.blockSelect08,
-    Binding.blockSelect09,
-    Binding.blockSelect10
+    Binding.controlGroup01,
+    Binding.controlGroup02,
+    Binding.controlGroup03,
+    Binding.controlGroup04,
+    Binding.controlGroup05,
+    Binding.controlGroup06,
+    Binding.controlGroup07,
+    Binding.controlGroup08,
+    Binding.controlGroup09,
+    Binding.controlGroup10
     };
 
     /** If true, there is a cutscene currently occurring in logic. */
@@ -1077,10 +1077,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                             commandBuildings.clear();
                         }
                         selectedResource = selectedResource == crystal ? null : crystal;
-                    }else{
-                        if(!multi){
-                            selectedResource = null;
-                        }
                     }
                 }else{
                     if(!multi){
@@ -1178,11 +1174,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         }
                     }else{
                         Tile tile = world.tileWorld(input.mouseWorldX(), input.mouseWorldY());
-                        if(!trySelectResource(tile, shiftHeld)){
-                            if(!shiftHeld){
-                                commandBuildings.clear();
-                            }
-                        }
+                        trySelectResource(tile, shiftHeld);
                     }
                 }
                 Events.fire(Trigger.unitCommandChange);

@@ -442,10 +442,25 @@ public class DesktopInput extends InputHandler{
                 commandBuildings.clear();
                 if(input.keyDown(Binding.selectAcrossScreen)){
                     camera.bounds(Tmp.r1);
-                    selectedUnits.set(selectedCommandUnits(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height).removeAll(u -> !u.type.controlSelectGlobal));
+                    selectedUnits.set(selectedCommandUnits(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height, u -> u.type.controlSelectGlobal && u.type != UnitTypes.nova && u.type != UnitTypes.pulsar));
                 }else {
                     for(var unit : player.team().data().units){
-                        if(unit.isCommandable() && unit.type.controlSelectGlobal){
+                        if(unit.isCommandable() && unit.type.controlSelectGlobal && unit.type != UnitTypes.nova && unit.type != UnitTypes.pulsar){
+                            selectedUnits.add(unit);
+                        }
+                    }
+                }
+            }
+
+            if(input.keyTap(Binding.selectIdleWorkers)){
+                selectedUnits.clear();
+                commandBuildings.clear();
+                if(input.keyDown(Binding.selectAcrossScreen)){
+                    camera.bounds(Tmp.r1);
+                    selectedUnits.set(selectedCommandUnits(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height, this::isIdleWorker));
+                }else{
+                    for(var unit : player.team().data().units){
+                        if(isIdleWorker(unit)){
                             selectedUnits.add(unit);
                         }
                     }
@@ -618,17 +633,15 @@ public class DesktopInput extends InputHandler{
             }
         }
 
-        //View presets: Ctrl+F1-F4 to save, F1-F4 to jump
+        //View presets: bindable save + jump
         KeyBind[] viewPresetKeys = {Binding.viewPreset1, Binding.viewPreset2, Binding.viewPreset3, Binding.viewPreset4};
+        KeyBind[] viewPresetSetKeys = {Binding.viewPresetSet1, Binding.viewPresetSet2, Binding.viewPresetSet3, Binding.viewPresetSet4};
         for(int i = 0; i < viewPresetKeys.length; i++){
-            if(input.keyTap(viewPresetKeys[i])){
-                if(Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight)){
-                    //Ctrl+F1-F4: Save camera position
-                    viewPresets[i] = new Vec2(Core.camera.position.x, Core.camera.position.y);
-                }else if(viewPresets[i] != null){
-                    //F1-F4: Jump to saved position
-                    Core.camera.position.set(viewPresets[i]);
-                }
+            boolean ctrlDown = Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight);
+            if(input.keyTap(viewPresetSetKeys[i]) || (ctrlDown && input.keyTap(viewPresetKeys[i]))){
+                viewPresets[i] = new Vec2(Core.camera.position.x, Core.camera.position.y);
+            }else if(input.keyTap(viewPresetKeys[i]) && viewPresets[i] != null){
+                Core.camera.position.set(viewPresets[i]);
             }
         }
 
@@ -1134,6 +1147,21 @@ public class DesktopInput extends InputHandler{
             }
         }
 
+    }
+
+    private boolean isIdleWorker(Unit unit){
+        if(unit == null || !unit.isCommandable()) return false;
+        if(unit.type != UnitTypes.nova) return false;
+        if(unit.controller() instanceof HarvestAI) return false;
+        if(unit.activelyBuilding() || unit.isBuilding()) return false;
+        if(unit.controller() instanceof CommandAI){
+            CommandAI ai = (CommandAI)unit.controller();
+            if(ai.hasCommand() || ai.commandQueue.any() || ai.attackTarget != null || ai.followTarget != null || ai.pendingHarvestTarget != null ||
+                ai.queuedCommandPos != null || ai.queuedCommandTarget != null || ai.queuedFollowTarget != null){
+                return false;
+            }
+        }
+        return true;
     }
 
     private Cursor hoverCursor(HoverInfo hover){

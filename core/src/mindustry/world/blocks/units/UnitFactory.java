@@ -14,6 +14,7 @@ import arc.util.*;
 import arc.util.io.*;
 import mindustry.*;
 import mindustry.ai.*;
+import mindustry.content.*;
 import mindustry.ctype.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
@@ -26,13 +27,27 @@ import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.payloads.*;
+import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.consumers.*;
 import mindustry.world.meta.*;
+import mindustry.world.*;
 
 import static mindustry.Vars.*;
 
 public class UnitFactory extends UnitBlock{
     public int[] capacities = {};
+    public boolean sc2Queue = false;
+    public boolean sc2AddonSupport = false;
+    public int sc2QueueSlots = 6;
+    public int sc2QueueSlotsAddon = 8;
+    public static final int sc2AddonTechConfig = -2;
+    public static final int sc2AddonDoubleConfig = -3;
+    public static final int sc2AddonCancelConfig = -1;
+    public static final int sc2AddonCrystalCost = 50;
+    public static final int sc2AddonDoubleGasCost = 50;
+    public static final int sc2AddonTechGasCost = 25;
+    public static final float sc2AddonDoubleTime = 36f * 60f;
+    public static final float sc2AddonTechTime = 18f * 60f;
 
     public Seq<UnitPlan> plans = new Seq<>(4);
     public Sound createSound = Sounds.unitCreate;
@@ -56,6 +71,30 @@ public class UnitFactory extends UnitBlock{
         config(Integer.class, (UnitFactoryBuild build, Integer i) -> {
             if(!configurable) return;
 
+            if(sc2Queue){
+                if(i == sc2AddonTechConfig){
+                    build.startAddonBuild(Blocks.memoryBank, sc2AddonCrystalCost, sc2AddonTechGasCost, sc2AddonTechTime);
+                    return;
+                }
+                if(i == sc2AddonDoubleConfig){
+                    build.startAddonBuild(Blocks.rotaryPump, sc2AddonCrystalCost, sc2AddonDoubleGasCost, sc2AddonDoubleTime);
+                    return;
+                }
+                if(i == sc2AddonCancelConfig){
+                    if(build.isAddonBuilding()){
+                        build.cancelAddonBuild(true);
+                    }else{
+                        build.cancelLastQueued();
+                    }
+                    return;
+                }
+                if(i < 0) return;
+                if(build.isAddonBuilding()) return;
+                if(i >= plans.size) return;
+                build.queuePlan(i);
+                return;
+            }
+
             if(build.currentPlan == i) return;
             build.currentPlan = i < 0 || i >= plans.size ? -1 : i;
             build.progress = 0;
@@ -66,6 +105,14 @@ public class UnitFactory extends UnitBlock{
 
         config(UnitType.class, (UnitFactoryBuild build, UnitType val) -> {
             if(!configurable) return;
+
+            if(sc2Queue){
+                int next = plans.indexOf(p -> p.unit == val);
+                if(next != -1){
+                    build.queuePlan(next);
+                }
+                return;
+            }
 
             int next = plans.indexOf(p -> p.unit == val);
             if(build.currentPlan == next) return;
@@ -218,8 +265,18 @@ public class UnitFactory extends UnitBlock{
         private final Vec2 commandPosDynamic = new Vec2();
         public @Nullable UnitCommand command;
         public int currentPlan = -1;
+        public int queued = 0;
+        public float progress2 = 0f;
+        public float speedScl2 = 0f;
+        public int addonBuildPos = -1;
+        public int addonBuildBlock = -1;
+        public float addonBuildTime = 0f;
+        public int addonCrystalCost = 0;
+        public int addonGasCost = 0;
+        public boolean hadDoubleAddon = false;
 
         public float fraction(){
+            if(sc2Queue && queued <= 0) return 0f;
             return currentPlan == -1 ? 0 : progress / plans.get(currentPlan).time;
         }
 
@@ -408,6 +465,13 @@ public class UnitFactory extends UnitBlock{
 
             updateCommandTarget();
 
+            moveOutPayload();
+
+            if(sc2Queue){
+                updateSc2Queue();
+                return;
+            }
+
             if(efficiency > 0 && currentPlan != -1){
                 time += edelta() * speedScl * Vars.state.rules.unitBuildSpeed(team);
                 progress += edelta() * Vars.state.rules.unitBuildSpeed(team);
@@ -415,8 +479,6 @@ public class UnitFactory extends UnitBlock{
             }else{
                 speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
             }
-
-            moveOutPayload();
 
             if(currentPlan != -1 && payload == null){
                 UnitPlan plan = plans.get(currentPlan);
@@ -430,22 +492,7 @@ public class UnitFactory extends UnitBlock{
                 if(progress >= plan.time){
                     progress %= 1f;
 
-                    Unit unit = plan.unit.create(team);
-                    if(unit.isCommandable()){
-                        unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);
-                        Teamc target = resolveCommandTarget();
-                        if(target != null){
-                            unit.command().commandFollow(target);
-                        }else if(commandPos != null){
-                            unit.command().commandPosition(commandPos);
-                        }
-                    }
-
-                    createSound.at(this, 1f + Mathf.range(0.06f), createSoundVolume);
-                    payload = new UnitPayload(unit);
-                    payVector.setZero();
-                    consume();
-                    Events.fire(new UnitCreateEvent(payload.unit, this));
+                    spawnUnit(plan);
                 }
 
                 progress = Mathf.clamp(progress, 0, plan.time);
@@ -456,8 +503,19 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public boolean shouldConsume(){
-            if(currentPlan == -1) return false;
+            if(sc2Queue){
+                if(isAddonBuilding()) return enabled;
+                if(currentPlan == -1 || queued <= 0) return false;
+            }else{
+                if(currentPlan == -1) return false;
+            }
             return enabled && payload == null;
+        }
+
+        @Override
+        public boolean consumeTriggerValid(){
+            if(sc2Queue && queued > 0) return true;
+            return super.consumeTriggerValid();
         }
 
         @Override
@@ -477,7 +535,7 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public byte version(){
-            return 4;
+            return 7;
         }
 
         @Override
@@ -489,6 +547,14 @@ public class UnitFactory extends UnitBlock{
             TypeIO.writeCommand(write, command);
             write.i(commandTargetUnit);
             write.i(commandTargetBuilding);
+            write.i(queued);
+            write.f(progress2);
+            write.i(addonBuildPos);
+            write.i(addonBuildBlock);
+            write.f(addonBuildTime);
+            write.i(addonCrystalCost);
+            write.i(addonGasCost);
+            write.bool(hadDoubleAddon);
         }
 
         @Override
@@ -506,6 +572,31 @@ public class UnitFactory extends UnitBlock{
             if(revision >= 4){
                 commandTargetUnit = read.i();
                 commandTargetBuilding = read.i();
+            }
+            if(revision >= 5){
+                queued = read.i();
+                progress2 = read.f();
+            }else{
+                queued = currentPlan == -1 ? 0 : 1;
+                progress2 = 0f;
+            }
+            if(revision >= 6){
+                addonBuildPos = read.i();
+                addonBuildBlock = read.i();
+                addonBuildTime = read.f();
+                addonCrystalCost = read.i();
+                addonGasCost = read.i();
+            }else{
+                addonBuildPos = -1;
+                addonBuildBlock = -1;
+                addonBuildTime = 0f;
+                addonCrystalCost = 0;
+                addonGasCost = 0;
+            }
+            if(revision >= 7){
+                hadDoubleAddon = read.bool();
+            }else{
+                hadDoubleAddon = false;
             }
         }
 
@@ -577,6 +668,476 @@ public class UnitFactory extends UnitBlock{
             }
 
             return null;
+        }
+
+        public boolean queuePlan(int planIndex){
+            if(!canQueuePlan(planIndex)) return false;
+            UnitPlan plan = plans.get(planIndex);
+            if(queued == 0){
+                currentPlan = planIndex;
+                progress = 0f;
+                progress2 = 0f;
+                speedScl = 0f;
+                speedScl2 = 0f;
+            }
+            payForPlan(plan, 1);
+            queued++;
+            return true;
+        }
+
+        public boolean canQueuePlan(int planIndex){
+            if(!sc2Queue) return false;
+            if(planIndex < 0 || planIndex >= plans.size) return false;
+            UnitPlan plan = plans.get(planIndex);
+            if(plan.unit.isBanned()) return false;
+            if(!canProduce(plan.unit)) return false;
+            if(queued > 0 && currentPlan != planIndex) return false;
+            if(queued >= queueSlots()) return false;
+            if(!canAffordPlan(plan, 1)) return false;
+            return true;
+        }
+
+        public boolean canProduce(@Nullable UnitType unit){
+            if(unit == null) return false;
+            if(unit == UnitTypes.fortress || unit == UnitTypes.ghost){
+                if(!hasTechAddon()) return false;
+            }
+            if(unit == UnitTypes.ghost){
+                if(team.data().getCount(Blocks.launchPad) <= 0) return false;
+            }
+            return Units.canCreate(team, unit);
+        }
+
+        public boolean cancelLastQueued(){
+            if(!sc2Queue || queued <= 0) return false;
+            if(currentPlan != -1){
+                refundPlan(plans.get(currentPlan), 1);
+            }
+            queued--;
+            if(queued < 2){
+                progress2 = 0f;
+            }
+            if(queued == 0){
+                currentPlan = -1;
+                progress = 0f;
+                speedScl = 0f;
+                speedScl2 = 0f;
+            }
+            return true;
+        }
+
+        public boolean sc2QueueEnabled(){
+            return UnitFactory.this.sc2Queue;
+        }
+
+        public boolean canShowAddonButtons(){
+            if(!sc2Queue || !UnitFactory.this.sc2AddonSupport) return false;
+            return !isAddonBuilding() && !hasDoubleAddon() && !hasTechAddon();
+        }
+
+        public int activeUnitSlots(){
+            if(!sc2Queue || !hasDoubleAddon()) return 1;
+            return 2;
+        }
+
+        public int queueSlots(){
+            if(!sc2Queue) return 0;
+            return hasDoubleAddon() ? UnitFactory.this.sc2QueueSlotsAddon : UnitFactory.this.sc2QueueSlots;
+        }
+
+        public @Nullable UnitType queuedUnit(int index){
+            if(!sc2Queue || currentPlan == -1) return null;
+            if(index < 0) return null;
+            UnitType unit = plans.get(currentPlan).unit;
+            boolean slot2Running = activeUnitSlots() > 1 && progress2 > 0f;
+            if(index == 0){
+                if(slot2Running && queued == 1 && progress <= 0f) return null;
+                if(queued >= 1 || progress > 0f) return unit;
+                return null;
+            }
+            if(index == 1){
+                if(activeUnitSlots() > 1 && (queued >= 2 || progress2 > 0f)) return unit;
+                return null;
+            }
+            int total = queued;
+            if(index >= total) return null;
+            return unit;
+        }
+
+        public float unitProgressFraction(int slot){
+            if(currentPlan == -1 || queued <= 0) return 0f;
+            UnitPlan plan = plans.get(currentPlan);
+            if(plan.time <= 0f) return 0f;
+            if(slot == 0) return Mathf.clamp(progress / plan.time);
+            if(slot == 1) return Mathf.clamp(progress2 / plan.time);
+            return 0f;
+        }
+
+        public float unitProgressSeconds(int slot){
+            if(currentPlan == -1) return 0f;
+            UnitPlan plan = plans.get(currentPlan);
+            if(slot == 0) return progress / 60f;
+            if(slot == 1) return progress2 / 60f;
+            return 0f;
+        }
+
+        public float unitProgressTotalSeconds(int slot){
+            if(currentPlan == -1) return 0f;
+            UnitPlan plan = plans.get(currentPlan);
+            return plan.time / 60f;
+        }
+
+        public boolean isAddonBuilding(){
+            if(addonBuildPos == -1 || addonBuildBlock == -1) return false;
+            Tile tile = world.tile(addonBuildPos);
+            if(tile == null || tile.build == null) return false;
+            if(tile.build instanceof ConstructBlock.ConstructBuild cons){
+                return cons.current != null && cons.current.id == addonBuildBlock && cons.progress < 1f;
+            }
+            return false;
+        }
+
+        public @Nullable Block addonBuildingBlock(){
+            return addonBuildBlock == -1 ? null : content.block(addonBuildBlock);
+        }
+
+        public float addonBuildFraction(){
+            if(!isAddonBuilding() || addonBuildTime <= 0f) return 0f;
+            Tile tile = world.tile(addonBuildPos);
+            if(tile == null || !(tile.build instanceof ConstructBlock.ConstructBuild cons)) return 0f;
+            return Mathf.clamp(cons.progress);
+        }
+
+        public float addonBuildSeconds(){
+            if(!isAddonBuilding() || addonBuildTime <= 0f) return 0f;
+            return addonBuildFraction() * (addonBuildTime / 60f);
+        }
+
+        public float addonBuildTotalSeconds(){
+            if(addonBuildTime <= 0f) return 0f;
+            return addonBuildTime / 60f;
+        }
+
+        public boolean hasDoubleAddon(){
+            if(!sc2Queue || !UnitFactory.this.sc2AddonSupport) return false;
+            return hasAddon(Blocks.rotaryPump);
+        }
+
+        public boolean hasTechAddon(){
+            if(!sc2Queue || !UnitFactory.this.sc2AddonSupport) return false;
+            return hasAddon(Blocks.memoryBank);
+        }
+
+        public boolean canAffordAddon(int crystal, int gas){
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
+            CoreBuild core = team.core();
+            if(core == null) return false;
+            if(crystal > 0 && !core.items.has(Items.graphite, crystal)) return false;
+            if(gas > 0 && !core.items.has(Items.highEnergyGas, gas)) return false;
+            return true;
+        }
+
+        public boolean startAddonBuild(Block addon, int crystalCost, int gasCost, float buildTime){
+            if(!sc2Queue || !UnitFactory.this.sc2AddonSupport) return false;
+            if(addon == null) return false;
+            if(isAddonBuilding() || hasDoubleAddon() || hasTechAddon()) return false;
+            if(!canAffordAddon(crystalCost, gasCost)) return false;
+
+            Tile addonTile = addonTile();
+            if(addonTile == null) return false;
+            if(!Build.validPlaceIgnoreUnits(addon, team, addonTile.x, addonTile.y, 0, true, true)) return false;
+
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                CoreBuild core = team.core();
+                if(core == null) return false;
+                if(crystalCost > 0) core.items.remove(Items.graphite, crystalCost);
+                if(gasCost > 0) core.items.remove(Items.highEnergyGas, gasCost);
+            }
+
+            if(!net.client()){
+                Call.beginPlace(null, addon, team, addonTile.x, addonTile.y, 0, null);
+                int pos = Point2.pack(addonTile.x, addonTile.y);
+                ConstructBlock.markPrepaid(pos);
+                ConstructBlock.markForceBuildTime(pos);
+            }
+
+            addonBuildPos = Point2.pack(addonTile.x, addonTile.y);
+            addonBuildBlock = addon.id;
+            addonBuildTime = buildTime;
+            addonCrystalCost = crystalCost;
+            addonGasCost = gasCost;
+            return true;
+        }
+
+        public void cancelAddonBuild(boolean refund){
+            if(addonBuildPos == -1 || addonBuildBlock == -1) return;
+            Tile tile = world.tile(addonBuildPos);
+            Block addon = addonBuildingBlock();
+            if(tile != null && tile.build instanceof ConstructBlock.ConstructBuild cons && addon != null){
+                if(cons.current != null && cons.current.id == addonBuildBlock && cons.progress < 1f){
+                    ConstructBlock.consumePrepaid(tile.pos());
+                    ConstructBlock.clearForceBuildTime(tile.pos());
+                    if(refund) refundAddonCost();
+                    ConstructBlock.deconstructFinish(tile, addon, null);
+                }
+            }
+            clearAddonBuildState();
+        }
+
+        private boolean hasAddon(Block addon){
+            int size = block.size;
+            int baseX = tile.x - (size - 1) / 2;
+            int baseY = tile.y - (size - 1) / 2;
+            Tile other = world.tile(baseX + size, baseY);
+            if(other == null || other.build == null) return false;
+            return other.build.block == addon && other.build.team == team;
+        }
+
+        private void updateSc2Queue(){
+            if(isAddonBuilding()){
+                updateAddonBuild();
+                return;
+            }
+
+            boolean doubleAddon = hasDoubleAddon();
+            if(hadDoubleAddon && !doubleAddon){
+                handleDoubleAddonLoss();
+            }
+            hadDoubleAddon = doubleAddon;
+
+            int maxQueue = queueSlots();
+            if(queued > maxQueue){
+                if(currentPlan != -1){
+                    refundPlan(plans.get(currentPlan), queued - maxQueue);
+                }
+                queued = maxQueue;
+            }
+
+            if(currentPlan == -1 || queued <= 0){
+                queued = 0;
+                progress = 0f;
+                progress2 = 0f;
+                speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
+                speedScl2 = Mathf.lerpDelta(speedScl2, 0f, 0.05f);
+                return;
+            }
+
+            UnitPlan plan = plans.get(currentPlan);
+            if(plan.unit.isBanned()){
+                if(queued <= 0){
+                    queued = 0;
+                    currentPlan = -1;
+                    progress = 0f;
+                    progress2 = 0f;
+                    return;
+                }
+            }
+
+            boolean canBuild = efficiency > 0 && payload == null;
+            float speed = Vars.state.rules.unitBuildSpeed(team);
+            int activeSlots = activeUnitSlots();
+            if(activeSlots <= 1){
+                progress2 = 0f;
+            }
+
+            boolean slot2Active = activeSlots > 1 && (queued >= 2 || progress2 > 0f);
+            boolean slot1Active = queued >= 1 && (progress > 0f || !slot2Active);
+
+            if(canBuild){
+                if(slot1Active){
+                    time += edelta() * speedScl * speed;
+                    progress += edelta() * speed;
+                    speedScl = Mathf.lerpDelta(speedScl, 1f, 0.05f);
+                }else{
+                    speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
+                }
+
+                if(slot2Active){
+                    progress2 += edelta() * speed;
+                    speedScl2 = Mathf.lerpDelta(speedScl2, 1f, 0.05f);
+                }else{
+                    speedScl2 = Mathf.lerpDelta(speedScl2, 0f, 0.05f);
+                }
+            }else{
+                speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
+                speedScl2 = Mathf.lerpDelta(speedScl2, 0f, 0.05f);
+            }
+
+            if(payload == null){
+                if(slot1Active && progress >= plan.time){
+                    spawnUnit(plan);
+                    queued--;
+                    progress = 0f;
+                    speedScl = 0f;
+                }
+
+                if(payload == null && slot2Active && progress2 >= plan.time){
+                    spawnUnit(plan);
+                    queued--;
+                    progress2 = 0f;
+                    speedScl2 = 0f;
+                }
+            }
+
+            if(queued <= 0){
+                currentPlan = -1;
+                progress = 0f;
+                progress2 = 0f;
+            }else if(queued < 2){
+            }
+
+            progress = Mathf.clamp(progress, 0, plan.time);
+            progress2 = Mathf.clamp(progress2, 0, plan.time);
+        }
+
+        private void updateAddonBuild(){
+            if(addonBuildPos == -1 || addonBuildBlock == -1) return;
+            if(!enabled) return;
+            Tile tile = world.tile(addonBuildPos);
+            if(tile == null || tile.build == null){
+                clearAddonBuildState();
+                return;
+            }
+
+            if(tile.build.block.id == addonBuildBlock){
+                clearAddonBuildState();
+                return;
+            }
+
+            if(tile.build instanceof ConstructBlock.ConstructBuild cons && cons.current != null && cons.current.id == addonBuildBlock){
+                float time = addonBuildTime <= 0f ? 1f : addonBuildTime;
+                cons.construct(null, null, delta() / time, null);
+                if(cons.progress >= 1f && tile.build.block.id == addonBuildBlock){
+                    clearAddonBuildState();
+                }
+            }else{
+                clearAddonBuildState();
+            }
+        }
+
+        private void refundAddonCost(){
+            CoreBuild core = team.core();
+            if(core == null) return;
+            int refundCrystal = (int)Mathf.ceil(addonCrystalCost * 0.75f);
+            int refundGas = (int)Mathf.ceil(addonGasCost * 0.75f);
+            if(refundCrystal > 0) core.items.add(Items.graphite, refundCrystal);
+            if(refundGas > 0) core.items.add(Items.highEnergyGas, refundGas);
+        }
+
+        private void clearAddonBuildState(){
+            addonBuildPos = -1;
+            addonBuildBlock = -1;
+            addonBuildTime = 0f;
+            addonCrystalCost = 0;
+            addonGasCost = 0;
+        }
+
+        private @Nullable Tile addonTile(){
+            int size = block.size;
+            int baseX = tile.x - (size - 1) / 2;
+            int baseY = tile.y - (size - 1) / 2;
+            return world.tile(baseX + size, baseY);
+        }
+
+        private int planItemCost(ItemStack stack){
+            return Math.round(stack.amount * state.rules.unitCost(team));
+        }
+
+        private boolean canAffordPlan(UnitPlan plan, int count){
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
+            CoreBuild core = team.core();
+            if(core == null) return false;
+            for(ItemStack stack : plan.requirements){
+                int amount = planItemCost(stack) * count;
+                if(amount > 0 && !core.items.has(stack.item, amount)){
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void payForPlan(UnitPlan plan, int count){
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return;
+            CoreBuild core = team.core();
+            if(core == null) return;
+            for(ItemStack stack : plan.requirements){
+                int amount = planItemCost(stack) * count;
+                if(amount > 0){
+                    core.items.remove(stack.item, amount);
+                }
+            }
+        }
+
+        private void refundPlan(UnitPlan plan, int count){
+            if(count <= 0 || state.rules.infiniteResources || team.rules().infiniteResources) return;
+            CoreBuild core = team.core();
+            for(ItemStack stack : plan.requirements){
+                int amount = planItemCost(stack) * count;
+                if(amount <= 0) continue;
+                if(core != null){
+                    core.items.add(stack.item, amount);
+                }else if(items != null){
+                    items.add(stack.item, amount);
+                }
+            }
+        }
+
+        private void handleDoubleAddonLoss(){
+            progress2 = 0f;
+            speedScl2 = 0f;
+            if(currentPlan == -1 || queued <= 0) return;
+
+            UnitPlan plan = plans.get(currentPlan);
+            int refund = 0;
+
+            if(queued >= 2){
+                queued--;
+                refund++;
+            }
+
+            int maxQueue = UnitFactory.this.sc2QueueSlots;
+            if(queued > maxQueue){
+                refund += queued - maxQueue;
+                queued = maxQueue;
+            }
+
+            refundPlan(plan, refund);
+        }
+
+        private void spawnUnit(UnitPlan plan){
+            Unit unit = plan.unit.create(team);
+            if(unit.isCommandable()){
+                unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);
+                Teamc target = resolveCommandTarget();
+                if(target != null){
+                    unit.command().commandFollow(target);
+                }else if(commandPos != null){
+                    unit.command().commandPosition(commandPos);
+                }
+            }
+
+            createSound.at(this, 1f + Mathf.range(0.06f), createSoundVolume);
+            Vec2 spawn = getSpawnPosition(unit);
+            unit.set(spawn.x, spawn.y);
+            unit.add();
+            if(!sc2Queue){
+                consume();
+            }
+            Events.fire(new UnitCreateEvent(unit, this));
+        }
+
+        private Vec2 getSpawnPosition(Unit unit){
+            float offset = hitSize() / 2f + unit.hitSize / 2f + 2f;
+            Vec2 dir = Tmp.v1.set(0f, -1f);
+            Vec2 command = getCommandPosition();
+            if(command != null){
+                dir.set(command).sub(x, y);
+                if(dir.len2() < 0.001f){
+                    dir.set(0f, -1f);
+                }
+            }
+            dir.setLength(offset);
+            return Tmp.v2.set(x + dir.x, y + dir.y);
         }
     }
 }

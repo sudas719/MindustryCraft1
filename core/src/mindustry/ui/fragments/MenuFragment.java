@@ -105,9 +105,9 @@ public class MenuFragment{
         }
 
         String[] versionLines = {
-            "v0.2",
-            "MindustryCraftⅠ",
-            "Love From StarCraftⅡ"
+            "v0.3",
+            "MindustryCraft1",
+            "Love From StarCraft2"
         };
         parent.fill((x, y, w, h) -> {
             TextureRegion logo = Core.atlas.find("logo");

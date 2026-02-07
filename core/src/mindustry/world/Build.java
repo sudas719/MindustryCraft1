@@ -26,6 +26,22 @@ import static mindustry.Vars.*;
 public class Build{
     private static final IntSet tmp = new IntSet();
 
+    public static boolean meetsPrerequisites(Block type, Team team){
+        if(type == null || team == null) return false;
+        if(type == Blocks.doorLarge) return team.data().hasCore();
+        if(type == Blocks.groundFactory) return team.data().getCount(Blocks.doorLarge) > 0;
+        if(type == Blocks.multiPress) return team.data().getCount(Blocks.doorLarge) > 0;
+        if(type == Blocks.atmosphericConcentrator) return team.data().getCount(Blocks.groundFactory) > 0;
+        if(type == Blocks.swarmer) return team.data().getCount(Blocks.multiPress) > 0;
+        if(type == Blocks.hail) return team.data().getCount(Blocks.multiPress) > 0;
+        if(type == Blocks.launchPad) return team.data().getCount(Blocks.groundFactory) > 0;
+        if(type == Blocks.tankFabricator) return team.data().getCount(Blocks.groundFactory) > 0;
+        if(type == Blocks.shipFabricator) return team.data().getCount(Blocks.tankFabricator) > 0;
+        if(type == Blocks.siliconCrucible) return team.data().getCount(Blocks.tankFabricator) > 0;
+        if(type == Blocks.surgeCrucible) return team.data().getCount(Blocks.shipFabricator) > 0;
+        return true;
+    }
+
     @Remote(called = Loc.server)
     public static void beginBreak(@Nullable Unit unit, Team team, int x, int y){
         if(!validBreak(team, x, y)){
@@ -228,6 +244,9 @@ public class Build{
     public static boolean validPlaceIgnoreUnits(Block type, Team team, int x, int y, int rotation, boolean checkVisible, boolean checkCoreRadius){
         //the wave team can build whatever they want as long as it's visible - banned blocks are not applicable
         if(type == null || (!state.rules.editor && (checkVisible && (!type.environmentBuildable() || (!type.isPlaceable() && !(state.rules.waves && team == state.rules.waveTeam && type.isVisible())))))){
+            return false;
+        }
+        if(!state.rules.editor && !meetsPrerequisites(type, team)){
             return false;
         }
 

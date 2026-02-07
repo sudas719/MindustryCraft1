@@ -365,7 +365,8 @@ public class ConstructBlock extends Block{
                 if(canFinish){
                     if(lastBuilder == null) lastBuilder = builder;
                     if(!net.client()){
-                        constructed(tile, current, lastBuilder, (byte)rotation, builder.team, config);
+                        Team buildTeam = builder == null ? team : builder.team;
+                        constructed(tile, current, lastBuilder, (byte)rotation, buildTeam, config);
                     }
                 }
             }
@@ -489,6 +490,9 @@ public class ConstructBlock extends Block{
             this.current = block;
             this.previous = previous;
             this.buildCost = block.buildTime * state.rules.buildCostMultiplier;
+            if(block == Blocks.doorLarge){
+                this.buildCost = block.buildTime;
+            }
             this.itemsLeft = new int[block.requirements.length];
             this.accumulator = new float[block.requirements.length];
             this.totalAccumulator = new float[block.requirements.length];
@@ -499,6 +503,7 @@ public class ConstructBlock extends Block{
             }
 
             //Initialize health based on current progress
+            maxHealth(current.health);
             health = current.health * progress;
 
             pathfinder.updateTile(tile);
@@ -516,6 +521,7 @@ public class ConstructBlock extends Block{
             this.itemsLeft = new int[previous.requirements.length];
             this.accumulator = new float[previous.requirements.length];
             this.totalAccumulator = new float[previous.requirements.length];
+            maxHealth(previous.health);
             pathfinder.updateTile(tile);
         }
 

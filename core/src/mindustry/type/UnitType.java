@@ -90,6 +90,20 @@ public class UnitType extends UnlockableContent implements Senseable{
     public ArmorType armorType = ArmorType.none;
     /** RTS unit class classification */
     public UnitClass unitClass = UnitClass.mechanical;
+    /** RTS population cost for this unit. */
+    public int population = 1;
+    /** Energy capacity for psionic units. 0 disables energy. */
+    public float energyCapacity = 0f;
+    /** Energy regen per second. */
+    public float energyRegen = 0f;
+    /** Initial energy amount. If < 0, defaults to energyCapacity. */
+    public float energyInit = -1f;
+    /** Delay in seconds before passive regen starts after taking damage. */
+    public float regenDelay = 0f;
+    /** Passive regen per second after regenDelay. */
+    public float regenRate = 0f;
+    /** If true, this unit can pass through 1x1 terrain walls. */
+    public boolean canPassWalls = false;
 
     public float
     /** minimum range of any weapon; used for approaching targets. can be overridden by setting a value > 0. */

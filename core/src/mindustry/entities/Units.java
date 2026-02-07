@@ -102,7 +102,11 @@ public class Units{
 
     /** @return whether a new instance of a unit of this team can be created. */
     public static boolean canCreate(Team team, UnitType type){
-        return !type.useUnitCap || (team.data().countType(type) < getCap(team) && !type.isBanned());
+        if(type == null) return false;
+        if(!type.useUnitCap) return !type.isBanned();
+        int cap = getCap(team);
+        int cost = Math.max(type.population, 0);
+        return (team.data().popCount + cost) <= cap && !type.isBanned();
     }
 
     public static int getCap(Team team){
@@ -110,7 +114,14 @@ public class Units{
         if((team == state.rules.waveTeam && !state.rules.pvp) || (state.isCampaign() && team == state.rules.waveTeam) || state.rules.disableUnitCap || team.ignoreUnitCap){
             return Integer.MAX_VALUE;
         }
-        return Math.max(0, state.rules.unitCapVariable ? state.rules.unitCap + team.data().unitCap : state.rules.unitCap);
+        if(!team.data().hasCore()){
+            return 0;
+        }
+        int cap = Math.max(0, state.rules.unitCapVariable ? state.rules.unitCap + team.data().unitCap : state.rules.unitCap);
+        if(cap < Integer.MAX_VALUE - 1){
+            cap = Math.min(cap, 200);
+        }
+        return cap;
     }
 
     /** @return unit cap as a string, substituting the infinity symbol instead of MAX_VALUE */

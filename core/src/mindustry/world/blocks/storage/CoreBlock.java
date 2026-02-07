@@ -44,6 +44,9 @@ public class CoreBlock extends StorageBlock{
     public static final int scvCost = 50;
     public static final float scvBuildTime = 12f * 60f;
 
+    public int unitQueueSlots = maxUnitQueue;
+    public int activeUnitSlots = 1;
+
     //hacky way to pass item modules between methods
     private static ItemModule nextItems;
     public static final float[] thrusterSizes = {0f, 0f, 0f, 0f, 0.3f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 0f};
@@ -637,14 +640,14 @@ public class CoreBlock extends StorageBlock{
 
         public boolean canQueueUnit(UnitType type){
             if(type == null) return false;
-            if(unitQueue.size >= maxUnitQueue) return false;
+            if(unitQueue.size >= queueSlots()) return false;
             if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
             return items.has(Items.graphite, scvCost);
         }
 
         public boolean queueUnit(int unitId){
             if(unitQueue == null) unitQueue = new IntSeq();
-            if(unitQueue.size >= maxUnitQueue) return false;
+            if(unitQueue.size >= queueSlots()) return false;
             if(unitId != UnitTypes.nova.id) return false;
             UnitType type = content.unit(unitId);
             if(type == null || !canQueueUnit(type)) return false;
@@ -659,13 +662,39 @@ public class CoreBlock extends StorageBlock{
 
         public boolean cancelCurrentUnit(){
             if(unitQueue == null || unitQueue.isEmpty()) return false;
-            unitQueue.removeIndex(0);
-            unitProgress = 0f;
+            int index = unitQueue.size - 1;
+            unitQueue.removeIndex(index);
+            if(index == 0){
+                unitProgress = 0f;
+            }
 
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
                 items.add(Items.graphite, scvCost);
             }
             return true;
+        }
+
+        public int activeUnitSlots(){
+            return ((CoreBlock)block).activeUnitSlots;
+        }
+
+        public int queueSlots(){
+            return ((CoreBlock)block).unitQueueSlots;
+        }
+
+        public float unitProgressFraction(int slot){
+            if(slot != 0) return 0f;
+            return unitProgressFraction();
+        }
+
+        public float unitProgressSeconds(int slot){
+            if(slot != 0) return 0f;
+            return unitProgressSeconds();
+        }
+
+        public float unitProgressTotalSeconds(int slot){
+            if(slot != 0) return 0f;
+            return unitProgressTotalSeconds();
         }
 
         public @Nullable UnitType queuedUnit(int index){

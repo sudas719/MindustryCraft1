@@ -22,6 +22,7 @@ import mindustry.content.*;
 import mindustry.core.GameState.*;
 import mindustry.core.*;
 import mindustry.ctype.*;
+import mindustry.entities.Units;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.gen.*;
@@ -532,9 +533,6 @@ public class HudFragment{
             t.collapser(v -> v.add().height(pauseHeight), () -> state.isPaused() && !netServer.isWaitingForPlayers()).row();
 
             t.table(c -> {
-                //core items
-                c.top().collapser(coreItems, () -> Core.settings.getBool("coreitems") && !mobile && shown).fillX().row();
-
                 float notifDuration = 240f;
                 float[] coreAttackTime = {0};
 
@@ -585,6 +583,38 @@ public class HudFragment{
 
             t.table(Styles.black3, p -> p.margin(4).label(() -> hudText).style(Styles.outlineLabel)).touchable(Touchable.disabled).with(p -> hudLabel = p)
                 .with(p -> p.visible(() -> (p.color.a = Mathf.lerpDelta(p.color.a, Mathf.num(showHudText), 0.2f)) >= 0.001f));
+        });
+
+        //SC2-style resource + population display
+        parent.fill(t -> {
+            t.name = "sc2-resources";
+            t.top().right();
+            t.visible(() -> shown);
+            t.table(Styles.black6, table -> {
+                table.left().defaults().padLeft(4f).padRight(6f);
+
+                table.label(() -> {
+                    var core = player.team().core();
+                    if(core == null) return "0";
+                    return Integer.toString(core.items.get(Items.graphite));
+                });
+                table.image(Items.graphite.uiIcon).size(16f);
+
+                table.label(() -> {
+                    var core = player.team().core();
+                    if(core == null) return "0";
+                    return Integer.toString(core.items.get(Items.highEnergyGas));
+                });
+                table.image(Items.highEnergyGas.uiIcon).size(16f);
+
+                table.label(() -> {
+                    var data = player.team().data();
+                    if(!data.hasCore()) return "0/0";
+                    int cap = Units.getCap(player.team());
+                    return data.popCount + "/" + cap;
+                });
+                table.image(Blocks.doorLarge.uiIcon).size(16f);
+            }).margin(6f);
         });
 
         //spawner warning

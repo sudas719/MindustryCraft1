@@ -186,6 +186,7 @@ public class Teams{
 
             data.presentFlag = data.buildings.size > 0;
             data.unitCount = 0;
+            data.popCount = 0;
             data.units.clear();
             data.players.clear();
             if(data.cores.size > 0){
@@ -297,6 +298,8 @@ public class Teams{
         public int unitCap;
         /** Total unit count. */
         public int unitCount;
+        /** Total population used by units. */
+        public int popCount;
         /** Counts for each type of unit. Do not access directly. */
         public @Nullable int[] typeCounts;
         /** Cached buildings by type. */
@@ -407,6 +410,9 @@ public class Teams{
         public void updateCount(UnitType type, int amount){
             if(type == null) return;
             unitCount = Math.max(amount + unitCount, 0);
+            if(type.useUnitCap){
+                popCount = Math.max(popCount + amount * Math.max(type.population, 0), 0);
+            }
             if(typeCounts == null || typeCounts.length <= type.id){
                 typeCounts = new int[Vars.content.units().size];
             }
