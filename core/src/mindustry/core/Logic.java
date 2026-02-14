@@ -265,10 +265,11 @@ public class Logic implements ApplicationListener{
     }
 
     private void checkGameState(){
+        boolean playerHasBuildings = state.rules.defaultTeam.data().buildings.size > 0;
         //campaign maps do not have a 'win' state!
         if(state.isCampaign()){
             //gameover only when cores are dead
-            if(state.teams.playerCores().size == 0 && !state.gameOver){
+            if(state.teams.playerCores().size == 0 && !playerHasBuildings && !state.gameOver){
                 state.gameOver = true;
                 Events.fire(new GameOverEvent(state.rules.waveTeam));
             }
@@ -293,7 +294,7 @@ public class Logic implements ApplicationListener{
                 }
             }
         }else{
-            if(!state.rules.attackMode && state.teams.playerCores().size == 0 && !state.gameOver){
+            if(!state.rules.attackMode && state.teams.playerCores().size == 0 && !playerHasBuildings && !state.gameOver){
                 state.gameOver = true;
                 Events.fire(new GameOverEvent(state.rules.waveTeam));
             }else if(state.rules.attackMode){

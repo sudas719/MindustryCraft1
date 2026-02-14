@@ -20,6 +20,7 @@ import mindustry.gen.*;
 import mindustry.input.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
+import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.UnitFactory.*;
 
@@ -298,28 +299,44 @@ public class OverlayRenderer{
         Unit hoverUnit = hover != null && hover.unit != null && hover.unit.isValid() ? hover.unit : null;
 
         Draw.draw(Layer.blockOver + 1f, () -> {
-            if(hoverBuild != null){
-                if(hoverBuild instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
-                    float size = cons.current.size * tilesize;
-                    drawProgressBar(hoverBuild.x, hoverBuild.y, size, cons.progress);
-                }else if(hoverBuild instanceof CoreBuild core){
-                    if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                        drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.unitProgressFraction());
-                    }
-                }else if(hoverBuild instanceof UnitFactoryBuild factory){
-                    if(factory.currentPlan != -1){
-                        drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), factory.fraction());
+                if(hoverBuild != null){
+                    if(hoverBuild instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
+                        float size = cons.current.size * tilesize;
+                        drawProgressBar(hoverBuild.x, hoverBuild.y, size, cons.progress);
+                    }else if(hoverBuild instanceof CoreBuild core){
+                        if(core.isUpgrading()){
+                            float fraction = core.isUpgradingOrbital() ? core.orbitalUpgradeFraction() : core.fortressUpgradeFraction();
+                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), fraction, Color.cyan);
+                        }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.unitProgressFraction());
+                        }
+                        if(core.block == Blocks.coreOrbital && core.orbitalEnergy >= 0f){
+                            drawEnergyBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.orbitalEnergy / CoreBlock.orbitalEnergyCap);
+                        }
+                    }else if(hoverBuild instanceof UnitFactoryBuild factory){
+                        if(factory.currentPlan != -1){
+                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), factory.fraction());
+                        }
                     }
                 }
-            }
-            if(hoverUnit != null && hoverUnit.type.energyCapacity > 0f){
-                drawEnergyBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, hoverUnit.energy / hoverUnit.type.energyCapacity);
+            if(hoverUnit != null){
+                float remaining = PulsarDrops.remainingFraction(hoverUnit);
+                if(remaining > 0f){
+                    drawProgressBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, remaining, Color.gray);
+                }
+                if(hoverUnit.type.energyCapacity > 0f){
+                    drawEnergyBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, hoverUnit.energy / hoverUnit.type.energyCapacity);
+                }
             }
             Draw.reset();
         });
     }
 
     private void drawProgressBar(float x, float y, float size, float progress){
+        drawProgressBar(x, y, size, progress, Color.cyan);
+    }
+
+    private void drawProgressBar(float x, float y, float size, float progress, Color color){
         float barWidth = size;
         float barHeight = 3.5f;
         float offset = size / 2f + 4f;
@@ -327,7 +344,7 @@ public class OverlayRenderer{
 
         Draw.color(Color.black, 0.6f);
         Fill.rect(x, y + offset, barWidth, barHeight);
-        Draw.color(Pal.accent);
+        Draw.color(color);
         Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
     }
 

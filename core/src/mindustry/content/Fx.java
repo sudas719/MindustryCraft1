@@ -1642,6 +1642,31 @@ public class Fx{
         Lines.circle(e.x, e.y, e.fin() * 26f);
     }),
 
+    sc2DropPod = new Effect(3f * 60f, e -> {
+        TextureRegion region = Core.atlas.find("landing-pad-pod", "advanced-launch-pad-pod");
+        if(!region.found()) return;
+        float fin = e.fin();
+        float fout = 1f - fin;
+        float alpha = Interp.pow5Out.apply(fin);
+        float scale = (1f - alpha) * 0.3f + 1f;
+        float height = 100f + Mathf.randomSeedRange(e.id, 30f);
+        float y = e.y + Interp.pow4In.apply(fout) * height;
+        float rotation = fout * (90f + Mathf.randomSeedRange(e.id + 1, 50f));
+
+        Draw.z(Layer.effect + 0.001f);
+        Draw.alpha(alpha);
+        Draw.rect(region, e.x, y, region.width * region.scl() * scale, region.height * region.scl() * scale, rotation);
+        Draw.reset();
+    }),
+
+    sc2Scan = new Effect(9f * 60f, tilesize * 12f, e -> {
+        float radius = e.rotation;
+        color(Pal.accent);
+        stroke(1.5f);
+        Lines.circle(e.x, e.y, radius);
+        Lines.lineAngle(e.x, e.y, -e.fin() * 360f, radius);
+    }),
+
     explosion = new Effect(30, e -> {
         e.scaled(7, i -> {
             stroke(3f * i.fout());

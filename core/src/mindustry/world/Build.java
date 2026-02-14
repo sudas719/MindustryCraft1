@@ -18,7 +18,9 @@ import mindustry.world.blocks.*;
 import mindustry.world.blocks.ConstructBlock.*;
 import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
+import mindustry.world.blocks.environment.BorderAreaFloor;
 import mindustry.world.blocks.environment.CrystalMineralWall;
+import mindustry.world.blocks.environment.Floor;
 import mindustry.world.blocks.environment.SteamVent;
 
 import static mindustry.Vars.*;
@@ -29,11 +31,11 @@ public class Build{
     public static boolean meetsPrerequisites(Block type, Team team){
         if(type == null || team == null) return false;
         if(type == Blocks.doorLarge) return team.data().hasCore();
-        if(type == Blocks.groundFactory) return team.data().getCount(Blocks.doorLarge) > 0;
-        if(type == Blocks.multiPress) return team.data().getCount(Blocks.doorLarge) > 0;
+        if(type == Blocks.groundFactory) return team.data().getCount(Blocks.doorLarge) + team.data().getCount(Blocks.doorLargeErekir) > 0;
+        if(type == Blocks.multiPress) return team.data().hasCore();
         if(type == Blocks.atmosphericConcentrator) return team.data().getCount(Blocks.groundFactory) > 0;
         if(type == Blocks.swarmer) return team.data().getCount(Blocks.multiPress) > 0;
-        if(type == Blocks.hail) return team.data().getCount(Blocks.multiPress) > 0;
+        if(type == Blocks.radar) return team.data().getCount(Blocks.multiPress) > 0;
         if(type == Blocks.launchPad) return team.data().getCount(Blocks.groundFactory) > 0;
         if(type == Blocks.tankFabricator) return team.data().getCount(Blocks.groundFactory) > 0;
         if(type == Blocks.shipFabricator) return team.data().getCount(Blocks.tankFabricator) > 0;
@@ -243,7 +245,12 @@ public class Build{
     /** @return whether a tile can be placed at this location by this team. Ignores units at this location. */
     public static boolean validPlaceIgnoreUnits(Block type, Team team, int x, int y, int rotation, boolean checkVisible, boolean checkCoreRadius){
         //the wave team can build whatever they want as long as it's visible - banned blocks are not applicable
-        if(type == null || (!state.rules.editor && (checkVisible && (!type.environmentBuildable() || (!type.isPlaceable() && !(state.rules.waves && team == state.rules.waveTeam && type.isVisible())))))){
+        boolean envBuildable = type != null && type.environmentBuildable();
+        if(type == Blocks.radar || type == Blocks.tankFabricator || type == Blocks.shipFabricator || type == Blocks.surgeCrucible){
+            envBuildable = true;
+        }
+
+        if(type == null || (!state.rules.editor && (checkVisible && (!envBuildable || (!type.isPlaceable() && !(state.rules.waves && team == state.rules.waveTeam && type.isVisible())))))){
             return false;
         }
         if(!state.rules.editor && !meetsPrerequisites(type, team)){
@@ -279,15 +286,10 @@ public class Build{
         Tile tile = world.tile(x, y);
 
         if(tile == null) return false;
+        if(hasSlopeInPlacementArea(type, x, y)) return false;
 
         if(type instanceof CoreBlock){
-            boolean[] valid = {true};
-            tile.getLinkedTilesAs(type, t -> {
-                if(t.block() instanceof CrystalMineralWall || t.floor() instanceof SteamVent){
-                    valid[0] = false;
-                }
-            });
-            return valid[0];
+            return type.canPlaceOn(tile, team, rotation);
         }
 
         if(type == Blocks.ventCondenser){
@@ -351,17 +353,17 @@ public class Build{
                 check == null || //nothing there
                 (type.size == 2 && world.getDarkness(wx, wy) >= 3) ||
                 (state.rules.staticFog && state.rules.fog && !fogControl.isDiscovered(team, wx, wy)) ||
-                (check.floor().isDeep() && !type.floating && !type.requiresWater && !type.placeableLiquid) || //deep water
+                (isPlacementDeep(check) && !type.floating && !type.requiresWater && !type.placeableLiquid) || //deep water
                 (!state.rules.derelictRepair && check.team() == Team.derelict && check.build != null) ||
                 (type == check.block() && check.build != null && rotation == check.build.rotation && type.rotate && !((type == check.block && team != Team.derelict && check.team() == Team.derelict))) || //same block, same rotation
                 !check.interactable(team) || //cannot interact
-                !check.floor().placeableOn && !type.ignoreBuildDarkness || //solid floor
+                !isPlacementPlaceable(check) && !type.ignoreBuildDarkness || //solid floor
                 //when you have a payload, you cannot place blocks on things, even if normal placement rules allow it. this is a hack that assumes checkVisible = true means it's coming from a payload
                 (!checkVisible && checkCoreRadius && !check.block().alwaysReplace) || //replacing a block that should be replaced (e.g. payload placement)
                     !(((type.canReplace(check.block()) || (check.build != null && check.build.canBeReplaced(type)) || (type == check.block && team != Team.derelict && check.team() == Team.derelict)) || //can replace type OR can replace derelict block of same type
                         (check.build instanceof ConstructBuild build && build.current == type && check.centerX() == tile.x && check.centerY() == tile.y)) && //same type in construction
                     type.bounds(tile.x, tile.y, Tmp.r1).grow(0.01f).contains(check.block.bounds(check.centerX(), check.centerY(), Tmp.r2))) || //no replacement
-                (type.requiresWater && check.floor().liquidDrop != Liquids.water) //requires water but none found
+                (type.requiresWater && !hasPlacementWater(check)) //requires water but none found
                 ) return false;
             }
         }
@@ -371,6 +373,46 @@ public class Build{
         }
 
         return true;
+    }
+
+    /** @return whether any tile in this block's footprint is marked as slope height. */
+    public static boolean hasSlopeInPlacementArea(Block type, int x, int y){
+        if(type == null || type.isFloor()) return false;
+
+        Tile center = world.tile(x, y);
+        if(center == null) return true;
+
+        int offsetx = -(type.size - 1) / 2;
+        int offsety = -(type.size - 1) / 2;
+
+        for(int dx = 0; dx < type.size; dx++){
+            for(int dy = 0; dy < type.size; dy++){
+                Tile check = world.tile(center.x + dx + offsetx, center.y + dy + offsety);
+                if(check == null || HeightLayerData.slope(check)){
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isPlacementDeep(Tile tile){
+        if(tile == null) return true;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedDeep(tile) : floor.isDeep();
+    }
+
+    private static boolean isPlacementPlaceable(Tile tile){
+        if(tile == null) return false;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedPlaceableOn(tile) : floor.placeableOn;
+    }
+
+    private static boolean hasPlacementWater(Tile tile){
+        if(tile == null) return false;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedHasWater(tile) : floor.liquidDrop == Liquids.water;
     }
 
     public static @Nullable Building getEnemyOverlap(Block block, Team team, int x, int y){
@@ -396,20 +438,20 @@ public class Build{
         if(block.isMultiblock()){
             for(Point2 point : block.getInsideEdges()){
                 Tile tile = world.tile(x + point.x, y + point.y);
-                if(tile != null && !tile.floor().isDeep()) return true;
+                if(tile != null && !isPlacementDeep(tile)) return true;
             }
 
             for(Point2 point : block.getEdges()){
                 Tile tile = world.tile(x + point.x, y + point.y);
-                if(tile != null && !tile.floor().isDeep()) return true;
+                if(tile != null && !isPlacementDeep(tile)) return true;
             }
         }else{
             for(Point2 point : Geometry.d4){
                 Tile tile = world.tile(x + point.x, y + point.y);
-                if(tile != null && !tile.floor().isDeep()) return true;
+                if(tile != null && !isPlacementDeep(tile)) return true;
             }
             Tile tile = world.tile(x, y);
-            return tile != null && !tile.floor().isDeep();
+            return tile != null && !isPlacementDeep(tile);
         }
         return false;
     }

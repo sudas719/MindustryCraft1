@@ -1,8 +1,11 @@
 package mindustry.content;
 
+import arc.Core;
 import arc.graphics.*;
+import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.struct.*;
+import arc.util.*;
 import mindustry.*;
 import mindustry.entities.*;
 import mindustry.entities.abilities.*;
@@ -73,6 +76,12 @@ public class Blocks{
     characterOverlayWhite,
     runeOverlay,
     cruxRuneOverlay,
+    borderAreaInsetDiagTlBr, borderAreaInsetDiagTrBl,
+    borderAreaOverflowDiagTlBr, borderAreaOverflowDiagTrBl,
+    heightLayerFirst, heightLayerSecond, heightLayerThird, heightLayerFourth, heightLayerSlope,
+    cliffLayerTop, cliffLayerBottom, cliffLayerLeft, cliffLayerRight,
+    cliffLayerTopLeft, cliffLayerTopRight, cliffLayerBottomLeft, cliffLayerBottomRight,
+    cliffLayerDiagTlBr, cliffLayerDiagTrBl,
 
     pebbles, tendrils,
 
@@ -95,7 +104,7 @@ public class Blocks{
     powerSource, powerVoid, itemSource, itemVoid, liquidSource, liquidVoid, payloadSource, payloadVoid, illuminator, heatSource,
 
     //defense
-    copperWall, copperWallLarge, titaniumWall, titaniumWallLarge, plastaniumWall, plastaniumWallLarge, thoriumWall, thoriumWallLarge, door, doorLarge,
+    copperWall, copperWallLarge, titaniumWall, titaniumWallLarge, plastaniumWall, plastaniumWallLarge, thoriumWall, thoriumWallLarge, door, doorLarge, doorLargeErekir,
     phaseWall, phaseWallLarge, surgeWall, surgeWallLarge,
 
     //walls - erekir
@@ -143,7 +152,7 @@ public class Blocks{
     cliffCrusher, largeCliffCrusher, plasmaBore, largePlasmaBore, impactDrill, eruptionDrill,
 
     //storage
-    coreShard, coreFoundation, coreNucleus, vault, container,
+    coreShard, coreFoundation, coreNucleus, coreOrbital, corePlanetaryFortress, vault, container,
     //storage - erekir
     coreBastion, coreCitadel, coreAcropolis, reinforcedContainer, reinforcedVault,
 
@@ -1581,6 +1590,8 @@ public class Blocks{
             buildTime = 46f * 60f;
 
             size = 3;
+            envEnabled = Env.any;
+            envDisabled = Env.none;
 
             itemCapacity = 20;
             heatRequirement = 40f;
@@ -1610,7 +1621,13 @@ public class Blocks{
 
             consumeItem(Items.silicon, 3);
             consumeLiquid(Liquids.slag, 160f / 60f);
-        }};
+        }
+
+        @Override
+        public boolean isOnPlanet(Planet planet){
+            return true;
+        }
+        };
 
         cyanogenSynthesizer = new HeatCrafter("cyanogen-synthesizer"){{
             requirements(Category.crafting, with(Items.carbide, 50, Items.silicon, 80, Items.beryllium, 90));
@@ -1787,10 +1804,38 @@ public class Blocks{
             buildCostMultiplier = 1f;
             openfx = Fx.dooropenlarge;
             closefx = Fx.doorcloselarge;
-            health = 100 * 4 * wallHealthMultiplier;
+            health = 500;
+            armor = 1f;
             size = 2;
             unitCapModifier = 8;
+            commandable = true;
+            linkAdjacent = false;
         }};
+
+        doorLargeErekir = new Door("door-large-erekir"){{
+            requirements(Category.defense, with(Items.graphite, 100));
+            buildVisibility = BuildVisibility.hidden;
+            buildTime = 21f * 60f;
+            buildCostMultiplier = 1f;
+            openfx = Fx.dooropenlarge;
+            closefx = Fx.doorcloselarge;
+            health = 500;
+            armor = 1f;
+            size = 2;
+            unitCapModifier = 16;
+            commandable = true;
+            linkAdjacent = false;
+        }
+
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("blast-door");
+            openRegion = Core.atlas.find("blast-door-open", region);
+            uiIcon = Core.atlas.find("block-blast-door-ui", uiIcon);
+            fullIcon = Core.atlas.find("block-blast-door-ui", fullIcon);
+        }
+        };
 
         scrapWall = new Wall("scrap-wall"){{
             requirements(Category.defense, with(Items.scrap, 6));
@@ -1983,13 +2028,22 @@ public class Blocks{
         }};
 
         radar = new Radar("radar"){{
-            requirements(Category.effect, BuildVisibility.fogOnly, with(Items.silicon, 60, Items.graphite, 50, Items.beryllium, 10));
+            requirements(Category.effect, BuildVisibility.shown, with(Items.graphite, 100, Items.highEnergyGas, 50));
             outlineColor = Color.valueOf("4a4b53");
             fogRadius = 34;
-            researchCost = with(Items.silicon, 70, Items.graphite, 70);
+            researchCost = with(Items.graphite, 120, Items.highEnergyGas, 60);
+            envEnabled = Env.any;
+            envDisabled = Env.none;
+            buildTime = 18f * 60f;
 
             consumePower(0.6f);
-        }};
+        }
+
+        @Override
+        public boolean isOnPlanet(Planet planet){
+            return true;
+        }
+        };
 
         buildTower = new BuildTurret("build-tower"){{
             requirements(Category.effect, with(Items.silicon, 150, Items.oxide, 40, Items.thorium, 60));
@@ -3195,7 +3249,7 @@ public class Blocks{
             buildTime = 71f * 60f;
 
             unitType = UnitTypes.gamma;
-            health = 6000;
+            health = 1000;
             itemCapacity = 13000;
             size = 5;
             thrusterLength = 40/4f;
@@ -3203,6 +3257,203 @@ public class Blocks{
             unitCapModifier = 16;
             researchCostMultiplier = 0.11f;
         }};
+
+        coreOrbital = new CoreBlock("core-orbital"){
+            TextureRegion topRegion;
+            boolean topFound;
+        {
+            requirements(Category.effect, with(Items.graphite, 400));
+            buildVisibility = BuildVisibility.hidden;
+            buildTime = 71f * 60f;
+
+            unitType = UnitTypes.gamma;
+            health = 1000;
+            armor = 1f;
+            itemCapacity = 13000;
+            size = 5;
+            thrusterLength = 40/4f;
+
+            unitCapModifier = 16;
+            researchCostMultiplier = 0.11f;
+            buildType = () -> new CoreBuild(){
+                @Override
+                public void draw(){
+                    if(thrusterTime > 0){
+                        float frame = thrusterTime;
+                        Draw.alpha(1f);
+                        drawThrusters(frame);
+                        Draw.rect(block.region, x, y);
+                        Draw.alpha(Interp.pow4In.apply(frame));
+                        drawThrusters(frame);
+                        Draw.reset();
+                    }else{
+                        if(block.variants == 0 || block.variantRegions == null){
+                            Draw.rect(block.region, x, y, drawrot());
+                        }else{
+                            Draw.rect(block.variantRegions[Mathf.randomSeed(tile.pos(), 0, Math.max(0, block.variantRegions.length - 1))], x, y, drawrot());
+                        }
+                    }
+                    drawTeamTop();
+                    if(topFound && topRegion != null){
+                        Draw.rect(topRegion, x, y, drawrot());
+                    }
+                }
+            };
+        }
+
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("core-nucleus");
+            uiIcon = Core.atlas.find("core-nucleus");
+            fullIcon = Core.atlas.find("core-nucleus");
+            teamRegion = Core.atlas.find("core-nucleus-team");
+            teamRegions = new TextureRegion[Team.all.length];
+            for(Team team : Team.all){
+                teamRegions[team.id] = teamRegion;
+            }
+            thruster1 = Core.atlas.find("core-nucleus-thruster1", thruster1);
+            thruster2 = Core.atlas.find("core-nucleus-thruster2", thruster2);
+            topRegion = Core.atlas.find("core-nucleus-top");
+            topFound = Core.atlas.isFound(topRegion);
+            if(!topFound){
+                var file = Core.files.internal("sprites/blocks/storage/core-nucleus-top.png");
+                if(file.exists()){
+                    topRegion = new TextureRegion(new Texture(file));
+                    topFound = true;
+                }
+            }
+        }
+        };
+
+        corePlanetaryFortress = new CoreBlock("core-planetary-fortress"){
+            TextureRegion turretRegion, turretTeamRegion, turretBarrelL, turretBarrelR;
+        {
+            requirements(Category.effect, with(Items.graphite, CoreBlock.fortressUpgradeCost, Items.highEnergyGas, CoreBlock.fortressUpgradeGasCost));
+            buildVisibility = BuildVisibility.hidden;
+            buildTime = CoreBlock.fortressUpgradeTime;
+            localizedName = "行星要塞";
+
+            unitType = UnitTypes.gamma;
+            health = 1500;
+            armor = 3f;
+            itemCapacity = 13000;
+            size = 5;
+            thrusterLength = 40/4f;
+
+            unitCapModifier = 16;
+            researchCostMultiplier = 0.11f;
+            buildType = () -> new CoreBuild(){
+                public float turretRotation = 90f;
+                public float turretReload = 0f;
+                public Teamc turretTarget;
+
+                @Override
+                public void updateTile(){
+                    super.updateTile();
+                    updateTurret();
+                }
+
+                private void updateTurret(){
+                    float range = 6f * tilesize;
+                    if(Units.invalidateTarget(turretTarget, team, x, y, range)){
+                        turretTarget = Units.closestTarget(team, x, y, range, u -> !u.isFlying(), b -> true);
+                    }
+
+                    if(turretTarget == null) return;
+
+                    float targetAngle = angleTo(turretTarget);
+                    turretRotation = Angles.moveToward(turretRotation, targetAngle, (100f / 60f) * edelta());
+                    if(Angles.within(turretRotation, targetAngle, 2f)){
+                        turretReload += edelta();
+                        if(turretReload >= 1.43f * 60f){
+                            turretReload = 0f;
+                            fireTurret(turretTarget);
+                        }
+                    }
+                }
+
+                private void fireTurret(Teamc target){
+                    if(target == null) return;
+                    Damage.damage(team, target.x(), target.y(), tilesize, 40f, false, true);
+                }
+
+                @Override
+                public void draw(){
+                    if(thrusterTime > 0){
+                        float frame = thrusterTime;
+                        Draw.alpha(1f);
+                        drawThrusters(frame);
+                        Draw.rect(block.region, x, y);
+                        Draw.alpha(Interp.pow4In.apply(frame));
+                        drawThrusters(frame);
+                        Draw.reset();
+                        drawTeamTop();
+                    }else{
+                        Draw.rect(block.region, x, y, drawrot());
+                        drawTeamTop();
+                        drawTurret();
+                    }
+                }
+
+                private void drawTurret(){
+                    if(turretRegion == null || !turretRegion.found()) return;
+                    float rot = turretRotation - 90f;
+                    float size = 3.5f * tilesize;
+                    float scale = size / tilesize;
+                    float barrelOffset = -1.5f * scale;
+                    if(turretBarrelL != null && turretBarrelL.found()){
+                        Tmp.v1.trns(rot, 0f, barrelOffset);
+                        Draw.rect(turretBarrelL, x + Tmp.v1.x, y + Tmp.v1.y, size, size, rot);
+                    }
+                    if(turretBarrelR != null && turretBarrelR.found()){
+                        Tmp.v1.trns(rot, 0f, barrelOffset);
+                        Draw.rect(turretBarrelR, x + Tmp.v1.x, y + Tmp.v1.y, size, size, rot);
+                    }
+                    Draw.rect(turretRegion, x, y, size, size, rot);
+                    if(turretTeamRegion != null && turretTeamRegion.found()){
+                        Draw.color(team.color);
+                        Draw.rect(turretTeamRegion, x, y, size, size, rot);
+                        Draw.color();
+                    }
+                }
+
+                @Override
+                public void drawSelect(){
+                    super.drawSelect();
+                    Drawf.dashCircle(x, y, 6f * tilesize, team.color);
+                }
+            };
+        }
+
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("core-nucleus");
+            TextureRegion preview = Core.atlas.find("planetary-fortress-preview");
+            uiIcon = Core.atlas.isFound(preview) ? preview : region;
+            fullIcon = uiIcon;
+            teamRegion = Core.atlas.find("core-nucleus-team");
+            teamRegions = new TextureRegion[Team.all.length];
+            for(Team team : Team.all){
+                teamRegions[team.id] = teamRegion;
+            }
+            thruster1 = Core.atlas.find("core-nucleus-thruster1", thruster1);
+            thruster2 = Core.atlas.find("core-nucleus-thruster2", thruster2);
+
+            turretRegion = Core.atlas.find("duo");
+            turretTeamRegion = Core.atlas.find("duo-team");
+            turretBarrelL = Core.atlas.find("duo-barrel-l");
+            turretBarrelR = Core.atlas.find("duo-barrel-r");
+            if(!Core.atlas.isFound(preview)){
+                var file = Core.files.internal("sprites/blocks/turrets/planetaryfortress/planetary-fortress-preview.png");
+                if(file.exists()){
+                    uiIcon = new TextureRegion(new Texture(file));
+                    fullIcon = uiIcon;
+                }
+            }
+        }
+        };
 
         coreBastion = new CoreBlock("core-bastion"){{
             //TODO cost
@@ -6400,34 +6651,60 @@ public class Blocks{
             requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
             buildTime = 43f * 60f;
             size = 3;
+            envEnabled = Env.any;
+            envDisabled = Env.none;
             configurable = true;
             hasPower = false;
             sc2Queue = true;
             sc2AddonSupport = true;
             sc2QueueSlots = 6;
             sc2QueueSlotsAddon = 8;
-            plans.add(new UnitPlan(UnitTypes.stell, 60f * 35f, with(Items.beryllium, 40, Items.silicon, 50)));
+            plans.add(new UnitPlan(UnitTypes.locus, 60f * 21f, with(Items.graphite, 100)));
+            plans.add(new UnitPlan(UnitTypes.crawler, 60f * 21f, with(Items.graphite, 75, Items.highEnergyGas, 25)));
+            plans.add(new UnitPlan(UnitTypes.anthicus, 60f * 32f, with(Items.graphite, 150, Items.highEnergyGas, 100)));
+            plans.add(new UnitPlan(UnitTypes.precept, 60f * 32f, with(Items.graphite, 150, Items.highEnergyGas, 125)));
+            plans.add(new UnitPlan(UnitTypes.mace, 60f * 21f, with(Items.graphite, 100)));
+            plans.add(new UnitPlan(UnitTypes.scepter, 60f * 43f, with(Items.graphite, 300, Items.highEnergyGas, 200)));
             researchCost = with(Items.beryllium, 200, Items.graphite, 80, Items.silicon, 80);
             regionSuffix = "-dark";
             fogRadius = 3;
-        }};
+        }
+
+        @Override
+        public boolean isOnPlanet(Planet planet){
+            return true;
+        }
+        };
 
         shipFabricator = new UnitFactory("ship-fabricator"){{
             requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
             buildTime = 36f * 60f;
 
             size = 3;
+            envEnabled = Env.any;
+            envDisabled = Env.none;
             configurable = true;
             hasPower = false;
             sc2Queue = true;
             sc2AddonSupport = true;
             sc2QueueSlots = 6;
             sc2QueueSlotsAddon = 8;
-            plans.add(new UnitPlan(UnitTypes.elude, 60f * 40f, with(Items.graphite, 50, Items.silicon, 70)));
+            plans.add(new UnitPlan(UnitTypes.flare, 60f * 30f, with(Items.graphite, 125, Items.highEnergyGas, 75)));
+            plans.add(new UnitPlan(UnitTypes.mega, 60f * 30f, with(Items.graphite, 100, Items.highEnergyGas, 100)));
+            plans.add(new UnitPlan(UnitTypes.obviate, 60f * 43f, with(Items.graphite, 150, Items.highEnergyGas, 125)));
+            plans.add(new UnitPlan(UnitTypes.avert, 60f * 34f, with(Items.graphite, 100, Items.highEnergyGas, 150)));
+            plans.add(new UnitPlan(UnitTypes.horizon, 60f * 43f, with(Items.graphite, 150, Items.highEnergyGas, 100)));
+            plans.add(new UnitPlan(UnitTypes.antumbra, 60f * 64f, with(Items.graphite, 400, Items.highEnergyGas, 300)));
             regionSuffix = "-dark";
             fogRadius = 3;
             researchCostMultiplier = 0.5f;
-        }};
+        }
+
+        @Override
+        public boolean isOnPlanet(Planet planet){
+            return true;
+        }
+        };
 
         mechFabricator = new UnitFactory("mech-fabricator"){{
             requirements(Category.units, with(Items.silicon, 200, Items.beryllium, 250, Items.tungsten, 10));
@@ -6951,6 +7228,37 @@ public class Blocks{
             itemDrop = Items.graphite;
             variants = 3;
         }};
+
+        borderAreaInsetDiagTlBr = new BorderAreaFloor("border-area-inset-diag-tl-br", "borderArea-topLeftToBottomRight", true, BorderAreaFloor.modeInset){{
+            localizedName = "Border Inset Diag TL-BR";
+        }};
+        borderAreaInsetDiagTrBl = new BorderAreaFloor("border-area-inset-diag-tr-bl", "borderArea-topRightToBottomLeft", false, BorderAreaFloor.modeInset){{
+            localizedName = "Border Inset Diag TR-BL";
+        }};
+        borderAreaOverflowDiagTlBr = new BorderAreaFloor("border-area-overflow-diag-tl-br", "borderArea-topLeftToBottomRight", true, BorderAreaFloor.modeOverflow){{
+            localizedName = "Border Overflow Diag TL-BR";
+        }};
+        borderAreaOverflowDiagTrBl = new BorderAreaFloor("border-area-overflow-diag-tr-bl", "borderArea-topRightToBottomLeft", false, BorderAreaFloor.modeOverflow){{
+            localizedName = "Border Overflow Diag TR-BL";
+        }};
+
+        //append editor-only height markers at the end to avoid shifting legacy block IDs
+        heightLayerFirst = new HeightLayerMarker("height-layer-first", "firstLayer", 1, false, false);
+        heightLayerSecond = new HeightLayerMarker("height-layer-second", "secondLayer", 2, false, false);
+        heightLayerThird = new HeightLayerMarker("height-layer-third", "thirdLayer", 3, false, false);
+        heightLayerFourth = new HeightLayerMarker("height-layer-fourth", "fourthLayer", 4, false, false);
+        heightLayerSlope = new HeightLayerMarker("height-layer-slope", "Slope", 1, true, true);
+
+        cliffLayerTop = new CliffLayerMarker("cliff-layer-top", "Cliff-top", CliffLayerData.top);
+        cliffLayerBottom = new CliffLayerMarker("cliff-layer-bottom", "Cliff-bottom", CliffLayerData.bottom);
+        cliffLayerLeft = new CliffLayerMarker("cliff-layer-left", "Cliff-left", CliffLayerData.left);
+        cliffLayerRight = new CliffLayerMarker("cliff-layer-right", "Cliff-right", CliffLayerData.right);
+        cliffLayerTopLeft = new CliffLayerMarker("cliff-layer-top-left", "Cliff-topLeft", CliffLayerData.topLeft);
+        cliffLayerTopRight = new CliffLayerMarker("cliff-layer-top-right", "Cliff-topRight", CliffLayerData.topRight);
+        cliffLayerBottomLeft = new CliffLayerMarker("cliff-layer-bottom-left", "Cliff-bottomLeft", CliffLayerData.bottomLeft);
+        cliffLayerBottomRight = new CliffLayerMarker("cliff-layer-bottom-right", "Cliff-bottomRight", CliffLayerData.bottomRight);
+        cliffLayerDiagTlBr = new CliffLayerMarker("cliff-layer-diag-tl-br", "Cliff-topLeftToBottomRight", CliffLayerData.topLeftToBottomRight);
+        cliffLayerDiagTrBl = new CliffLayerMarker("cliff-layer-diag-tr-bl", "Cliff-topRightToBottomLeft", CliffLayerData.topRightToBottomLeft);
 
         ventSpout = new VentSpout("vent-spout");
 

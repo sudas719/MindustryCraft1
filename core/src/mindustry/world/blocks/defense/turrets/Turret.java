@@ -249,7 +249,7 @@ public class Turret extends ReloadTurret{
         super.drawPlace(x, y, rotation, valid);
 
         if(drawMinRange){
-            Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, minRange, Pal.placing);
+            Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, minRange + size * tilesize / 2f, Pal.placing);
         }
     }
 
@@ -323,18 +323,20 @@ public class Turret extends ReloadTurret{
         }
 
         public float minRange(){
+            float base = minRange;
             if(peekAmmo() != null){
-                return minRange + peekAmmo().minRangeChange;
+                base += peekAmmo().minRangeChange;
             }
-            return minRange;
+            return base + hitSize() / 2f;
         }
 
         @Override
         public float range(){
+            float base = range;
             if(peekAmmo() != null){
-                return range + peekAmmo().rangeChange;
+                base += peekAmmo().rangeChange;
             }
-            return range;
+            return base + hitSize() / 2f;
         }
 
         public float trackingRange(){

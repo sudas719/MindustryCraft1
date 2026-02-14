@@ -21,6 +21,20 @@ public enum EditorTool{
             if(!Structs.inBounds(x, y, editor.width(), editor.height())) return;
 
             Tile tile = editor.tile(x, y);
+            if(editor.showCliff){
+                CliffLayerMarker marker = editor.cliffMarkerForTile(tile);
+                if(marker != null){
+                    editor.drawBlock = marker;
+                    return;
+                }
+            }
+            if(editor.showHeight){
+                HeightLayerMarker marker = editor.markerForTile(tile);
+                if(marker != null){
+                    editor.drawBlock = marker;
+                    return;
+                }
+            }
             editor.drawBlock = tile.block() == Blocks.air || !tile.block().inEditor ? tile.overlay() == Blocks.air ? tile.floor() : tile.overlay() : tile.block();
             editor.drawBlock.editorPicked(tile);
         }
@@ -107,6 +121,26 @@ public enum EditorTool{
             Tile tile = editor.tile(x, y);
 
             if(tile == null) return;
+
+            if(editor.drawBlock instanceof HeightLayerMarker marker){
+                byte target = tile.floorData;
+                byte updated = target;
+                int layer = marker.preserveLayer ? HeightLayerData.layer(tile) : marker.layerValue;
+                updated = HeightLayerData.withLayer(updated, layer);
+                updated = HeightLayerData.withSlope(updated, marker.slopeValue);
+                if(target == updated) return;
+
+                fill(x, y, mode == 0, t -> t.floorData == target, t -> editor.applyHeightMarker(t, marker));
+                return;
+            }
+
+            if(editor.drawBlock instanceof CliffLayerMarker marker){
+                int target = CliffLayerData.cliff(tile);
+                if(target == marker.cliffValue) return;
+
+                fill(x, y, mode == 0, t -> CliffLayerData.cliff(t) == target, t -> editor.applyCliffMarker(t, marker));
+                return;
+            }
 
             if(editor.drawBlock.isMultiblock() && (mode == 0 || mode == -1)){
                 //don't fill multiblocks, thanks
@@ -287,6 +321,23 @@ public enum EditorTool{
 
         @Override
         public void touched(int x, int y){
+            if(editor.drawBlock instanceof HeightLayerMarker marker){
+                editor.drawCircle(x, y, tile -> {
+                    if(Mathf.chance(chance)){
+                        editor.applyHeightMarker(tile, marker);
+                    }
+                });
+                return;
+            }
+
+            if(editor.drawBlock instanceof CliffLayerMarker marker){
+                editor.drawCircle(x, y, tile -> {
+                    if(Mathf.chance(chance)){
+                        editor.applyCliffMarker(tile, marker);
+                    }
+                });
+                return;
+            }
 
             //floor spray
             if(editor.drawBlock.isFloor()){

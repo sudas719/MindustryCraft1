@@ -1,6 +1,7 @@
 package mindustry.entities.comp;
 
 import arc.*;
+import arc.audio.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
@@ -113,8 +114,13 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public float floorSpeedMultiplier(){
-        Floor on = isFlying() || type.hovering ? Blocks.air.asFloor() : floorOn();
-        return (float)Math.pow(on.speedMultiplier, type.floorMultiplier) * speedMultiplier;
+        float floorSpeed = 1f;
+        if(!(isFlying() || type.hovering)){
+            Tile tile = tileOn();
+            Floor on = floorOn();
+            floorSpeed = tile != null && on instanceof BorderAreaFloor border ? border.mixedSpeedMultiplier(tile) : on.speedMultiplier;
+        }
+        return (float)Math.pow(floorSpeed, type.floorMultiplier) * speedMultiplier;
     }
 
     /** Called when this unit was unloaded from a factory or spawn point. */
@@ -164,7 +170,13 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public boolean isPathImpassable(int tileX, int tileY){
-        return !type.flying && world.tiles.in(tileX, tileY) && type.pathCost.getCost(team.id, pathfinder.get(tileX, tileY)) == -1;
+        if(type.flying || !world.tiles.in(tileX, tileY)) return false;
+
+        Tile from = tileOn();
+        Tile to = world.tile(tileX, tileY);
+        if(CliffLayerData.blocks(from, to)) return true;
+
+        return type.pathCost.getCost(team.id, pathfinder.get(tileX, tileY)) == -1;
     }
 
     /** @return approx. square size of the physical hitbox for physics */
@@ -184,6 +196,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         Tile tile = world.tile(tileX, tileY);
         if(tile == null) return false;
+        if(isGrounded() && CliffLayerData.blocks(tileOn(), tile)) return false;
         if(type.canPassWalls && tile.build == null && tile.block().solid && !tile.block().synthetic() && tile.block().size == 1){
             return true;
         }
@@ -222,7 +235,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public boolean inRange(Position other){
-        return within(other, type.range);
+        return within(other, type.range + hitSize / 2f);
     }
 
     public boolean hasWeapons(){
@@ -291,7 +304,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     @Override
     public float range(){
-        return type.maxRange;
+        return type.maxRange + hitSize / 2f;
     }
 
     @Replace
@@ -695,12 +708,24 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     public void updateDrowning(){
         Floor floor = drownFloor();
+        Tile tile = tileOn();
+        float drownTimeValue = floor == null ? 0f : floor.drownTime;
+        boolean liquid = floor != null && floor.isLiquid;
+        Effect drownEffect = floor == null ? Fx.none : floor.drownUpdateEffect;
+        Color drownColor = floor == null ? Color.white : floor.mapColor;
 
-        if(floor != null && floor.isLiquid && floor.drownTime > 0 && canDrown()){
+        if(tile != null && tile.floor() instanceof BorderAreaFloor border){
+            drownTimeValue = border.mixedDrownTime(tile);
+            liquid = border.mixedLiquid(tile);
+            drownEffect = border.mixedDrownUpdateEffect(tile);
+            drownColor = border.mixedMapColor(tile, Tmp.c1);
+        }
+
+        if(floor != null && liquid && drownTimeValue > 0f && canDrown()){
             lastDrownFloor = floor;
-            drownTime += Time.delta / (hitSize / 8f * type.drownTimeMultiplier * floor.drownTime);
+            drownTime += Time.delta / (hitSize / 8f * type.drownTimeMultiplier * drownTimeValue);
             if(Mathf.chanceDelta(0.05f)){
-                floor.drownUpdateEffect.at(x, y, hitSize, floor.mapColor);
+                drownEffect.at(x, y, hitSize, drownColor);
             }
 
             if(drownTime >= 0.999f && !net.client()){
@@ -807,7 +832,11 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(isFlying() != wasFlying){
             if(wasFlying){
                 if(tile != null){
-                    Fx.unitLand.at(x, y, floor.isLiquid ? 1f : 0.5f, tile.getFloorColor());
+                    float landScale = floor.isLiquid ? 1f : 0.5f;
+                    if(floor instanceof BorderAreaFloor border){
+                        landScale = border.mixedLiquid(tile) ? 1f : 0.5f;
+                    }
+                    Fx.unitLand.at(x, y, landScale, tile.getFloorColor());
                 }
             }
 
@@ -816,11 +845,23 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         if(!type.hovering && isGrounded() && type.emitWalkEffect){
             if((splashTimer += Mathf.dst(deltaX(), deltaY())) >= (7f + hitSize()/8f)){
-                floor.walkEffect.at(x, y, hitSize() / 8f, tile != null ? tile.getFloorColor() : floor.mapColor);
+                Effect walkEffect = floor.walkEffect;
+                Sound walkSound = floor.walkSound;
+                float soundPitchMin = floor.walkSoundPitchMin, soundPitchMax = floor.walkSoundPitchMax, soundVolume = floor.walkSoundVolume;
+
+                if(tile != null && floor instanceof BorderAreaFloor border){
+                    walkEffect = border.mixedWalkEffect(tile);
+                    walkSound = border.mixedWalkSound(tile);
+                    soundPitchMin = border.mixedWalkSoundPitchMin(tile);
+                    soundPitchMax = border.mixedWalkSoundPitchMax(tile);
+                    soundVolume = border.mixedWalkSoundVolume(tile);
+                }
+
+                walkEffect.at(x, y, hitSize() / 8f, tile != null ? tile.getFloorColor() : floor.mapColor);
                 splashTimer = 0f;
 
                 if(type.emitWalkSound){
-                    floor.walkSound.at(x, y, Mathf.random(floor.walkSoundPitchMin, floor.walkSoundPitchMax), floor.walkSoundVolume);
+                    walkSound.at(x, y, Mathf.random(soundPitchMin, soundPitchMax), soundVolume);
                 }
             }
         }
@@ -893,7 +934,11 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
             trail.update(cx, cy);
         }
 
-        drag = type.drag * (isGrounded() ? (floorOn().dragMultiplier) : 1f) * dragMultiplier * state.rules.dragMultiplier;
+        float floorDrag = 1f;
+        if(isGrounded()){
+            floorDrag = tile != null && floor instanceof BorderAreaFloor border ? border.mixedDragMultiplier(tile) : floor.dragMultiplier;
+        }
+        drag = type.drag * floorDrag * dragMultiplier * state.rules.dragMultiplier;
 
         //apply knockback based on spawns
         if(team != state.rules.waveTeam && state.hasSpawns() && (!net.client() || isLocal()) && hittable()){
@@ -946,8 +991,12 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
             }
 
             //apply damage
-            if(floor.damageTaken > 0f){
-                damageContinuous(floor.damageTaken);
+            float floorDamage = floor.damageTaken;
+            if(tile != null && floor instanceof BorderAreaFloor border){
+                floorDamage = border.mixedDamageTaken(tile);
+            }
+            if(floorDamage > 0f){
+                damageContinuous(floorDamage);
             }
         }
 

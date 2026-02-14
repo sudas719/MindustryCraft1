@@ -25,6 +25,10 @@ import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.ui.*;
 import mindustry.world.*;
+import mindustry.world.blocks.defense.*;
+import mindustry.world.blocks.environment.*;
+import mindustry.world.blocks.payloads.*;
+import mindustry.world.blocks.storage.*;
 
 import static arc.Core.*;
 import static mindustry.Vars.*;
@@ -44,6 +48,9 @@ public class DesktopInput extends InputHandler{
     public float selectScale;
     /** Selected build plan for movement. */
     public @Nullable BuildPlan splan;
+    /** Landing placement ghost for flying cores. */
+    public @Nullable BuildPlan landConfirmPlan;
+    public int landConfirmUnitId = -1;
     /** Whether player is currently deleting removal plans. */
     public boolean deleting = false, shouldShoot = false, panning = false, movedPlan = false;
     /** Mouse pan speed. */
@@ -72,10 +79,14 @@ public class DesktopInput extends InputHandler{
     /** View presets: camera positions for F1-F4 */
     public Vec2[] viewPresets = new Vec2[4];
 
+    private int lastOrbitalCoreId = -1;
+
     /** Shift key command queuing */
     private boolean shiftWasPressed = false;
     private Seq<Vec2> queuedCommandTargets = new Seq<>();
     private mindustry.ui.UnitAbilityPanel.CommandMode queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
+    /** Guards against ghost clicks immediately after refocus/large frame hitch. */
+    private float commandFocusGuardTime = 0f;
 
     private float buildPlanMouseOffsetX, buildPlanMouseOffsetY;
     private boolean changedCursor, pressedCommandRect;
@@ -147,45 +158,6 @@ public class DesktopInput extends InputHandler{
         int cursorX = tileX(Core.input.mouseX());
         int cursorY = tileY(Core.input.mouseY());
 
-        //Draw queued command targets when Shift is held
-        if(!queuedCommandTargets.isEmpty() && (Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight))){
-            Lines.stroke(2f);
-            Draw.color(Pal.accent);
-
-            //Draw lines between queued targets
-            for(int i = 0; i < queuedCommandTargets.size; i++){
-                Vec2 target = queuedCommandTargets.get(i);
-
-                //Draw circle at target
-                Lines.circle(target.x, target.y, 8f);
-
-                //Draw line from previous target or from units
-                if(i == 0){
-                    //Draw lines from selected units to first target
-                    for(Unit unit : selectedUnits){
-                        if(unit.isValid()){
-                            Lines.line(unit.x, unit.y, target.x, target.y);
-                        }
-                    }
-                }else{
-                    //Draw line from previous target
-                    Vec2 prev = queuedCommandTargets.get(i - 1);
-                    Lines.line(prev.x, prev.y, target.x, target.y);
-                }
-            }
-
-            //Draw line from last target to current mouse position
-            if(!queuedCommandTargets.isEmpty()){
-                Vec2 last = queuedCommandTargets.get(queuedCommandTargets.size - 1);
-                float mouseWorldX = Core.camera.unproject(Core.input.mouseX(), Core.input.mouseY()).x;
-                float mouseWorldY = Core.camera.unproject(Core.input.mouseX(), Core.input.mouseY()).y;
-                Draw.color(Pal.accent, 0.5f);
-                Lines.line(last.x, last.y, mouseWorldX, mouseWorldY);
-            }
-
-            Draw.reset();
-        }
-
         //draw break selection
         if(mode == breaking){
             drawBreakSelection(selectX, selectY, cursorX, cursorY, !(Core.input.keyDown(Binding.schematicSelect) && schemX != -1 && schemY != -1) ? maxLength : Vars.maxSchematicSize, false);
@@ -229,6 +201,11 @@ public class DesktopInput extends InputHandler{
             drawSelected(splan.x, splan.y, splan.block, getPlan(splan.x, splan.y, splan.block.size, splan) != null ? Pal.remove : Pal.accent);
         }
 
+        if(landConfirmPlan != null){
+            drawPlan(landConfirmPlan);
+            drawOverPlan(landConfirmPlan, landConfirmPlan.cachedValid);
+        }
+
         //draw hover plans
         if(mode == none && !isPlacing()){
             var plan = getPlan(cursorX, cursorY);
@@ -255,6 +232,25 @@ public class DesktopInput extends InputHandler{
         }
 
         //draw things that may be placed soon
+            if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.LAND){
+                BuildPayload payload = selectedCoreFlyerPayload();
+                if(payload != null){
+                    Block landBlock = payload.build.block;
+                    int rot = landBlock.planRotation(payload.build.rotation);
+                    float offset = landBlock.offset;
+                    int placeX = World.toTile(Core.input.mouseWorldX() - offset);
+                    int placeY = World.toTile(Core.input.mouseWorldY() - offset);
+                    boolean valid = Build.validPlace(landBlock, player.team(), placeX, placeY, rot, false);
+                    if(landBlock.rotate && landBlock.drawArrow){
+                        drawArrow(landBlock, placeX, placeY, rot, valid);
+                    }
+                    drawPlacementConstraintGrid(landBlock, player.team(), placeX, placeY, rot);
+                    Draw.color();
+                    drawPlan(placeX, placeY, landBlock, rot, cursorAlpha);
+                    landBlock.drawPlace(placeX, placeY, rot, valid);
+                    drawOverlapCheck(landBlock, placeX, placeY, valid);
+                }
+            }
             if(mode == placing && block != null){
                 for(int i = 0; i < linePlans.size; i++){
                     var plan = linePlans.get(i);
@@ -308,11 +304,27 @@ public class DesktopInput extends InputHandler{
     public void update(){
         super.update();
 
-        //Handle Shift key release for queued commands
+        float frameDelta = Core.graphics.getDeltaTime();
+        if(frameDelta > 0.2f){
+            commandFocusGuardTime = Math.max(commandFocusGuardTime, 0.35f);
+        }else if(commandFocusGuardTime > 0f){
+            commandFocusGuardTime = Math.max(commandFocusGuardTime - frameDelta, 0f);
+        }
+
+        if(landConfirmUnitId != -1){
+            Unit unit = Groups.unit.getByID(landConfirmUnitId);
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.coreFlyer){
+                landConfirmUnitId = -1;
+                landConfirmPlan = null;
+            }
+        }
+
+        //Legacy queued command buffer is no longer executed on Shift release.
+        //Queued waypoints are applied immediately on each Shift+click.
         boolean shiftPressed = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
         if(shiftWasPressed && !shiftPressed && !queuedCommandTargets.isEmpty()){
-            //Shift was released, execute all queued commands
-            executeQueuedCommands();
+            queuedCommandTargets.clear();
+            queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
         }
         shiftWasPressed = shiftPressed;
 
@@ -754,7 +766,9 @@ public class DesktopInput extends InputHandler{
         }
 
         HoverInfo hover = updateHover(false);
-        if(hover.isValid()){
+        if(useAbilityTargetCursor()){
+            cursorType = targetCursor(hover);
+        }else if(hover.isValid()){
             cursorType = hoverCursor(hover);
         }
 
@@ -951,49 +965,55 @@ public class DesktopInput extends InputHandler{
         }
 
         if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse()){
-            tappedOne = false;
-            BuildPlan plan = getPlan(cursorX, cursorY);
+            if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+                //don't change selection while choosing a command target
+                selectMillis = Time.millis();
+                prevSelected = selected;
+            }else{
+                tappedOne = false;
+                BuildPlan plan = getPlan(cursorX, cursorY);
 
-            if(Core.input.keyDown(Binding.breakBlock)){
-                mode = none;
-            }else if(!selectPlans.isEmpty()){
-                flushPlans(selectPlans);
-                movedPlan = true;
-            }else if(isPlacing()){
-                selectX = cursorX;
-                selectY = cursorY;
-                lastLineX = cursorX;
-                lastLineY = cursorY;
-                mode = placing;
-                updateLine(selectX, selectY, cursorX, cursorY);
-            }else if(plan != null && !plan.breaking && mode == none && !plan.initialized && plan.progress <= 0f){
-                splan = plan;
-                movedPlan = false;
-                buildPlanMouseOffsetX = splan.x * tilesize - Core.input.mouseWorld().x;
-                buildPlanMouseOffsetY = splan.y * tilesize - Core.input.mouseWorld().y;
-            }else if(plan != null && plan.breaking){
-                deleting = true;
-            }else if(commandMode && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
-                //Only allow box selection if NOT in an active RTS command mode
-                commandRect = true;
-                commandRectX = input.mouseWorldX();
-                commandRectY = input.mouseWorldY();
-            }else if(!checkConfigTap() && selected != null && !tryRepairDerelict(selected)){
-                if(trySelectResource(selected)){
-                    //resource selection consumes the tap
-                }else{
-                    selectedResource = null;
-                    //only begin shooting if there's no cursor event
-                    if(!tryTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
-                        && !(tryStopMine(selected) || (!settings.getBool("doubletapmine") || selected == prevSelected && Time.timeSinceMillis(selectMillis) < 500) && tryBeginMine(selected)) && !Core.scene.hasKeyboard()){
-                        player.shooting = shouldShoot;
+                if(Core.input.keyDown(Binding.breakBlock)){
+                    mode = none;
+                }else if(!selectPlans.isEmpty()){
+                    flushPlans(selectPlans);
+                    movedPlan = true;
+                }else if(isPlacing()){
+                    selectX = cursorX;
+                    selectY = cursorY;
+                    lastLineX = cursorX;
+                    lastLineY = cursorY;
+                    mode = placing;
+                    updateLine(selectX, selectY, cursorX, cursorY);
+                }else if(plan != null && !plan.breaking && mode == none && !plan.initialized && plan.progress <= 0f){
+                    splan = plan;
+                    movedPlan = false;
+                    buildPlanMouseOffsetX = splan.x * tilesize - Core.input.mouseWorld().x;
+                    buildPlanMouseOffsetY = splan.y * tilesize - Core.input.mouseWorld().y;
+                }else if(plan != null && plan.breaking){
+                    deleting = true;
+                }else if(commandMode && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
+                    //Only allow box selection if NOT in an active RTS command mode
+                    commandRect = true;
+                    commandRectX = input.mouseWorldX();
+                    commandRectY = input.mouseWorldY();
+                }else if(!checkConfigTap() && selected != null && !tryRepairDerelict(selected)){
+                    if(trySelectResource(selected)){
+                        //resource selection consumes the tap
+                    }else{
+                        selectedResource = null;
+                        //only begin shooting if there's no cursor event
+                        if(!tryTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
+                            && !(tryStopMine(selected) || (!settings.getBool("doubletapmine") || selected == prevSelected && Time.timeSinceMillis(selectMillis) < 500) && tryBeginMine(selected)) && !Core.scene.hasKeyboard()){
+                            player.shooting = shouldShoot;
+                        }
                     }
+                }else if(!Core.scene.hasKeyboard()){ //if it's out of bounds, shooting is just fine
+                    player.shooting = shouldShoot;
                 }
-            }else if(!Core.scene.hasKeyboard()){ //if it's out of bounds, shooting is just fine
-                player.shooting = shouldShoot;
+                selectMillis = Time.millis();
+                prevSelected = selected;
             }
-            selectMillis = Time.millis();
-            prevSelected = selected;
         }else if(Core.input.keyTap(Binding.deselect) && isPlacing()){
             block = null;
             mode = none;
@@ -1130,7 +1150,9 @@ public class DesktopInput extends InputHandler{
 
             if(commandMode && selectedUnits.any()){
                 if(input.keyTap(Binding.commandQueue) && Binding.commandQueue.value.key.type != KeyType.mouse){
-                    commandTap(input.mouseX(), input.mouseY(), true);
+                    if(commandFocusGuardTime <= 0f){
+                        commandTap(input.mouseX(), input.mouseY(), true);
+                    }
                 }
             }
 
@@ -1173,6 +1195,30 @@ public class DesktopInput extends InputHandler{
         return team != player.team() ? ui.hoverRedCursor : ui.hoverGreenCursor;
     }
 
+    private boolean useAbilityTargetCursor(){
+        if(ui.hudfrag.abilityPanel == null) return false;
+        var mode = ui.hudfrag.abilityPanel.activeCommand;
+        return mode == mindustry.ui.UnitAbilityPanel.CommandMode.RALLY
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.DROP_PULSAR
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.EXTRA_SUPPLY
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.SCAN
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.LAND
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MOVE
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.ATTACK
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.PATROL;
+    }
+
+    private Cursor targetCursor(HoverInfo hover){
+        if(hover == null || !hover.isValid()) return ui.targetYellowCursor;
+        if(hover.resource != null) return ui.targetYellowCursor;
+        Team team = hover.team;
+        if(team == null) return ui.targetYellowCursor;
+        if(team == player.team()) return ui.targetGreenCursor;
+        if(team == Team.derelict) return ui.targetYellowCursor;
+        return team != player.team() ? ui.targetRedCursor : ui.targetGreenCursor;
+    }
+
     @Override
     public boolean tap(float x, float y, int count, KeyCode button){
         if(scene.hasMouse() || !commandMode) return false;
@@ -1197,10 +1243,14 @@ public class DesktopInput extends InputHandler{
 
     public void executeActiveCommand(float screenX, float screenY){
         if(ui.hudfrag.abilityPanel == null) return;
+        if(commandFocusGuardTime > 0f) return;
 
         var mode = ui.hudfrag.abilityPanel.activeCommand;
-        float worldX = Core.camera.unproject(screenX, screenY).x;
-        float worldY = Core.camera.unproject(screenX, screenY).y;
+        Vec2 world = Core.camera.unproject(screenX, screenY);
+        if(!isValidCommandWorld(world.x, world.y)) return;
+        float worldX = clampCommandX(world.x);
+        float worldY = clampCommandY(world.y);
+        boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST){
             if(executeHarvestCommand(worldX, worldY)){
@@ -1215,21 +1265,48 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.DROP_PULSAR){
+            if(executeDropPulsarCommand(worldX, worldY)){
+                if(!shiftHeld){
+                    ui.hudfrag.abilityPanel.exitCommandMode();
+                }
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.EXTRA_SUPPLY){
+            if(executeExtraSupplyCommand(worldX, worldY)){
+                if(!shiftHeld){
+                    ui.hudfrag.abilityPanel.exitCommandMode();
+                }
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.SCAN){
+            if(executeScanCommand(worldX, worldY)){
+                if(!shiftHeld){
+                    ui.hudfrag.abilityPanel.exitCommandMode();
+                }
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.LAND){
+            if(executeLandCommand(worldX, worldY)){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE){
             executeBuildPlacement(worldX, worldY);
             return;
         }
 
-        //Check if Shift is held for command queuing
-        boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
-
+        //Shift queues commands immediately so units start moving right away.
         if(shiftHeld){
-            //Queue the command target, don't execute yet
-            if(queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
-                queuedCommandMode = mode;
-            }
-            queuedCommandTargets.add(new Vec2(worldX, worldY));
-            //Don't exit command mode, allow more targets to be added
+            executeCommandAtTarget(mode, worldX, worldY, true);
             return;
         }
 
@@ -1243,7 +1320,7 @@ public class DesktopInput extends InputHandler{
     private boolean executeHarvestCommand(float worldX, float worldY){
         Tile tile = world.tileWorld(worldX, worldY);
         Tile resource = resolveResourceTile(tile);
-        if(resource == null) return false;
+        if(resource == null || !(resource.block() instanceof CrystalMineralWall)) return false;
 
         Vec2 target = Tmp.v1.set(resource.worldx(), resource.worldy());
         for(Unit unit : selectedUnits){
@@ -1258,9 +1335,236 @@ public class DesktopInput extends InputHandler{
     }
 
     private void executeRallyCommand(float worldX, float worldY){
-        if(commandBuildings.isEmpty()) return;
+        if(commandBuildings.isEmpty()){
+            if(selectedUnits.isEmpty()) return;
+            for(Unit unit : selectedUnits){
+                if(unit == null || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+                if(payload.payloads().isEmpty()) continue;
+                Payload top = payload.payloads().peek();
+                if(top instanceof BuildPayload buildPayload){
+                    if(buildPayload.build instanceof CoreBlock.CoreBuild core){
+                        core.onCommand(new Vec2(worldX, worldY));
+                    }
+                }
+            }
+            return;
+        }
         int[] builds = commandBuildings.mapInt(b -> b.pos()).toArray();
         Call.commandBuilding(player, builds, new Vec2(worldX, worldY));
+    }
+
+    private boolean executeDropPulsarCommand(float worldX, float worldY){
+        Seq<CoreBlock.CoreBuild> cores = selectedOrbitalCores();
+        if(cores.isEmpty()) return false;
+
+        Tile target = world.tileWorld(worldX, worldY);
+        if(target == null) return false;
+
+        Tile resource = resolveResourceTile(target);
+        Tile harvestTarget = null;
+
+        if(resource != null && resource.block() instanceof CrystalMineralWall){
+            harvestTarget = resource;
+        }else{
+            if(target.build != null || target.solid()) return false;
+        }
+
+        int start = nextOrbitalCoreStartIndex(cores);
+        for(int i = 0; i < cores.size; i++){
+            CoreBlock.CoreBuild core = cores.get((start + i) % cores.size);
+            Tile spawnTile = resource != null && resource.block() instanceof CrystalMineralWall ? findSpawnTileNearCore(core, resource) : target;
+            if(spawnTile == null || spawnTile.build != null || spawnTile.solid()) continue;
+            if(!core.consumeOrbitalEnergy(CoreBlock.orbitalAbilityCost)) continue;
+
+            lastOrbitalCoreId = core.id;
+
+            float spawnX = spawnTile.worldx();
+            float spawnY = spawnTile.worldy();
+            final Team team = core.team;
+            final float spawnXFinal = spawnX;
+            final float spawnYFinal = spawnY;
+            final Tile harvestTargetFinal = harvestTarget;
+
+            Fx.sc2DropPod.at(spawnXFinal, spawnYFinal);
+
+            Time.run(3f * 60f, () -> {
+                Tile check = world.tileWorld(spawnXFinal, spawnYFinal);
+                if(check != null && (check.build != null || check.solid())) return;
+
+                Unit unit = UnitTypes.pulsar.create(team);
+                unit.set(spawnXFinal, spawnYFinal);
+                unit.add();
+                Fx.launchPod.at(spawnXFinal, spawnYFinal);
+                PulsarDrops.register(unit);
+
+                if(harvestTargetFinal != null){
+                    if(unit.controller() instanceof CommandAI ai){
+                        ai.setHarvestTarget(Tmp.v3.set(harvestTargetFinal.worldx(), harvestTargetFinal.worldy()));
+                    }else if(unit.controller() instanceof HarvestAI ai){
+                        ai.setHarvestTarget(Tmp.v3.set(harvestTargetFinal.worldx(), harvestTargetFinal.worldy()));
+                    }
+                }
+
+                Time.run(PulsarDrops.lifetime, () -> {
+                    if(unit != null && unit.isValid()){
+                        unit.kill();
+                    }
+                    PulsarDrops.remove(unit);
+                });
+            });
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean executeExtraSupplyCommand(float worldX, float worldY){
+        Seq<CoreBlock.CoreBuild> cores = selectedOrbitalCores();
+        if(cores.isEmpty()) return false;
+
+        Building build = world.buildWorld(worldX, worldY);
+        if(build == null || build.team != player.team()) return false;
+        if(build.block != Blocks.doorLarge && build.block != Blocks.doorLargeErekir) return false;
+        if(!(build instanceof Door.DoorBuild)) return false;
+
+        int start = nextOrbitalCoreStartIndex(cores);
+        for(int i = 0; i < cores.size; i++){
+            CoreBlock.CoreBuild core = cores.get((start + i) % cores.size);
+            if(!core.consumeOrbitalEnergy(CoreBlock.orbitalAbilityCost)) continue;
+            lastOrbitalCoreId = core.id;
+            applyExtraSupply(build.tile);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean executeScanCommand(float worldX, float worldY){
+        Seq<CoreBlock.CoreBuild> cores = selectedOrbitalCores();
+        if(cores.isEmpty()) return false;
+
+        int start = nextOrbitalCoreStartIndex(cores);
+        for(int i = 0; i < cores.size; i++){
+            CoreBlock.CoreBuild core = cores.get((start + i) % cores.size);
+            if(!core.consumeOrbitalEnergy(CoreBlock.orbitalAbilityCost)) continue;
+            lastOrbitalCoreId = core.id;
+
+            Unit unit = UnitTypes.scanProbe.create(player.team());
+            unit.set(worldX, worldY);
+            unit.add();
+            Fx.padlaunch.at(worldX, worldY);
+            Fx.sc2Scan.at(worldX, worldY, 10f * tilesize);
+            Time.run(9f * 60f, () -> {
+                if(unit != null && unit.isValid()){
+                    unit.remove();
+                }
+            });
+            return true;
+        }
+        return false;
+    }
+
+    private Seq<CoreBlock.CoreBuild> selectedOrbitalCores(){
+        Seq<CoreBlock.CoreBuild> cores = new Seq<>();
+        for(Building build : commandBuildings){
+            if(build instanceof CoreBlock.CoreBuild core && core.block == Blocks.coreOrbital){
+                cores.add(core);
+            }
+        }
+        return cores;
+    }
+
+    private int nextOrbitalCoreStartIndex(Seq<CoreBlock.CoreBuild> cores){
+        if(lastOrbitalCoreId == -1) return 0;
+        for(int i = 0; i < cores.size; i++){
+            if(cores.get(i).id == lastOrbitalCoreId){
+                return (i + 1) % cores.size;
+            }
+        }
+        return 0;
+    }
+
+    private void applyExtraSupply(Tile tile){
+        if(tile == null || tile.build == null) return;
+        Building build = tile.build;
+        if(!(build instanceof Door.DoorBuild)) return;
+        boolean open = ((Door.DoorBuild)build).open;
+        tile.setBlock(Blocks.doorLargeErekir, build.team, build.rotation);
+        if(tile.build instanceof Door.DoorBuild door){
+            door.health = door.block.health;
+            door.configure(open);
+        }
+    }
+
+    private @Nullable BuildPayload selectedCoreFlyerPayload(){
+        if(selectedUnits.isEmpty()) return null;
+        for(Unit unit : selectedUnits){
+            if(unit == null || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+            if(payload.payloads().isEmpty()) continue;
+            Payload top = payload.payloads().peek();
+            if(top instanceof BuildPayload buildPayload){
+                return buildPayload;
+            }
+        }
+        return null;
+    }
+
+    private boolean executeLandCommand(float worldX, float worldY){
+        if(selectedUnits.isEmpty()) return false;
+        boolean any = false;
+        for(Unit unit : selectedUnits){
+            if(unit == null || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+            if(payload.payloads().isEmpty()) continue;
+            Payload top = payload.payloads().peek();
+            if(!(top instanceof BuildPayload buildPayload)) continue;
+            Block block = buildPayload.build.block;
+
+            float offset = block.offset;
+            int tx = World.toTile(worldX - offset);
+            int ty = World.toTile(worldY - offset);
+            if(!Build.validPlace(block, unit.team, tx, ty, buildPayload.build.rotation, false)){
+                continue;
+            }
+
+            float landX = tx * tilesize + offset;
+            float landY = ty * tilesize + offset;
+
+            UnitTypes.CoreFlyerData data = UnitTypes.getCoreFlyerData(unit);
+            data.target.set(landX, landY);
+            data.active = true;
+            data.landing = false;
+            data.landTime = 0f;
+            data.returnRotation = buildPayload.build.rotation * 90f;
+
+            if(unit.isCommandable()){
+                unit.command().commandPosition(data.target);
+            }
+
+            landConfirmPlan = new BuildPlan(tx, ty, buildPayload.build.rotation, block);
+            landConfirmUnitId = unit.id;
+            any = true;
+        }
+        return any;
+    }
+
+    private @Nullable Tile findSpawnTileNearCore(CoreBlock.CoreBuild core, Tile resource){
+        if(resource == null || core == null) return null;
+        int dx = core.tile.x - resource.x;
+        int dy = core.tile.y - resource.y;
+        int stepX = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 1 : -1) : 0;
+        int stepY = Math.abs(dy) > Math.abs(dx) ? (dy >= 0 ? 1 : -1) : 0;
+
+        int[] xs = {stepX, 1, -1, 0, 0};
+        int[] ys = {stepY, 0, 0, 1, -1};
+        for(int i = 0; i < xs.length; i++){
+            int nx = resource.x + xs[i];
+            int ny = resource.y + ys[i];
+            Tile tile = world.tile(nx, ny);
+            if(tile != null && !tile.solid()){
+                return tile;
+            }
+        }
+        return null;
     }
 
     private void executeBuildPlacement(float worldX, float worldY){
@@ -1325,7 +1629,7 @@ public class DesktopInput extends InputHandler{
 
         float targetX = tx * tilesize + block.offset;
         float targetY = ty * tilesize + block.offset;
-        Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queueCommand, true);
+        Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queueCommand, true, false);
 
         ui.hudfrag.abilityPanel.exitCommandMode();
     }
@@ -1386,6 +1690,9 @@ public class DesktopInput extends InputHandler{
     }
 
     private void executeCommandAtTarget(mindustry.ui.UnitAbilityPanel.CommandMode mode, float worldX, float worldY, boolean queue){
+        worldX = clampCommandX(worldX);
+        worldY = clampCommandY(worldY);
+
         int[] ids = new int[selectedUnits.size];
         for(int i = 0; i < ids.length; i++){
             ids[i] = selectedUnits.get(i).id;
@@ -1394,28 +1701,28 @@ public class DesktopInput extends InputHandler{
         switch(mode){
             case MOVE:
                 //Move command: units move to location without engaging
-                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
                 break;
 
             case PATROL:
                 //Patrol command: units patrol between waypoints with patrol AI
                 //Each click adds a patrol waypoint
-                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
                 break;
 
             case ATTACK:
                 //Attack command: units move and attack
-                //Check if clicking on enemy unit or building
+                //Check if clicking on any unit or building, including allies when forced by attack command mode.
                 Building build = world.buildWorld(worldX, worldY);
                 Teamc attack = (build != null && build.within(worldX, worldY, build.hitSize() / 2f)) ? build : null;
-                if(attack == null || attack.team() == player.team()){
-                    attack = selectedEnemyUnit(worldX, worldY);
+                if(attack == null){
+                    attack = selectedAnyUnit(worldX, worldY);
                 }
 
-                if(attack != null && attack.team() != player.team()){
-                    Call.commandUnits(player, ids, attack instanceof Building b ? b : null, attack instanceof Unit u ? u : null, new Vec2(worldX, worldY), queue, true);
+                if(attack != null){
+                    Call.commandUnits(player, ids, attack instanceof Building b ? b : null, attack instanceof Unit u ? u : null, new Vec2(worldX, worldY), queue, true, true);
                 }else{
-                    Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true);
+                    Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
                 }
                 break;
         }
@@ -1447,22 +1754,20 @@ public class DesktopInput extends InputHandler{
         }
 
         if(button == KeyCode.mouseRight){
+            if(commandFocusGuardTime > 0f) return true;
             //Check if Shift is held for waypoint queuing
             boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
             if(shiftHeld && (selectedUnits.size > 0 || commandBuildings.size > 0)){
-                //Queue the waypoint
-                Vec2 worldPos = Core.camera.unproject(x, y);
-                if(queuedCommandMode == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
-                    queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.MOVE;
-                }
-                queuedCommandTargets.add(new Vec2(worldPos.x, worldPos.y));
+                commandTap(x, y, true);
             }else{
                 commandTap(x, y);
             }
         }
 
         if(button == Binding.commandQueue.value.key){
-            commandTap(x, y, true);
+            if(commandFocusGuardTime <= 0f){
+                commandTap(x, y, true);
+            }
         }
 
         return super.touchDown(x, y, pointer, button);

@@ -6,7 +6,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.ai.*;
 import mindustry.core.*;
-import mindustry.content.Items;
+import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
 import mindustry.gen.*;
@@ -20,6 +20,7 @@ import static mindustry.Vars.*;
 
 public class CommandAI extends AIController{
     protected static final int maxCommandQueueSize = 50, avoidInterval = 10;
+    protected static final float centerArrivalThreshold = 0.2f;
     protected static final Vec2 vecOut = new Vec2(), vecMovePos = new Vec2();
     protected static final boolean[] noFound = {false};
     protected static final UnitPayload tmpPayload = new UnitPayload(null);
@@ -298,7 +299,7 @@ public class CommandAI extends AIController{
 
         boolean alwaysArrive = false;
 
-        float engageRange = unit.type.range - 10f;
+        float engageRange = unit.range() - 10f;
         boolean withinAttackRange = attackTarget != null && unit.within(attackTarget, engageRange) && !ramming;
 
         if(targetPos != null){
@@ -364,7 +365,7 @@ public class CommandAI extends AIController{
 
             //TODO: should the unit stop when it finds a target?
             if(
-                (hasStance(UnitStance.patrol) && !hasStance(UnitStance.pursueTarget) && target != null && unit.within(target, unit.type.range - 2f) && !unit.type.circleTarget) ||
+                (hasStance(UnitStance.patrol) && !hasStance(UnitStance.pursueTarget) && target != null && unit.within(target, unit.range() - 2f) && !unit.type.circleTarget) ||
                 (command == UnitCommand.enterPayloadCommand && unit.within(targetPos, 4f) || (targetBuild != null && unit.within(targetBuild, targetBuild.block.size * tilesize/2f * 0.9f))) ||
                 (command == UnitCommand.loopPayloadCommand && unit.within(vecMovePos, 10f))
             ){
@@ -416,7 +417,7 @@ public class CommandAI extends AIController{
 
                     //TODO: what to do when there's a target and it can't be reached?
                     /*
-                    if(noFound[0] && attackTarget != null && attackTarget.within(unit, unit.type.range * 2f)){
+                    if(noFound[0] && attackTarget != null && attackTarget.within(unit, unit.range() * 2f)){
                         move = true;
                         vecOut.set(targetPos);
                     }*/
@@ -463,26 +464,43 @@ public class CommandAI extends AIController{
                 attackTarget = null;
             }
 
-            if(unit.isFlying() && move && !(unit.type.circleTarget && !unit.type.omniMovement) && (attackTarget == null || !unit.within(attackTarget, unit.type.range))){
+            if(unit.isFlying() && move && !(unit.type.circleTarget && !unit.type.omniMovement) && (attackTarget == null || !unit.within(attackTarget, unit.range()))){
                 unit.lookAt(vecMovePos);
             }else{
                 faceTarget();
             }
 
+            boolean groupedMove = group != null && group.valid && groupIndex < group.units.size;
+
             //reached destination, end pathfinding
             if(attackTarget == null){
-                float finishRange = command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f);
+                float finishRange;
                 Position finishPos = vecMovePos;
-                if(buildFinishRange > 0f && targetPos != null){
-                    finishRange = buildFinishRange;
+                if(command == UnitCommand.enterPayloadCommand){
+                    finishRange = 4f;
                     finishPos = targetPos;
+                }else if(command == UnitCommand.loopPayloadCommand){
+                    finishRange = 10f;
+                }else{
+                    if(buildFinishRange > 0f && targetPos != null){
+                        finishRange = buildFinishRange;
+                        finishPos = targetPos;
+                    }else{
+                        finishRange = groupedMove ? (command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f)) : centerArrivalThreshold;
+                    }
                 }
                 if(finishPos != null && unit.within(finishPos, finishRange)){
+                    if(!groupedMove){
+                        unit.vel.setZero();
+                    }
                     finishPath();
                 }
             }
 
-            if(stopWhenInRange && targetPos != null && unit.within(vecMovePos, engageRange * 0.9f)){
+            if(stopWhenInRange && targetPos != null && unit.within(vecMovePos, groupedMove ? engageRange * 0.9f : centerArrivalThreshold)){
+                if(!groupedMove){
+                    unit.vel.setZero();
+                }
                 finishPath();
                 stopWhenInRange = false;
             }
@@ -805,6 +823,29 @@ public class CommandAI extends AIController{
             extra = ((Sized)attackTarget).hitSize() / 2f;
         }
         return attackTarget != null && attackTarget.within(x, y, range + 3f + extra);
+    }
+
+    private boolean forcedFriendlyAttackTarget(@Nullable Teamc target){
+        return target != null && target == attackTarget && unit != null && attackTarget != null && attackTarget.team() == unit.team;
+    }
+
+    @Override
+    public boolean invalid(Teamc target){
+        if(forcedFriendlyAttackTarget(target)){
+            return target instanceof Healthc h && !h.isValid();
+        }
+        return super.invalid(target);
+    }
+
+    @Override
+    public boolean checkTarget(Teamc target, float x, float y, float range){
+        if(forcedFriendlyAttackTarget(target)){
+            if(range != Float.MAX_VALUE && !target.within(x, y, range + (target instanceof Sized hb ? hb.hitSize() / 2f : 0f))){
+                return true;
+            }
+            return target instanceof Healthc h && !h.isValid();
+        }
+        return super.checkTarget(target, x, y, range);
     }
 
     @Override

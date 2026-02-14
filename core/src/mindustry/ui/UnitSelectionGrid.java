@@ -4,12 +4,15 @@ import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
+import arc.scene.*;
 import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
 import arc.struct.*;
+import arc.util.*;
 import mindustry.ai.types.HarvestAI;
 import mindustry.content.*;
 import mindustry.gen.*;
+import mindustry.game.*;
 import mindustry.graphics.*;
 import mindustry.type.*;
 import mindustry.world.*;
@@ -28,6 +31,7 @@ public class UnitSelectionGrid extends Table{
     private static final int COLS = 8;
     private static final int ROWS = 3;
     private static final int UNITS_PER_PAGE = COLS * ROWS;
+    private static final float GRID_PORTRAIT_PAD = 2f;
 
     private int currentPage = 0;
     private Seq<Displayable> displayedItems = new Seq<>();
@@ -398,23 +402,15 @@ public class UnitSelectionGrid extends Table{
             int col = (i - startIdx) % COLS;
 
             //Create portrait button
-            Table portrait = new Table(Styles.black6);
-
-            portrait.stack(
-                new Image(item.icon()),
-                new Table(t -> {
-                    t.top();
-                    t.add(item.name()).style(Styles.outlineLabel).pad(2f);
-                })
-            ).size(48f);
-            portrait.row();
-
-            //Health bar
-            portrait.add(new Bar(
-                () -> "",
-                () -> Pal.health,
-                () -> item.health() / item.maxHealth()
-            )).height(4f).growX();
+            Table portrait = new Table();
+            Stack stack = new Stack();
+            stack.add(portraitBorderElement());
+            Image icon = new Image(item.icon());
+            icon.setScaling(Scaling.fit);
+            Table iconTable = new Table();
+            iconTable.add(icon).size(UnitAbilityPanel.abilityIconSize);
+            stack.add(iconTable);
+            portrait.add(stack).size(gridPortraitSize());
 
             portrait.clicked(() -> {
                 //Shift+click removes from selection
@@ -439,7 +435,7 @@ public class UnitSelectionGrid extends Table{
                 }
             });
 
-            gridTable.add(portrait).size(56f).pad(2f);
+            gridTable.add(portrait).size(gridPortraitSize()).pad(GRID_PORTRAIT_PAD);
 
             if(col == COLS - 1){
                 gridTable.row();
@@ -450,7 +446,7 @@ public class UnitSelectionGrid extends Table{
         int totalCells = endIdx - startIdx;
         int remainingCells = (ROWS * COLS) - totalCells;
         for(int i = 0; i < remainingCells; i++){
-            gridTable.add().size(56f).pad(2f);
+            gridTable.add().size(gridPortraitSize()).pad(GRID_PORTRAIT_PAD);
             if((totalCells + i + 1) % COLS == 0){
                 gridTable.row();
             }
@@ -486,19 +482,25 @@ public class UnitSelectionGrid extends Table{
         gridTable.clear();
 
         gridTable.table(panel -> {
-            panel.background(Styles.black8);
+            panel.background(Styles.black6);
             panel.margin(8f);
 
             //Left half: Unit icon and HP
             panel.table(leftHalf -> {
                 leftHalf.image(unit.type.uiIcon).size(80f).row();
                 //HP display updates in real-time
-                leftHalf.label(() -> String.format("%.0f/%.0f", unit.health, unit.maxHealth))
+                leftHalf.label(() -> Strings.autoFixed(unit.health, 2) + "/" + Strings.autoFixed(unit.maxHealth, 2))
                     .color(Color.white).style(Styles.outlineLabel).padTop(4f);
                 if(unit.type.energyCapacity > 0f){
                     leftHalf.row();
-                    leftHalf.label(() -> String.format("%.0f/%.0f", unit.energy, unit.type.energyCapacity))
+                    leftHalf.label(() -> Mathf.round(unit.energy) + "/" + Mathf.round(unit.type.energyCapacity))
                         .color(Color.valueOf("b57aff")).style(Styles.outlineLabel).padTop(2f);
+                }
+                float remaining = PulsarDrops.remainingFraction(unit);
+                if(remaining > 0f){
+                    leftHalf.row();
+                    Bar lifeBar = new Bar(() -> "", () -> Color.gray, () -> PulsarDrops.remainingFraction(unit));
+                    leftHalf.add(lifeBar).width(80f).height(4f).padTop(4f);
                 }
             }).width(120f).padRight(16f);
 
@@ -603,7 +605,7 @@ public class UnitSelectionGrid extends Table{
                     bottomRow.add(armorName + " " + className).color(Color.white);
                 }).padTop(8f);
             }).grow().center();
-        }).growX().height(120f);
+        }).growX().height(singlePanelHeight());
     }
 
     private void buildBuildingInfoPanel(Building building){
@@ -618,15 +620,24 @@ public class UnitSelectionGrid extends Table{
         boolean showFactoryQueue = factory != null && factory.sc2QueueEnabled();
 
         gridTable.table(panel -> {
-            panel.background(Styles.black8);
+            panel.background(Styles.black6);
             panel.margin(8f);
 
             //Left half: Building icon
             panel.table(leftHalf -> {
                 leftHalf.defaults().center();
-                leftHalf.image(display.uiIcon).size(96f).row();
-                leftHalf.label(() -> Mathf.round(building.health) + "/" + Mathf.round(maxHealth))
+                leftHalf.image(display.uiIcon).size(80f).row();
+                leftHalf.label(() -> {
+                    if(incomplete){
+                        return Mathf.round(building.health) + "/" + Mathf.round(maxHealth);
+                    }
+                    return Strings.autoFixed(building.health, 2) + "/" + Strings.autoFixed(maxHealth, 2);
+                })
                     .style(Styles.outlineLabel).color(Color.lightGray).padTop(6f).row();
+                if(core != null && core.block == Blocks.coreOrbital){
+                    leftHalf.label(() -> Mathf.round(Math.max(core.orbitalEnergy, 0f)) + "/" + Mathf.round(CoreBlock.orbitalEnergyCap))
+                        .style(Styles.outlineLabel).color(Color.valueOf("b57aff")).padTop(4f).row();
+                }
 
                 if(display == Blocks.ventCondenser){
                     Tile tile = building.tile;
@@ -748,7 +759,7 @@ public class UnitSelectionGrid extends Table{
                         .color(Color.white).padTop(8f);
                 }
             }).grow().center();
-        }).growX().height(120f);
+        }).growX().height(singlePanelHeight());
     }
 
     private void buildCoreQueuePanel(Table rightHalf, CoreBuild core){
@@ -946,6 +957,29 @@ public class UnitSelectionGrid extends Table{
         return String.format("%.1f", rounded);
     }
 
+    private float gridPortraitSize(){
+        return UnitAbilityPanel.abilityButtonSize;
+    }
+
+    private float singlePanelHeight(){
+        return ROWS * (gridPortraitSize() + GRID_PORTRAIT_PAD * 2f);
+    }
+
+    private Element portraitBorderElement(){
+        return new Element(){
+            @Override
+            public void draw(){
+                Draw.color(UnitAbilityPanel.abilityBorderColor);
+                Lines.stroke(1.5f);
+                float inset = 1.5f;
+                float innerInset = 4.5f;
+                Lines.rect(x + inset, y + inset, width - inset * 2f, height - inset * 2f);
+                Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+                Draw.reset();
+            }
+        };
+    }
+
     private int coreQueueHash(CoreBuild core){
         if(core == null || core.unitQueue == null) return 0;
         int hash = core.unitQueue.size;
@@ -977,7 +1011,7 @@ public class UnitSelectionGrid extends Table{
 
         gridTable.clear();
         gridTable.table(panel -> {
-            panel.background(Styles.black8);
+            panel.background(Styles.black6);
             panel.margin(8f);
             panel.defaults().center();
 
@@ -992,7 +1026,7 @@ public class UnitSelectionGrid extends Table{
                 }
                 return remainingLabel + ": " + crystal.getReserves(tile);
             }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
-        }).growX().height(120f);
+        }).growX().height(singlePanelHeight());
     }
 
     private void buildSteamVentInfoPanel(Tile tile){
@@ -1005,7 +1039,7 @@ public class UnitSelectionGrid extends Table{
 
         gridTable.clear();
         gridTable.table(panel -> {
-            panel.background(Styles.black8);
+            panel.background(Styles.black6);
             panel.margin(8f);
             panel.defaults().center();
 
@@ -1020,7 +1054,7 @@ public class UnitSelectionGrid extends Table{
                 }
                 return remainingLabel + ": " + vent.getReserves(data);
             }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
-        }).growX().height(120f);
+        }).growX().height(singlePanelHeight());
     }
 
     private int getControlGroupNumber(Displayable item){

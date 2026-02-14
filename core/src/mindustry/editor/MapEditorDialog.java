@@ -706,6 +706,8 @@ public class MapEditorDialog extends Dialog implements Disposable{
                     editor.renderer.recacheTerrain();
                 }).pad(2f).growX().with(Table::left).row();
                 mid.check("@editor.showfloor", editor.showFloor, b -> editor.showFloor = b).pad(2f).growX().with(Table::left).row();
+                mid.check("显示悬崖", editor.showCliff, b -> editor.showCliff = b).pad(2f).growX().with(Table::left).row();
+                mid.check("显示高度", editor.showHeight, b -> editor.showHeight = b).pad(2f).growX().with(Table::left).row();
 
                 if(!mobile){
                     mid.button("@editor.center", Icon.move, Styles.flatt, view::center).growX().margin(9f);

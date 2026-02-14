@@ -14,6 +14,7 @@ import mindustry.io.*;
 import mindustry.maps.*;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
+import mindustry.world.HeightLayerData;
 
 import static mindustry.Vars.*;
 
@@ -32,7 +33,7 @@ public class MapEditor{
     public int rotation;
     public Block drawBlock = Blocks.stone;
     public Team drawTeam = Team.sharded;
-    public boolean showTerrain = true, showFloor = true, showBuildings = true;
+    public boolean showTerrain = true, showFloor = true, showBuildings = true, showHeight = false, showCliff = true;
 
     public boolean isLoading(){
         return loading;
@@ -153,6 +154,47 @@ public class MapEditor{
                 addTileOp(TileOp.get((short)x, (short)y, DrawOperation.opTeam, (byte)drawTeam.id));
             }
         }else{
+            if(drawBlock instanceof HeightLayerMarker marker){
+                Cons<Tile> drawer = tile -> {
+                    if(!tester.get(tile)) return;
+                    byte oldFloorData = tile.floorData;
+                    byte updated = oldFloorData;
+                    int layer = marker.preserveLayer ? HeightLayerData.layer(tile) : marker.layerValue;
+                    updated = HeightLayerData.withLayer(updated, layer);
+                    updated = HeightLayerData.withSlope(updated, marker.slopeValue);
+
+                    if(updated == oldFloorData) return;
+                    addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+                    tile.floorData = updated;
+                };
+
+                if(square){
+                    drawSquare(x, y, drawer);
+                }else{
+                    drawCircle(x, y, drawer);
+                }
+                return;
+            }
+
+            if(drawBlock instanceof CliffLayerMarker marker){
+                Cons<Tile> drawer = tile -> {
+                    if(!tester.get(tile)) return;
+                    byte oldFloorData = tile.floorData;
+                    byte updated = CliffLayerData.withCliff(oldFloorData, marker.cliffValue);
+
+                    if(updated == oldFloorData) return;
+                    addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+                    tile.floorData = updated;
+                };
+
+                if(square){
+                    drawSquare(x, y, drawer);
+                }else{
+                    drawCircle(x, y, drawer);
+                }
+                return;
+            }
+
             boolean isFloor = drawBlock.isFloor() && drawBlock != Blocks.air;
 
             Cons<Tile> drawer = tile -> {
@@ -299,6 +341,59 @@ public class MapEditor{
                 drawer.get(tile(wx, wy));
             }
         }
+    }
+
+    public void applyHeightMarker(Tile tile, HeightLayerMarker marker){
+        if(tile == null || marker == null) return;
+
+        byte oldFloorData = tile.floorData;
+        byte updated = oldFloorData;
+        int layer = marker.preserveLayer ? HeightLayerData.layer(tile) : marker.layerValue;
+        updated = HeightLayerData.withLayer(updated, layer);
+        updated = HeightLayerData.withSlope(updated, marker.slopeValue);
+
+        if(updated == oldFloorData) return;
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        tile.floorData = updated;
+    }
+
+    public void applyCliffMarker(Tile tile, CliffLayerMarker marker){
+        if(tile == null || marker == null) return;
+
+        byte oldFloorData = tile.floorData;
+        byte updated = CliffLayerData.withCliff(oldFloorData, marker.cliffValue);
+
+        if(updated == oldFloorData) return;
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        tile.floorData = updated;
+    }
+
+    public HeightLayerMarker markerForTile(Tile tile){
+        if(tile == null) return null;
+        if(HeightLayerData.slope(tile)) return (HeightLayerMarker)Blocks.heightLayerSlope;
+        return switch(HeightLayerData.layer(tile)){
+            case 2 -> (HeightLayerMarker)Blocks.heightLayerSecond;
+            case 3 -> (HeightLayerMarker)Blocks.heightLayerThird;
+            case 4 -> (HeightLayerMarker)Blocks.heightLayerFourth;
+            default -> (HeightLayerMarker)Blocks.heightLayerFirst;
+        };
+    }
+
+    public CliffLayerMarker cliffMarkerForTile(Tile tile){
+        if(tile == null) return null;
+        return switch(CliffLayerData.cliff(tile)){
+            case CliffLayerData.top -> (CliffLayerMarker)Blocks.cliffLayerTop;
+            case CliffLayerData.bottom -> (CliffLayerMarker)Blocks.cliffLayerBottom;
+            case CliffLayerData.left -> (CliffLayerMarker)Blocks.cliffLayerLeft;
+            case CliffLayerData.right -> (CliffLayerMarker)Blocks.cliffLayerRight;
+            case CliffLayerData.topLeft -> (CliffLayerMarker)Blocks.cliffLayerTopLeft;
+            case CliffLayerData.topRight -> (CliffLayerMarker)Blocks.cliffLayerTopRight;
+            case CliffLayerData.bottomLeft -> (CliffLayerMarker)Blocks.cliffLayerBottomLeft;
+            case CliffLayerData.bottomRight -> (CliffLayerMarker)Blocks.cliffLayerBottomRight;
+            case CliffLayerData.topLeftToBottomRight -> (CliffLayerMarker)Blocks.cliffLayerDiagTlBr;
+            case CliffLayerData.topRightToBottomLeft -> (CliffLayerMarker)Blocks.cliffLayerDiagTrBl;
+            default -> null;
+        };
     }
 
     public void resize(int width, int height, int shiftX, int shiftY){

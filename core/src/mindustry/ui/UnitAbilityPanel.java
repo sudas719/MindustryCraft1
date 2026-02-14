@@ -16,6 +16,7 @@ import arc.util.*;
 import arc.graphics.g2d.Draw;
 import arc.graphics.g2d.Lines;
 import mindustry.content.*;
+import mindustry.entities.*;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
@@ -24,6 +25,7 @@ import mindustry.input.*;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
+import mindustry.world.blocks.defense.*;
 import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.*;
@@ -37,6 +39,8 @@ public class UnitAbilityPanel extends Table{
     public static float abilityIconSize = 40f;
     public static float abilityKeyScale = 0.6f;
     public static final Color abilityBorderColor = Color.valueOf("2f5f2f");
+    private static final float ABILITY_BUTTON_PAD = 2f;
+    private static final float PANEL_MARGIN = 4f;
 
     //RTS command mode state
     public enum CommandMode{
@@ -48,7 +52,11 @@ public class UnitAbilityPanel extends Table{
         ATTACK,
         HARVEST,
         RALLY,
-        BUILD_PLACE
+        BUILD_PLACE,
+        DROP_PULSAR,
+        EXTRA_SUPPLY,
+        SCAN,
+        LAND
     }
 
     private enum NovaPanel{
@@ -69,6 +77,8 @@ public class UnitAbilityPanel extends Table{
     private @Nullable BuildInfo hoverBuildInfo;
     private Table mainPanel;
     private Table commandModePanel;
+    private float forcedMinWidth = -1f;
+    private float forcedMinHeight = -1f;
 
     //Command definitions
     private static class RTSCommand{
@@ -95,6 +105,10 @@ public class UnitAbilityPanel extends Table{
         int crystalCost;
         int gasCost;
         int timeSeconds;
+        @Nullable Floatp progress;
+        @Nullable Boolp progressVisible;
+        @Nullable Drawable progressIcon;
+        @Nullable Color progressColor;
     }
 
     private RTSCommand[] commands = {
@@ -146,9 +160,20 @@ public class UnitAbilityPanel extends Table{
 
                     if(isOnlyNovaSelected()){
                         handleNovaHotkeys();
+                    }else if(isOnlyCoreFlyerSelected()){
+                        handleCoreFlyerHotkeys();
                     }else if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size > 0){
                         if(coreSelected){
-                            handleCoreHotkeys();
+                            var core = selectedCore();
+                            if(core == null || !core.isUpgrading()){
+                                handleCoreHotkeys();
+                            }else if(Core.input.keyTap(KeyCode.escape)){
+                                if(core.isUpgradingOrbital()){
+                                    core.cancelOrbitalUpgrade();
+                                }else if(core.isUpgradingFortress()){
+                                    core.cancelFortressUpgrade();
+                                }
+                            }
                         }else{
                             handleBuildingHotkeys();
                         }
@@ -174,9 +199,11 @@ public class UnitAbilityPanel extends Table{
 
     private void rebuild(){
         clearChildren();
+        clearPanelSize();
 
         if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.isEmpty()){
-            add("No units selected").color(Color.lightGray).pad(10f);
+            buildEmptyPanel();
+            setPanelRows(ROWS);
             return;
         }
 
@@ -185,7 +212,10 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(activeCommand != CommandMode.NONE && activeCommand != CommandMode.HARVEST && activeCommand != CommandMode.BUILD_PLACE){
+        if(activeCommand != CommandMode.NONE && activeCommand != CommandMode.HARVEST && activeCommand != CommandMode.BUILD_PLACE
+        && activeCommand != CommandMode.RALLY && activeCommand != CommandMode.DROP_PULSAR
+        && activeCommand != CommandMode.EXTRA_SUPPLY && activeCommand != CommandMode.SCAN
+        && activeCommand != CommandMode.LAND){
             buildCommandModePanel();
         }else{
             buildMainPanel();
@@ -193,7 +223,9 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildMainPanel(){
-        if(isOnlyNovaSelected() && activeCommand == CommandMode.BUILD_PLACE){
+        if(isOnlyCoreFlyerSelected()){
+            buildCoreFlyerPanel();
+        }else if(isOnlyNovaSelected() && activeCommand == CommandMode.BUILD_PLACE){
             buildNovaPlacementPanel();
         }else if(isOnlyNovaSelected()){
             buildNovaPanel();
@@ -203,6 +235,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildDefaultPanel(){
+        setPanelRows(3);
         //Check if we have any units selected (not just buildings)
         boolean hasUnits = control.input.selectedUnits.size > 0;
 
@@ -281,6 +314,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildNovaPanel(){
+        setPanelRows(3);
         switch(novaPanel){
             case BUILD_BASIC:
                 buildNovaBasicPanel();
@@ -295,6 +329,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildNovaMainPanel(){
+        setPanelRows(3);
         Table grid = new Table();
         //Row 1: RTS commands M/S/H/P/A
         for(int i = 0; i < COLS; i++){
@@ -325,6 +360,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildNovaPlacementPanel(){
+        setPanelRows(3);
         Table grid = new Table();
         for(int r = 0; r < ROWS; r++){
             for(int c = 0; c < COLS; c++){
@@ -342,6 +378,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildNovaBasicPanel(){
+        setPanelRows(3);
         Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
@@ -360,7 +397,7 @@ public class UnitAbilityPanel extends Table{
         //Row 3
         addBuildButton(grid, "u", Blocks.atmosphericConcentrator, () -> Build.meetsPrerequisites(Blocks.atmosphericConcentrator, player.team()), () -> startPlacement(Blocks.atmosphericConcentrator));
         addBuildButton(grid, "t", Blocks.swarmer, () -> Build.meetsPrerequisites(Blocks.swarmer, player.team()), () -> startPlacement(Blocks.swarmer));
-        addBuildButton(grid, "n", Blocks.hail, () -> Build.meetsPrerequisites(Blocks.hail, player.team()), () -> startPlacement(Blocks.hail));
+        addBuildButton(grid, "n", Blocks.radar, () -> Build.meetsPrerequisites(Blocks.radar, player.team()), () -> startPlacement(Blocks.radar));
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
 
@@ -371,6 +408,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildNovaAdvancedPanel(){
+        setPanelRows(3);
         Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
@@ -399,7 +437,8 @@ public class UnitAbilityPanel extends Table{
 
     private void buildBuildingPanel(){
         if(control.input.commandBuildings.isEmpty()){
-            add("No units selected").color(Color.lightGray).pad(10f);
+            buildEmptyPanel();
+            setPanelRows(ROWS);
             return;
         }
 
@@ -409,13 +448,19 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
+        if(isOnlySupplySelected()){
+            buildSupplyPanel();
+            return;
+        }
+
         if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
             buildFactoryPanel(factory);
             return;
         }
 
         if(!(build instanceof ConstructBuild)){
-            add(build.block.localizedName).color(Color.lightGray).pad(10f);
+            buildEmptyPanel();
+            setPanelRows(2);
             return;
         }
 
@@ -448,46 +493,175 @@ public class UnitAbilityPanel extends Table{
             grid.row();
         }
 
+        setPanelRows(3);
         add(grid);
     }
 
     private void buildFactoryPanel(UnitFactory.UnitFactoryBuild factory){
+        if(activeCommand == CommandMode.RALLY){
+            buildCoreRallyPanel();
+            return;
+        }
+        setPanelRows(3);
         Table info = buildBuildInfoTable();
         Table grid = new Table();
         boolean showAddonButtons = factory.canShowAddonButtons();
         UnitFactory block = (UnitFactory)factory.block;
-        int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
-        int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
-        int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
-        int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
+        if(block == Blocks.tankFabricator){
+            int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
+            int crawlerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.crawler);
+            int anthicusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.anthicus);
+            int preceptIndex = block.plans.indexOf(p -> p.unit == UnitTypes.precept);
+            int maceIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mace);
+            int scepterIndex = block.plans.indexOf(p -> p.unit == UnitTypes.scepter);
 
-        //Row 1
-        if(daggerIndex != -1){
-            addUnitButton(grid, "a", block.plans.get(daggerIndex), () -> factory.canQueuePlan(daggerIndex), () -> factory.configure(daggerIndex));
-        }else{
+            //Row 1
+            if(locusIndex != -1){
+                addUnitButton(grid, "e", block.plans.get(locusIndex), () -> factory.canQueuePlan(locusIndex), () -> factory.configure(locusIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(crawlerIndex != -1){
+                addUnitButton(grid, "d", block.plans.get(crawlerIndex), () -> factory.canQueuePlan(crawlerIndex), () -> factory.configure(crawlerIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(anthicusIndex != -1){
+                addUnitButton(grid, "n", block.plans.get(anthicusIndex), () -> factory.canQueuePlan(anthicusIndex), () -> factory.configure(anthicusIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(preceptIndex != -1){
+                addUnitButton(grid, "s", block.plans.get(preceptIndex), () -> factory.canQueuePlan(preceptIndex), () -> factory.configure(preceptIndex));
+            }else{
+                addEmpty(grid);
+            }
             addEmpty(grid);
-        }
-        if(reaperIndex != -1){
-            addUnitButton(grid, "r", block.plans.get(reaperIndex), () -> factory.canQueuePlan(reaperIndex), () -> factory.configure(reaperIndex));
-        }else{
-            addEmpty(grid);
-        }
-        if(fortressIndex != -1){
-            addUnitButton(grid, "d", block.plans.get(fortressIndex), () -> factory.canQueuePlan(fortressIndex), () -> factory.configure(fortressIndex));
-        }else{
-            addEmpty(grid);
-        }
-        if(ghostIndex != -1){
-            addUnitButton(grid, "g", block.plans.get(ghostIndex), () -> factory.canQueuePlan(ghostIndex), () -> factory.configure(ghostIndex));
-        }else{
-            addEmpty(grid);
-        }
-        addEmpty(grid);
-        grid.row();
+            grid.row();
 
-        //Row 2
-        fillRow(grid, 1, 0);
-        grid.row();
+            //Row 2
+            if(maceIndex != -1){
+                addUnitButton(grid, "r", block.plans.get(maceIndex), () -> factory.canQueuePlan(maceIndex), () -> factory.configure(maceIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(scepterIndex != -1){
+                addUnitButton(grid, "t", block.plans.get(scepterIndex), () -> factory.canQueuePlan(scepterIndex), () -> factory.configure(scepterIndex));
+            }else{
+                addEmpty(grid);
+            }
+            addEmpty(grid);
+            addEmpty(grid);
+            addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
+            grid.row();
+        }else if(block == Blocks.shipFabricator){
+            int flareIndex = block.plans.indexOf(p -> p.unit == UnitTypes.flare);
+            int megaIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mega);
+            int obviateIndex = block.plans.indexOf(p -> p.unit == UnitTypes.obviate);
+            int avertIndex = block.plans.indexOf(p -> p.unit == UnitTypes.avert);
+            int horizonIndex = block.plans.indexOf(p -> p.unit == UnitTypes.horizon);
+            int antumbraIndex = block.plans.indexOf(p -> p.unit == UnitTypes.antumbra);
+
+            //Row 1
+            if(flareIndex != -1){
+                addUnitButton(grid, "v", block.plans.get(flareIndex), () -> factory.canQueuePlan(flareIndex), () -> factory.configure(flareIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(megaIndex != -1){
+                addUnitButton(grid, "d", block.plans.get(megaIndex), () -> factory.canQueuePlan(megaIndex), () -> factory.configure(megaIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(obviateIndex != -1){
+                addUnitButton(grid, "n", block.plans.get(obviateIndex), () -> factory.canQueuePlan(obviateIndex), () -> factory.configure(obviateIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(avertIndex != -1){
+                addUnitButton(grid, "r", block.plans.get(avertIndex), () -> factory.canQueuePlan(avertIndex), () -> factory.configure(avertIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(horizonIndex != -1){
+                addUnitButton(grid, "e", block.plans.get(horizonIndex), () -> factory.canQueuePlan(horizonIndex), () -> factory.configure(horizonIndex));
+            }else{
+                addEmpty(grid);
+            }
+            grid.row();
+
+            //Row 2
+            if(antumbraIndex != -1){
+                addUnitButton(grid, "b", block.plans.get(antumbraIndex), () -> factory.canQueuePlan(antumbraIndex), () -> factory.configure(antumbraIndex));
+            }else{
+                addEmpty(grid);
+            }
+            addEmpty(grid);
+            addEmpty(grid);
+            addEmpty(grid);
+            addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
+            grid.row();
+        }else if(block == Blocks.groundFactory){
+            int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
+            int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
+            int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
+            int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
+
+            //Row 1
+            if(daggerIndex != -1){
+                addUnitButton(grid, "a", block.plans.get(daggerIndex), () -> factory.canQueuePlan(daggerIndex), () -> factory.configure(daggerIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(reaperIndex != -1){
+                addUnitButton(grid, "r", block.plans.get(reaperIndex), () -> factory.canQueuePlan(reaperIndex), () -> factory.configure(reaperIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(fortressIndex != -1){
+                addUnitButton(grid, "d", block.plans.get(fortressIndex), () -> factory.canQueuePlan(fortressIndex), () -> factory.configure(fortressIndex));
+            }else{
+                addEmpty(grid);
+            }
+            if(ghostIndex != -1){
+                addUnitButton(grid, "g", block.plans.get(ghostIndex), () -> factory.canQueuePlan(ghostIndex), () -> factory.configure(ghostIndex));
+            }else{
+                addEmpty(grid);
+            }
+            addEmpty(grid);
+            grid.row();
+
+            //Row 2
+            fillRow(grid, 1, 0);
+            grid.row();
+        }else{
+            String[] row1Keys = {"a", "r", "d", "g"};
+            String[] row2Keys = {"f", "t"};
+
+            for(int i = 0; i < row1Keys.length; i++){
+                if(i < block.plans.size){
+                    int planIndex = i;
+                    addUnitButton(grid, row1Keys[i], block.plans.get(planIndex), () -> factory.canQueuePlan(planIndex), () -> factory.configure(planIndex));
+                }else{
+                    addEmpty(grid);
+                }
+            }
+            addEmpty(grid);
+            grid.row();
+
+            for(int i = 0; i < row2Keys.length; i++){
+                int planIndex = i + row1Keys.length;
+                if(planIndex < block.plans.size){
+                    addUnitButton(grid, row2Keys[i], block.plans.get(planIndex), () -> factory.canQueuePlan(planIndex), () -> factory.configure(planIndex));
+                }else{
+                    addEmpty(grid);
+                }
+            }
+            addEmpty(grid);
+            addEmpty(grid);
+            addEmpty(grid);
+            grid.row();
+        }
 
         //Row 3
         if(showAddonButtons){
@@ -502,7 +676,7 @@ public class UnitAbilityPanel extends Table{
             addEmpty(grid);
         }
         addEmpty(grid);
-        addEmpty(grid);
+        addIconButton(grid, "l", Icon.export, () -> factory.canLift(), () -> queueFactoryLift(factory));
         addCancelButton(grid, () -> factory.configure(UnitFactory.sc2AddonCancelConfig));
 
         Table root = new Table();
@@ -511,26 +685,129 @@ public class UnitAbilityPanel extends Table{
         add(root);
     }
 
+    private void buildSupplyPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+        boolean anyClosed = supplyAnyClosed();
+        Drawable icon = anyClosed ? Icon.downOpen : Icon.upOpen;
+
+        for(int r = 0; r < ROWS; r++){
+            for(int c = 0; c < COLS; c++){
+                if(r == 2 && c == 0){
+                    addIconButton(grid, "r", icon, () -> true, this::toggleSupplyDoors);
+                }else{
+                    addEmpty(grid);
+                }
+            }
+            grid.row();
+        }
+
+        add(grid);
+    }
+
+    private boolean supplyAnyClosed(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof Door.DoorBuild door && isSupplyDoor(build) && !door.open){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void toggleSupplyDoors(){
+        boolean open = supplyAnyClosed();
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof Door.DoorBuild door && isSupplyDoor(build)){
+                door.configure(open);
+            }
+        }
+    }
+
     private void buildCorePanel(CoreBuild core){
+        if(core.isUpgrading()){
+            activeCommand = CommandMode.NONE;
+            buildCoreUpgradePanel(core);
+            return;
+        }
         if(activeCommand == CommandMode.RALLY){
             buildCoreRallyPanel();
+            return;
+        }
+        if(activeCommand == CommandMode.DROP_PULSAR){
+            buildCoreTargetPanel("Drop Miner", "Left-click ground");
+            return;
+        }
+        if(activeCommand == CommandMode.EXTRA_SUPPLY){
+            buildCoreTargetPanel("Extra Supply", "Left-click a supply depot");
+            return;
+        }
+        if(activeCommand == CommandMode.SCAN){
+            buildCoreTargetPanel("Scan", "Left-click to scan area");
             return;
         }
         buildCoreMainPanel(core);
     }
 
+    private void buildCoreUpgradePanel(CoreBuild core){
+        setPanelRows(2);
+        Floatp progress = core.isUpgradingOrbital() ? core::orbitalUpgradeFraction : core::fortressUpgradeFraction;
+        Bar bar = new Bar(() -> "", () -> Color.cyan, progress);
+        add(bar).growX().height(10f).pad(6f);
+    }
+
     private void buildCoreMainPanel(CoreBuild core){
+        setPanelRows(3);
         Table grid = new Table();
+        boolean orbital = core.block == Blocks.coreOrbital;
 
         //Row 1
-        addIconButton(grid, "s", new TextureRegionDrawable(UnitTypes.nova.uiIcon), () -> true, () -> {
+        addIconButton(grid, "s", new TextureRegionDrawable(UnitTypes.nova.uiIcon), () -> core.canQueueUnit(UnitTypes.nova), () -> {
             queueCoreUnit(core);
             corePanel = CorePanel.BUILD;
         });
         addEmpty(grid);
         addEmpty(grid);
-        addIconButton(grid, "b", new TextureRegionDrawable(Blocks.shipFabricator.uiIcon), () -> true, this::showNotImplemented);
-        addIconButton(grid, "p", new TextureRegionDrawable(Blocks.coreNucleus.uiIcon), () -> true, this::showNotImplemented);
+        Button orbitalButton = addHoverableIconButton(grid, "b", new TextureRegionDrawable(Blocks.coreOrbital.uiIcon), () -> core.canStartOrbitalUpgrade(), () -> {
+            if(core.block != Blocks.coreNucleus){
+                ui.hudfrag.setHudText("Already upgraded");
+            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                ui.hudfrag.setHudText("Cannot upgrade while training");
+            }else if(core.isUpgrading()){
+                ui.hudfrag.setHudText("Upgrade already in progress");
+            }else if(!core.startOrbitalUpgrade()){
+                ui.hudfrag.setHudText("Not enough crystals");
+            }
+        });
+        BuildInfo orbitalInfo = makeOrbitalUpgradeInfo(core, "b");
+        orbitalButton.update(() -> {
+            if(orbitalButton.isOver()){
+                hoverBuildInfo = orbitalInfo;
+            }else if(hoverBuildInfo == orbitalInfo){
+                hoverBuildInfo = null;
+            }
+        });
+        Drawable fortressIcon = Blocks.corePlanetaryFortress == null || Blocks.corePlanetaryFortress.uiIcon == null ? Icon.warning : new TextureRegionDrawable(Blocks.corePlanetaryFortress.uiIcon);
+        Button fortressButton = addIconButton(grid, "p", fortressIcon, () -> core.canStartFortressUpgrade(), () -> {
+            if(core.block != Blocks.coreNucleus){
+                ui.hudfrag.setHudText("Already upgraded");
+            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                ui.hudfrag.setHudText("Cannot upgrade while training");
+            }else if(core.isUpgrading()){
+                ui.hudfrag.setHudText("Upgrade already in progress");
+            }else if(!core.hasEngineeringStation()){
+                ui.hudfrag.setHudText("Requires Engineering Station");
+            }else if(!core.startFortressUpgrade()){
+                ui.hudfrag.setHudText("Not enough crystals or gas");
+            }
+        });
+        BuildInfo fortressInfo = makeFortressUpgradeInfo(core, "p");
+        fortressButton.update(() -> {
+            if(fortressButton.isOver()){
+                hoverBuildInfo = fortressInfo;
+            }else if(hoverBuildInfo == fortressInfo){
+                hoverBuildInfo = null;
+            }
+        });
         grid.row();
 
         //Row 2
@@ -542,18 +819,99 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         //Row 3
-        addIconButton(grid, "o", Icon.upload, () -> true, this::showNotImplemented);
+        if(orbital){
+            Boolp energyAvailable = () -> anySelectedOrbitalHasEnergy(CoreBlock.orbitalAbilityCost);
+            addIconButton(grid, "e", new TextureRegionDrawable(UnitTypes.pulsar.uiIcon), energyAvailable, () -> enterCommandMode(CommandMode.DROP_PULSAR));
+            addIconButton(grid, "x", Icon.add, energyAvailable, () -> enterCommandMode(CommandMode.EXTRA_SUPPLY));
+            addIconButton(grid, "c", Icon.zoom, energyAvailable, () -> enterCommandMode(CommandMode.SCAN));
+            if(core.hasStoredScvs()){
+                addIconButton(grid, "d", Icon.download, () -> true, () -> core.unloadScvs());
+            }else{
+                addEmpty(grid);
+            }
+            addIconButton(grid, "l", Icon.export, () -> core.canLift(), () -> queueCoreLift(core));
+        }else{
+            addEmpty(grid);
+            if(core.hasStoredScvs()){
+                addIconButton(grid, "d", Icon.download, () -> true, () -> core.unloadScvs());
+            }else{
+                addIconButton(grid, "o", Icon.upload, () -> true, () -> {
+                    if(!core.requestLoadScvs()){
+                        ui.hudfrag.setHudText("No available SCVs or storage full");
+                    }
+                });
+            }
+            addEmpty(grid);
+            addEmpty(grid);
+            addIconButton(grid, "l", Icon.export, () -> core.canLift(), () -> queueCoreLift(core));
+        }
+
+        add(grid);
+    }
+
+    private void buildCoreFlyerPanel(){
+        setPanelRows(3);
+        if(activeCommand == CommandMode.RALLY){
+            buildCoreRallyPanel();
+            return;
+        }
+        if(activeCommand == CommandMode.LAND){
+            buildCoreTargetPanel("Land", "Left-click to land");
+            return;
+        }
+
+        Table grid = new Table();
+
+        //Row 1: M/S/H/P
+        addIconButton(grid, "m", Icon.move, () -> true, () -> enterCommandMode(CommandMode.MOVE));
+        addIconButton(grid, "s", Icon.cancel, () -> true, this::executeStopCommand);
+        addIconButton(grid, "h", Icon.pause, () -> true, this::executeHoldCommand);
+        addIconButton(grid, "p", Icon.refresh, () -> true, () -> enterCommandMode(CommandMode.PATROL));
+        addEmpty(grid);
+        grid.row();
+
+        //Row 2
         addEmpty(grid);
         addEmpty(grid);
-        addIconButton(grid, "l", Icon.export, () -> true, () -> launchCore(core));
+        addEmpty(grid);
+        addEmpty(grid);
+        addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
+        grid.row();
+
+        //Row 3
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addIconButton(grid, "l", Icon.export, () -> true, () -> enterCommandMode(CommandMode.LAND));
         addEmpty(grid);
 
         add(grid);
     }
 
     private void buildCoreRallyPanel(){
+        setPanelRows(3);
         add("Rally Point").style(Styles.outlineLabel).color(Pal.accent).pad(4f).row();
         add("Left-click to set rally point").color(Color.lightGray).pad(2f).row();
+        add("Right-click or Esc to cancel").color(Color.lightGray).pad(2f).row();
+
+        Table grid = new Table();
+        for(int i = 0; i < ROWS * COLS; i++){
+            if(i == 14){
+                addEscButton(grid, this::exitCommandMode);
+            }else{
+                addEmpty(grid);
+            }
+            if((i + 1) % COLS == 0){
+                grid.row();
+            }
+        }
+        add(grid);
+    }
+
+    private void buildCoreTargetPanel(String title, String hint){
+        setPanelRows(3);
+        add(title).style(Styles.outlineLabel).color(Pal.accent).pad(4f).row();
+        add(hint).color(Color.lightGray).pad(2f).row();
         add("Right-click or Esc to cancel").color(Color.lightGray).pad(2f).row();
 
         Table grid = new Table();
@@ -592,6 +950,39 @@ public class UnitAbilityPanel extends Table{
             if(allowed.get()) action.run();
         });
         button.update(() -> button.setDisabled(!allowed.get()));
+
+        Stack stack = new Stack();
+        stack.add(borderElement());
+
+        Image image = new Image(icon);
+        image.setScaling(Scaling.fit);
+        image.update(() -> image.setColor(allowed.get() ? Color.white : Color.gray));
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        if(key != null && !key.isEmpty()){
+            Table keyTable = new Table();
+            keyTable.top().left();
+            Label keyLabel = new Label(key);
+            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
+            keyTable.add(keyLabel).pad(3f);
+            stack.add(keyTable);
+        }
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        return button;
+    }
+
+    private Button addHoverableIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action){
+        Boolp allowed = enabled == null ? () -> true : enabled;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(allowed.get()) action.run();
+        });
 
         Stack stack = new Stack();
         stack.add(borderElement());
@@ -696,6 +1087,46 @@ public class UnitAbilityPanel extends Table{
             return "Time " + hoverBuildInfo.timeSeconds + "s";
         }).left();
 
+        Boolp showProgress = () -> hoverBuildInfo != null && hoverBuildInfo.progress != null
+        && (hoverBuildInfo.progressVisible == null || hoverBuildInfo.progressVisible.get());
+
+        Table progressTable = new Table(){
+            @Override
+            public float getPrefWidth(){
+                return showProgress.get() ? super.getPrefWidth() : 0f;
+            }
+
+            @Override
+            public float getPrefHeight(){
+                return showProgress.get() ? super.getPrefHeight() : 0f;
+            }
+        };
+        progressTable.visible(showProgress);
+
+        Image progressIcon = new Image();
+        progressIcon.visible(() -> hoverBuildInfo != null && hoverBuildInfo.progressIcon != null && showProgress.get());
+        progressIcon.update(() -> {
+            if(hoverBuildInfo == null || hoverBuildInfo.progressIcon == null) return;
+            progressIcon.setDrawable(hoverBuildInfo.progressIcon);
+            float alpha = hoverBuildInfo.progress == null ? 0f : Mathf.clamp(hoverBuildInfo.progress.get());
+            progressIcon.setColor(1f, 1f, 1f, alpha);
+        });
+        progressTable.add(progressIcon).size(40f).left().row();
+
+        Bar progressBar = new Bar(
+            () -> "",
+            () -> hoverBuildInfo == null || hoverBuildInfo.progressColor == null ? Color.cyan : hoverBuildInfo.progressColor,
+            () -> {
+                if(hoverBuildInfo == null || hoverBuildInfo.progress == null) return 0f;
+                return Mathf.clamp(hoverBuildInfo.progress.get());
+            }
+        );
+        progressBar.visible(showProgress);
+        progressTable.add(progressBar).growX().height(8f).left();
+
+        info.row();
+        info.add(progressTable).growX().left();
+
         return info;
     }
 
@@ -708,6 +1139,29 @@ public class UnitAbilityPanel extends Table{
         info.gasCost = gasCost;
         info.timeSeconds = Math.round(buildTime / 60f);
         return info;
+    }
+
+    private BuildInfo makeUpgradeInfo(Block block, String key, int crystalCost, int gasCost, float buildTime, Floatp progress, Boolp progressVisible){
+        BuildInfo info = new BuildInfo();
+        info.block = block;
+        info.key = key;
+        info.name = sc2Name(block);
+        info.crystalCost = crystalCost;
+        info.gasCost = gasCost;
+        info.timeSeconds = Math.round(buildTime / 60f);
+        info.progress = progress;
+        info.progressVisible = progressVisible;
+        info.progressIcon = new TextureRegionDrawable(block.uiIcon);
+        info.progressColor = Color.cyan;
+        return info;
+    }
+
+    private BuildInfo makeOrbitalUpgradeInfo(CoreBuild core, String key){
+        return makeUpgradeInfo(Blocks.coreOrbital, key, CoreBlock.orbitalUpgradeCost, 0, CoreBlock.orbitalUpgradeTime, core::orbitalUpgradeFraction, core::isUpgradingOrbital);
+    }
+
+    private BuildInfo makeFortressUpgradeInfo(CoreBuild core, String key){
+        return makeUpgradeInfo(Blocks.corePlanetaryFortress, key, CoreBlock.fortressUpgradeCost, CoreBlock.fortressUpgradeGasCost, CoreBlock.fortressUpgradeTime, core::fortressUpgradeFraction, core::isUpgradingFortress);
     }
 
     private BuildInfo makeBuildInfo(Block block, String key){
@@ -790,7 +1244,49 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void addEmpty(Table grid){
-        grid.add().size(abilityButtonSize).pad(2f);
+        grid.add().size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
+    }
+
+    private void buildEmptyPanel(){
+        Table grid = new Table();
+        for(int r = 0; r < ROWS; r++){
+            for(int c = 0; c < COLS; c++){
+                addEmpty(grid);
+            }
+            grid.row();
+        }
+        add(grid);
+    }
+
+    private void setPanelRows(int rows){
+        float cell = abilityButtonSize + ABILITY_BUTTON_PAD * 2f;
+        forcedMinWidth = COLS * cell + PANEL_MARGIN * 2f;
+        forcedMinHeight = rows * cell + PANEL_MARGIN * 2f;
+    }
+
+    private void clearPanelSize(){
+        forcedMinWidth = -1f;
+        forcedMinHeight = -1f;
+    }
+
+    @Override
+    public float getMinWidth(){
+        return forcedMinWidth > 0f ? Math.max(super.getMinWidth(), forcedMinWidth) : super.getMinWidth();
+    }
+
+    @Override
+    public float getMinHeight(){
+        return forcedMinHeight > 0f ? Math.max(super.getMinHeight(), forcedMinHeight) : super.getMinHeight();
+    }
+
+    @Override
+    public float getPrefWidth(){
+        return forcedMinWidth > 0f ? Math.max(super.getPrefWidth(), forcedMinWidth) : super.getPrefWidth();
+    }
+
+    @Override
+    public float getPrefHeight(){
+        return forcedMinHeight > 0f ? Math.max(super.getPrefHeight(), forcedMinHeight) : super.getPrefHeight();
     }
 
     private void addCancelButton(Table grid, Runnable action){
@@ -819,6 +1315,27 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyCoreFlyerSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.coreFlyer) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlySupplySelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(!isSupplyDoor(build)) return false;
+        }
+        return true;
+    }
+
+    private boolean isSupplyDoor(@Nullable Building build){
+        if(build == null) return false;
+        return (build.block == Blocks.doorLarge || build.block == Blocks.doorLargeErekir) && build instanceof Door.DoorBuild;
+    }
+
     private boolean isOnlyCoreSelected(){
         if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
         for(Building build : control.input.commandBuildings){
@@ -830,6 +1347,16 @@ public class UnitAbilityPanel extends Table{
     private @Nullable CoreBuild selectedCore(){
         if(!isOnlyCoreSelected()) return null;
         return (CoreBuild)control.input.commandBuildings.first();
+    }
+
+    private boolean anySelectedOrbitalHasEnergy(float amount){
+        if(!isOnlyCoreSelected()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.block == Blocks.coreOrbital && core.hasOrbitalEnergy(amount)){
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isCoreBuildPage(){
@@ -878,7 +1405,7 @@ public class UnitAbilityPanel extends Table{
                 }else if(Core.input.keyTap(KeyCode.t)){
                     startPlacement(Blocks.swarmer);
                 }else if(Core.input.keyTap(KeyCode.n)){
-                    startPlacement(Blocks.hail);
+                    startPlacement(Blocks.radar);
                 }
                 break;
             case BUILD_ADV:
@@ -905,7 +1432,8 @@ public class UnitAbilityPanel extends Table{
         var core = selectedCore();
         if(core == null) return;
 
-        if(activeCommand == CommandMode.RALLY){
+        if(activeCommand == CommandMode.RALLY || activeCommand == CommandMode.DROP_PULSAR
+        || activeCommand == CommandMode.EXTRA_SUPPLY || activeCommand == CommandMode.SCAN){
             if(Core.input.keyTap(KeyCode.escape)){
                 exitCommandMode();
             }
@@ -916,19 +1444,61 @@ public class UnitAbilityPanel extends Table{
             queueCoreUnit(core);
             corePanel = CorePanel.BUILD;
         }else if(Core.input.keyTap(KeyCode.b)){
-            showNotImplemented();
+            if(core.block != Blocks.coreNucleus){
+                ui.hudfrag.setHudText("Already upgraded");
+            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                ui.hudfrag.setHudText("Cannot upgrade while training");
+            }else if(core.isUpgrading()){
+                ui.hudfrag.setHudText("Upgrade already in progress");
+            }else if(!core.startOrbitalUpgrade()){
+                ui.hudfrag.setHudText("Not enough crystals");
+            }
         }else if(Core.input.keyTap(KeyCode.p)){
-            showNotImplemented();
+            if(core.block != Blocks.coreNucleus){
+                ui.hudfrag.setHudText("Already upgraded");
+            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                ui.hudfrag.setHudText("Cannot upgrade while training");
+            }else if(core.isUpgrading()){
+                ui.hudfrag.setHudText("Upgrade already in progress");
+            }else if(!core.hasEngineeringStation()){
+                ui.hudfrag.setHudText("Requires Engineering Station");
+            }else if(!core.startFortressUpgrade()){
+                ui.hudfrag.setHudText("Not enough crystals or gas");
+            }
         }else if(Core.input.keyTap(KeyCode.y)){
             enterCommandMode(CommandMode.RALLY);
-        }else if(Core.input.keyTap(KeyCode.o)){
-            showNotImplemented();
+        }else if(Core.input.keyTap(KeyCode.e) && core.block == Blocks.coreOrbital){
+            if(anySelectedOrbitalHasEnergy(CoreBlock.orbitalAbilityCost)){
+                enterCommandMode(CommandMode.DROP_PULSAR);
+            }
+        }else if(Core.input.keyTap(KeyCode.x) && core.block == Blocks.coreOrbital){
+            if(anySelectedOrbitalHasEnergy(CoreBlock.orbitalAbilityCost)){
+                enterCommandMode(CommandMode.EXTRA_SUPPLY);
+            }
+        }else if(Core.input.keyTap(KeyCode.c) && core.block == Blocks.coreOrbital){
+            if(anySelectedOrbitalHasEnergy(CoreBlock.orbitalAbilityCost)){
+                enterCommandMode(CommandMode.SCAN);
+            }
+        }else if(Core.input.keyTap(KeyCode.o) && core.block != Blocks.coreOrbital){
+            if(!core.requestLoadScvs()){
+                ui.hudfrag.setHudText("No available SCVs or storage full");
+            }
+        }else if(Core.input.keyTap(KeyCode.d)){
+            core.unloadScvs();
         }else if(Core.input.keyTap(KeyCode.l)){
-            launchCore(core);
+            if(core.canLift()){
+                queueCoreLift(core);
+            }else{
+                ui.hudfrag.setHudText("Cannot lift while training");
+            }
         }
 
-        if(Core.input.keyTap(KeyCode.escape) && corePanel == CorePanel.BUILD){
-            if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+        if(Core.input.keyTap(KeyCode.escape)){
+            if(core.isUpgradingOrbital()){
+                core.cancelOrbitalUpgrade();
+            }else if(core.isUpgradingFortress()){
+                core.cancelFortressUpgrade();
+            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
                 cancelCoreUnit(core);
             }else{
                 corePanel = CorePanel.MAIN;
@@ -936,24 +1506,109 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private void handleCoreFlyerHotkeys(){
+        if(activeCommand == CommandMode.RALLY || activeCommand == CommandMode.LAND){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.y)){
+            enterCommandMode(CommandMode.RALLY);
+        }else if(Core.input.keyTap(KeyCode.l)){
+            enterCommandMode(CommandMode.LAND);
+        }
+    }
+
     private void handleBuildingHotkeys(){
         if(control.input.commandBuildings.isEmpty()) return;
+        if(activeCommand == CommandMode.RALLY){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
         Building build = control.input.commandBuildings.first();
         if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
             UnitFactory block = (UnitFactory)factory.block;
-            int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
-            int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
-            int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
-            int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
+            if(block == Blocks.groundFactory){
+                int daggerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.dagger);
+                int reaperIndex = block.plans.indexOf(p -> p.unit == UnitTypes.reaper);
+                int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
+                int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
 
-            if(Core.input.keyTap(KeyCode.a) && daggerIndex != -1 && factory.canQueuePlan(daggerIndex)){
-                factory.configure(daggerIndex);
-            }else if(Core.input.keyTap(KeyCode.r) && reaperIndex != -1 && factory.canQueuePlan(reaperIndex)){
-                factory.configure(reaperIndex);
-            }else if(Core.input.keyTap(KeyCode.d) && fortressIndex != -1 && factory.canQueuePlan(fortressIndex)){
-                factory.configure(fortressIndex);
-            }else if(Core.input.keyTap(KeyCode.g) && ghostIndex != -1 && factory.canQueuePlan(ghostIndex)){
-                factory.configure(ghostIndex);
+                if(Core.input.keyTap(KeyCode.a) && daggerIndex != -1 && factory.canQueuePlan(daggerIndex)){
+                    factory.configure(daggerIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && reaperIndex != -1 && factory.canQueuePlan(reaperIndex)){
+                    factory.configure(reaperIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && fortressIndex != -1 && factory.canQueuePlan(fortressIndex)){
+                    factory.configure(fortressIndex);
+                }else if(Core.input.keyTap(KeyCode.g) && ghostIndex != -1 && factory.canQueuePlan(ghostIndex)){
+                    factory.configure(ghostIndex);
+                }
+            }else if(block == Blocks.tankFabricator){
+                int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
+                int crawlerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.crawler);
+                int anthicusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.anthicus);
+                int preceptIndex = block.plans.indexOf(p -> p.unit == UnitTypes.precept);
+                int maceIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mace);
+                int scepterIndex = block.plans.indexOf(p -> p.unit == UnitTypes.scepter);
+
+                if(Core.input.keyTap(KeyCode.e) && locusIndex != -1 && factory.canQueuePlan(locusIndex)){
+                    factory.configure(locusIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && crawlerIndex != -1 && factory.canQueuePlan(crawlerIndex)){
+                    factory.configure(crawlerIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && anthicusIndex != -1 && factory.canQueuePlan(anthicusIndex)){
+                    factory.configure(anthicusIndex);
+                }else if(Core.input.keyTap(KeyCode.s) && preceptIndex != -1 && factory.canQueuePlan(preceptIndex)){
+                    factory.configure(preceptIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && maceIndex != -1 && factory.canQueuePlan(maceIndex)){
+                    factory.configure(maceIndex);
+                }else if(Core.input.keyTap(KeyCode.t) && scepterIndex != -1 && factory.canQueuePlan(scepterIndex)){
+                    factory.configure(scepterIndex);
+                }else if(Core.input.keyTap(KeyCode.y)){
+                    enterCommandMode(CommandMode.RALLY);
+                }
+            }else if(block == Blocks.shipFabricator){
+                int flareIndex = block.plans.indexOf(p -> p.unit == UnitTypes.flare);
+                int megaIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mega);
+                int obviateIndex = block.plans.indexOf(p -> p.unit == UnitTypes.obviate);
+                int avertIndex = block.plans.indexOf(p -> p.unit == UnitTypes.avert);
+                int horizonIndex = block.plans.indexOf(p -> p.unit == UnitTypes.horizon);
+                int antumbraIndex = block.plans.indexOf(p -> p.unit == UnitTypes.antumbra);
+
+                if(Core.input.keyTap(KeyCode.v) && flareIndex != -1 && factory.canQueuePlan(flareIndex)){
+                    factory.configure(flareIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && megaIndex != -1 && factory.canQueuePlan(megaIndex)){
+                    factory.configure(megaIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && obviateIndex != -1 && factory.canQueuePlan(obviateIndex)){
+                    factory.configure(obviateIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && avertIndex != -1 && factory.canQueuePlan(avertIndex)){
+                    factory.configure(avertIndex);
+                }else if(Core.input.keyTap(KeyCode.e) && horizonIndex != -1 && factory.canQueuePlan(horizonIndex)){
+                    factory.configure(horizonIndex);
+                }else if(Core.input.keyTap(KeyCode.b) && antumbraIndex != -1 && factory.canQueuePlan(antumbraIndex)){
+                    factory.configure(antumbraIndex);
+                }else if(Core.input.keyTap(KeyCode.y)){
+                    enterCommandMode(CommandMode.RALLY);
+                }
+            }else{
+                KeyCode[] keyCodes = {KeyCode.a, KeyCode.r, KeyCode.d, KeyCode.g, KeyCode.f, KeyCode.t};
+                for(int i = 0; i < keyCodes.length && i < block.plans.size; i++){
+                    if(Core.input.keyTap(keyCodes[i]) && factory.canQueuePlan(i)){
+                        factory.configure(i);
+                        break;
+                    }
+                }
+            }
+
+            if(Core.input.keyTap(KeyCode.l)){
+                if(factory.canLift()){
+                    queueFactoryLift(factory);
+                }else{
+                    ui.hudfrag.setHudText("Cannot lift while training");
+                }
             }
 
             if(factory.canShowAddonButtons()){
@@ -965,6 +1620,13 @@ public class UnitAbilityPanel extends Table{
             }
             if(Core.input.keyTap(KeyCode.escape)){
                 factory.configure(UnitFactory.sc2AddonCancelConfig);
+            }
+            return;
+        }
+
+        if(isOnlySupplySelected()){
+            if(Core.input.keyTap(KeyCode.r)){
+                toggleSupplyDoors();
             }
             return;
         }
@@ -990,6 +1652,10 @@ public class UnitAbilityPanel extends Table{
 
     private void queueCoreUnit(CoreBuild core){
         if(core == null) return;
+        if(core.isUpgrading()){
+            ui.hudfrag.setHudText("Cannot train while upgrading");
+            return;
+        }
         if(!core.canQueueUnit(UnitTypes.nova)){
             if(core.unitQueue != null && core.unitQueue.size >= core.queueSlots()){
                 ui.hudfrag.setHudText("Queue full");
@@ -1009,6 +1675,62 @@ public class UnitAbilityPanel extends Table{
     private void launchCore(CoreBuild core){
         if(core == null) return;
         Call.coreLaunch(player, core.pos());
+    }
+
+    private void queueCoreLift(CoreBuild core){
+        if(core == null) return;
+        triggerCoreLiftPrep(core);
+        Time.run(60f, () -> {
+            if(core.isValid() && core.canLift()){
+                float x = core.x, y = core.y;
+                int size = core.block.size;
+                Unit unit = core.lift();
+                if(unit != null){
+                    triggerLiftTakeoffFx(x, y, size);
+                    control.input.commandBuildings.clear();
+                    control.input.selectedUnits.clear();
+                    control.input.selectedUnits.add(unit);
+                }
+            }
+        });
+    }
+
+    private void queueFactoryLift(UnitFactory.UnitFactoryBuild factory){
+        if(factory == null) return;
+        triggerFactoryLiftPrep(factory);
+        Time.run(60f, () -> {
+            if(factory.isValid() && factory.canLift()){
+                float x = factory.x, y = factory.y;
+                int size = factory.block.size;
+                Unit unit = factory.lift();
+                if(unit != null){
+                    triggerLiftTakeoffFx(x, y, size);
+                    control.input.commandBuildings.clear();
+                    control.input.selectedUnits.clear();
+                    control.input.selectedUnits.add(unit);
+                }
+            }
+        });
+    }
+
+    private void triggerCoreLiftPrep(CoreBuild core){
+        if(core == null || !core.isValid()) return;
+        core.thrusterTime = Math.max(core.thrusterTime, 1f);
+        Fx.coreLaunchConstruct.at(core.x, core.y, core.block.size);
+    }
+
+    private void triggerFactoryLiftPrep(UnitFactory.UnitFactoryBuild factory){
+        if(factory == null || !factory.isValid()) return;
+        factory.liftThrusterTime = Math.max(factory.liftThrusterTime, 1f);
+        Fx.coreLaunchConstruct.at(factory.x, factory.y, factory.block.size);
+    }
+
+    private void triggerLiftTakeoffFx(float x, float y, int size){
+        Fx.coreLaunchConstruct.at(x, y, size);
+        Effect.shake(5f, 5f, x, y);
+        if(!headless){
+            Sounds.coreLaunch.at(x, y, 1f, 1f);
+        }
     }
 
     private void showNotImplemented(){
@@ -1119,6 +1841,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildCommandModePanel(){
+        setPanelRows(3);
         //Find the command description
         RTSCommand currentCmd = null;
         for(RTSCommand cmd : commands){
@@ -1178,7 +1901,7 @@ public class UnitAbilityPanel extends Table{
             //Send stop command (move to current position)
             for(Unit unit : control.input.selectedUnits){
                 if(unit.isValid()){
-                    Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true);
+                    Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true, false);
                 }
             }
         }
@@ -1190,7 +1913,7 @@ public class UnitAbilityPanel extends Table{
         for(Unit unit : control.input.selectedUnits){
             if(unit.isValid()){
                 //Send hold command (move to current position, will be interpreted as hold)
-                Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true);
+                Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true, false);
             }
         }
         exitCommandMode();

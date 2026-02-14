@@ -52,6 +52,8 @@ public class UnitFactory extends UnitBlock{
     public Seq<UnitPlan> plans = new Seq<>(4);
     public Sound createSound = Sounds.unitCreate;
     public float createSoundVolume = 1f;
+    public TextureRegion liftThruster1, liftThruster2;
+    public float liftThrusterLength = 14f/4f;
 
     public UnitFactory(String name){
         super(name);
@@ -133,6 +135,13 @@ public class UnitFactory extends UnitBlock{
     public void init(){
         initCapacities();
         super.init();
+    }
+
+    @Override
+    public void load(){
+        super.load();
+        liftThruster1 = Core.atlas.find("core-nucleus-thruster1", "clear-effect");
+        liftThruster2 = Core.atlas.find("core-nucleus-thruster2", "clear-effect");
     }
 
     @Override
@@ -276,6 +285,7 @@ public class UnitFactory extends UnitBlock{
         public int addonCrystalCost = 0;
         public int addonGasCost = 0;
         public boolean hadDoubleAddon = false;
+        public float liftThrusterTime = 0f;
 
         public float fraction(){
             if(sc2Queue && queued <= 0) return 0f;
@@ -444,6 +454,11 @@ public class UnitFactory extends UnitBlock{
         public void draw(){
             Draw.rect(region, x, y);
             Draw.rect(outRegion, x, y, rotdeg());
+            if(liftThrusterTime > 0f){
+                Draw.alpha(1f);
+                drawLiftThrusters(liftThrusterTime);
+                Draw.reset();
+            }
 
             int planIndex = activePlanIndex();
             if(planIndex != -1){
@@ -465,6 +480,7 @@ public class UnitFactory extends UnitBlock{
 
         @Override
         public void updateTile(){
+            liftThrusterTime = Math.max(liftThrusterTime - Time.delta/60f, 0f);
             if(!configurable){
                 currentPlan = 0;
             }
@@ -515,7 +531,7 @@ public class UnitFactory extends UnitBlock{
         public boolean shouldConsume(){
             if(sc2Queue){
                 if(isAddonBuilding()) return enabled;
-                if(currentPlan == -1 || queued <= 0) return false;
+                if((currentPlan == -1 && currentPlan2 == -1) || queued <= 0) return false;
             }else{
                 if(currentPlan == -1) return false;
             }
@@ -754,6 +770,18 @@ public class UnitFactory extends UnitBlock{
             if(unit == UnitTypes.fortress || unit == UnitTypes.ghost){
                 if(!hasTechAddon()) return false;
             }
+            if(unit == UnitTypes.anthicus || unit == UnitTypes.precept || unit == UnitTypes.scepter){
+                if(!hasTechAddon()) return false;
+            }
+            if(unit == UnitTypes.avert || unit == UnitTypes.horizon || unit == UnitTypes.antumbra){
+                if(!hasTechAddon()) return false;
+            }
+            if(unit == UnitTypes.antumbra){
+                if(team.data().getCount(Blocks.surgeCrucible) <= 0) return false;
+            }
+            if(unit == UnitTypes.mace || unit == UnitTypes.scepter){
+                if(!hasArmory()) return false;
+            }
             if(unit == UnitTypes.ghost){
                 if(team.data().getCount(Blocks.launchPad) <= 0) return false;
             }
@@ -897,6 +925,43 @@ public class UnitFactory extends UnitBlock{
         public boolean hasTechAddon(){
             if(!sc2Queue || !UnitFactory.this.sc2AddonSupport) return false;
             return hasAddon(Blocks.memoryBank);
+        }
+
+        public boolean hasArmory(){
+            return team.data().getCount(Blocks.siliconCrucible) > 0;
+        }
+
+        public boolean canLift(){
+            if(isAddonBuilding()) return false;
+            if(payload != null) return false;
+            return queuedTotal() <= 0;
+        }
+
+        public @Nullable Unit lift(){
+            if(!canLift()) return null;
+            Unit unit = UnitTypes.coreFlyer.create(team);
+            unit.set(x, y);
+            unit.rotation(225f);
+            unit.add();
+            if(unit instanceof Payloadc payload){
+                payload.pickup(this);
+                UnitTypes.CoreFlyerData data = UnitTypes.getCoreFlyerData(unit);
+                data.active = false;
+                data.landing = false;
+                data.landTime = 0f;
+                data.returnRotation = payload.payloads().peek() instanceof BuildPayload build ? build.build.rotation * 90f : unit.rotation();
+            }
+            return unit;
+        }
+
+        private void drawLiftThrusters(float frame){
+            if(liftThruster1 == null || liftThruster2 == null) return;
+            float length = liftThrusterLength * (frame - 1f) - 1f/4f;
+            for(int i = 0; i < 4; i++){
+                TextureRegion reg = i >= 2 ? liftThruster2 : liftThruster1;
+                float dx = Geometry.d4x[i] * length, dy = Geometry.d4y[i] * length;
+                Draw.rect(reg, x + dx, y + dy, i * 90f);
+            }
         }
 
         public boolean canAffordAddon(int crystal, int gas){

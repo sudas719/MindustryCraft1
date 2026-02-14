@@ -60,6 +60,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     final static IntSeq removed = new IntSeq();
     final static IntSeq tmpControlBuildings = new IntSeq();
     final static IntSet intSet = new IntSet();
+    final static Color placementGridLine = Color.valueOf("ffffff");
+    final static Color placementGridInvalid = Color.valueOf("ff9a2f");
     /** Maximum line length. */
     final static int maxLength = 100;
     final static Rect r1 = new Rect(), r2 = new Rect();
@@ -304,8 +306,27 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
     }
 
+    private static boolean finiteCommandCoord(float value){
+        return !Float.isNaN(value) && !Float.isInfinite(value);
+    }
+
+    private static @Nullable Vec2 sanitizeRemoteCommandTarget(@Nullable Vec2 target){
+        if(target == null) return null;
+        if(!finiteCommandCoord(target.x) || !finiteCommandCoord(target.y)) return null;
+
+        float width = Math.max(world.unitWidth(), tilesize);
+        float height = Math.max(world.unitHeight(), tilesize);
+        if(target.x < -width || target.x > width * 2f || target.y < -height || target.y > height * 2f){
+            return null;
+        }
+
+        float maxX = Math.max(world.unitWidth() - tilesize, 0f);
+        float maxY = Math.max(world.unitHeight() - tilesize, 0f);
+        return new Vec2(Mathf.clamp(target.x, 0f, maxX), Mathf.clamp(target.y, 0f, maxY));
+    }
+
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
-    public static void commandUnits(Player player, int[] unitIds, @Nullable Building buildTarget, @Nullable Unit unitTarget, @Nullable Vec2 posTarget, boolean queueCommand, boolean finalBatch){
+    public static void commandUnits(Player player, int[] unitIds, @Nullable Building buildTarget, @Nullable Unit unitTarget, @Nullable Vec2 posTarget, boolean queueCommand, boolean finalBatch, boolean forceAttackTarget){
         if(player == null || unitIds == null) return;
 
         if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
@@ -315,7 +336,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
 
         Teamc teamTarget = buildTarget == null ? unitTarget : buildTarget;
-        Vec2 targetAsVec = new Vec2().set(teamTarget != null ? teamTarget : posTarget);
+        Vec2 safePosTarget = sanitizeRemoteCommandTarget(posTarget);
+        if(teamTarget == null && safePosTarget == null) return;
+        Vec2 targetAsVec = teamTarget != null ? new Vec2(teamTarget.getX(), teamTarget.getY()) : safePosTarget.cpy();
         Seq<Unit> toAdd = queuedCommands.get(targetAsVec, Seq::new);
         boolean anyCommandedTarget = false;
 
@@ -327,8 +350,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         CommandAI ai = (CommandAI)unit.controller();
                         BuildPlan plan = unit.buildPlan();
                         if(unit.type == UnitTypes.nova && plan != null && plan.requireClose && !plan.initialized){
-                            boolean keep = teamTarget == null && posTarget != null &&
-                                Mathf.equal(posTarget.x, plan.drawx()) && Mathf.equal(posTarget.y, plan.drawy());
+                            boolean keep = teamTarget == null && safePosTarget != null &&
+                                Mathf.equal(safePosTarget.x, plan.drawx()) && Mathf.equal(safePosTarget.y, plan.drawy());
                             if(!keep){
                                 unit.clearBuilding();
                             }
@@ -339,7 +362,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         }
 
                     if(teamTarget != null){
-                        if(teamTarget.team() == player.team()){
+                        if(teamTarget.team() == player.team() && !forceAttackTarget){
                             ai.commandFollow(teamTarget);
                         }else if(!((teamTarget instanceof Unit && !unit.canTarget((Unit)teamTarget)) || (teamTarget instanceof Building && !unit.type.targetGround))){
                             anyCommandedTarget = true;
@@ -350,12 +373,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                                 ai.commandTarget(teamTarget);
                             }
                         }
-                    }else if(posTarget != null){
+                    }else if(safePosTarget != null){
                         if(queueCommand){
-                            ai.commandQueue(posTarget);
+                            ai.commandQueue(safePosTarget);
                         }else{
                             ai.commandQueue.clear();
-                            ai.commandPosition(posTarget);
+                            ai.commandPosition(safePosTarget);
                         }
                     }
 
@@ -405,8 +428,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(unitIds.length > 0 && player == Vars.player && !state.isPaused()){
             if(anyCommandedTarget){
                 Fx.attackCommand.at(teamTarget);
-            }else{
-                Fx.moveCommand.at(posTarget);
             }
         }
     }
@@ -1198,27 +1219,85 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         commandTap(screenX, screenY, false);
     }
 
+    protected float clampCommandX(float worldX){
+        float maxX = Math.max(world.unitWidth() - tilesize, 0f);
+        if(Float.isNaN(worldX) || Float.isInfinite(worldX)){
+            return maxX * 0.5f;
+        }
+        return Mathf.clamp(worldX, 0f, maxX);
+    }
+
+    protected float clampCommandY(float worldY){
+        float maxY = Math.max(world.unitHeight() - tilesize, 0f);
+        if(Float.isNaN(worldY) || Float.isInfinite(worldY)){
+            return maxY * 0.5f;
+        }
+        return Mathf.clamp(worldY, 0f, maxY);
+    }
+
+    protected boolean isValidCommandWorld(float worldX, float worldY){
+        if(Float.isNaN(worldX) || Float.isNaN(worldY) || Float.isInfinite(worldX) || Float.isInfinite(worldY)) return false;
+        float width = Math.max(world.unitWidth(), tilesize);
+        float height = Math.max(world.unitHeight(), tilesize);
+        return worldX >= -width && worldX <= width * 2f && worldY >= -height && worldY <= height * 2f;
+    }
+
+    protected Vec2 clampCommandTarget(Vec2 target){
+        target.set(clampCommandX(target.x), clampCommandY(target.y));
+        return target;
+    }
+
     public void commandTap(float screenX, float screenY, boolean queue){
         if(commandMode){
             //right click: move to position
 
             //move to location - TODO right click instead?
-            Vec2 target = input.mouseWorld(screenX, screenY).cpy();
+            Vec2 rawTarget = input.mouseWorld(screenX, screenY);
+            if(!isValidCommandWorld(rawTarget.x, rawTarget.y)) return;
+            Vec2 target = clampCommandTarget(rawTarget.cpy());
 
             if(selectedUnits.size > 0){
                 // Check if clicking on a harvestable resource
                 Tile tile = world.tileWorld(target.x, target.y);
                 Tile resource = resolveResourceTile(tile);
-                if(resource != null && (resource.block() instanceof CrystalMineralWall || resource.floor() instanceof SteamVent)){
-                    // Switch units to harvest command and target this tile
-                    for(Unit unit : selectedUnits){
-                        if(unit.controller() instanceof CommandAI){
-                            ((CommandAI)unit.controller()).setHarvestTarget(target);
-                        }else if(unit.controller() instanceof HarvestAI){
-                            ((HarvestAI)unit.controller()).setHarvestTarget(target);
+                if(resource != null){
+                    if(resource.floor() instanceof SteamVent){
+                        boolean showRefineryNotice = false;
+                        float resX = resource.worldx();
+                        float resY = resource.worldy();
+                        for(Unit unit : selectedUnits){
+                            if(unit == null || !unit.isValid()) continue;
+                            Tmp.v1.set(unit.x - resX, unit.y - resY);
+                            if(Tmp.v1.len2() < 0.001f){
+                                Tmp.v1.set(1f, 0f);
+                            }
+                            Tmp.v1.setLength(unit.hitSize / 2f + tilesize / 2f);
+                            Vec2 movePos = Tmp.v2.set(resX + Tmp.v1.x, resY + Tmp.v1.y);
+                            if(unit.isCommandable()){
+                                unit.command().commandPosition(movePos);
+                            }else if(unit.controller() instanceof CommandAI ai){
+                                ai.commandPosition(movePos);
+                            }
+                            if(unit.type == UnitTypes.nova){
+                                showRefineryNotice = true;
+                            }
                         }
+                        if(showRefineryNotice){
+                            ui.hudfrag.showLeftNotice("必须建造精炼厂才能开采");
+                        }
+                        return;
                     }
-                    return;
+                    if(resource.block() instanceof CrystalMineralWall){
+                        // Switch units to harvest command and target this tile
+                        for(Unit unit : selectedUnits){
+                            if(unit.controller() instanceof CommandAI){
+                                ((CommandAI)unit.controller()).setHarvestTarget(target);
+                            }else if(unit.controller() instanceof HarvestAI){
+                                ((HarvestAI)unit.controller()).setHarvestTarget(target);
+                            }
+                        }
+                        return;
+                    }
                 }
 
                 Teamc teamTarget = null;
@@ -1277,10 +1356,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 if(ids.length > maxChunkSize){
                     for(int i = 0; i < ids.length; i += maxChunkSize){
                         int[] data = Arrays.copyOfRange(ids, i, Math.min(i + maxChunkSize, ids.length));
-                        Call.commandUnits(player, data, teamBuild, teamUnit, target, queue, i + maxChunkSize >= ids.length);
+                        Call.commandUnits(player, data, teamBuild, teamUnit, target, queue, i + maxChunkSize >= ids.length, false);
                     }
                 }else{
-                    Call.commandUnits(player, ids, teamBuild, teamUnit, target, queue, true);
+                    Call.commandUnits(player, ids, teamBuild, teamUnit, target, queue, true, false);
                 }
             }
 
@@ -1319,6 +1398,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         });
 
         Draw.draw(Layer.overlayUI, () -> {
+            drawUnitWaypoints();
             drawCommandedTargets();
             drawCommandedRally();
         });
@@ -1400,6 +1480,128 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             float py = Mathf.lerp(y1, y2, t);
             Fill.circle(px, py, 0.9f);
         }
+    }
+
+    private void drawWaypointLine(float x1, float y1, float x2, float y2, Color color, boolean moving){
+        float dst = Mathf.dst(x1, y1, x2, y2);
+        if(dst < 1f) return;
+
+        float spacing = tilesize * 0.6f;
+        float offset = 0f;
+
+        if(moving){
+            float speed = tilesize * 0.04f;
+            offset = (Time.time * speed) % spacing;
+        }
+
+        Draw.color(color);
+        for(float d = offset; d < dst; d += spacing){
+            float t = d / dst;
+            float px = Mathf.lerp(x1, x2, t);
+            float py = Mathf.lerp(y1, y2, t);
+            Fill.circle(px, py, 0.9f);
+        }
+        Draw.reset();
+    }
+
+    private void drawUnitWaypoints(){
+        if(player == null) return;
+
+        TextureRegion waypoint = Core.atlas.find("wayPoint");
+        if(!waypoint.found()) waypoint = Core.atlas.find("wayPoints/wayPoint");
+
+        TextureRegion waypointBackground = Core.atlas.find("wayPoint-background");
+        if(!waypointBackground.found()) waypointBackground = Core.atlas.find("wayPoints/wayPoint-background");
+
+        float waypointWidth = tilesize;
+        float waypointHeight = tilesize;
+        float waypointBackgroundWidth = tilesize;
+        float waypointBackgroundHeight = tilesize;
+
+        float timeSeconds = Time.time / 60f;
+        float pulse = 0.5f + 0.5f * Mathf.sin(timeSeconds * Mathf.PI2 * 2f);
+        float pulseScale = Mathf.lerp(1f, 1.12f, pulse);
+        float bgExpandDuration = 0.2f;
+        float bgGapDuration = 0.8f;
+        float bgCycle = bgExpandDuration + bgGapDuration;
+        float bgCycleTime = timeSeconds % bgCycle;
+        boolean drawBgPulse = bgCycleTime <= bgExpandDuration;
+        float bgScale = 0f;
+        float bgAlpha = 0f;
+        if(drawBgPulse){
+            float bgProgress = Mathf.clamp(bgCycleTime / bgExpandDuration);
+            bgScale = Mathf.lerp(0.5f, 2f, Interp.sineOut.apply(bgProgress));
+            bgAlpha = 1f - Interp.pow2Out.apply(bgProgress);
+        }
+
+        for(Unit unit : Groups.unit){
+            if(unit == null || !unit.isValid()) continue;
+            if(unit.team != player.team()) continue;
+            if(unit.inFogTo(player.team())) continue;
+            if(!unit.allowCommand()) continue;
+            if(!(unit.controller() instanceof CommandAI)) continue;
+
+            CommandAI ai = (CommandAI)unit.controller();
+            UnitCommand cmd = ai.currentCommand();
+            if(cmd == UnitCommand.harvestCommand) continue;
+
+            Position current = ai.targetPos;
+            int queueOffset = 0;
+            if(current == null && ai.commandQueue.size > 0){
+                current = ai.commandQueue.first();
+                queueOffset = 1;
+            }
+            if(current == null) continue;
+
+            int queuedCount = ai.commandQueue.size - queueOffset;
+            int totalPoints = 1 + queuedCount;
+            boolean drawBetween = totalPoints > 1;
+
+            if(totalPoints > 1){
+                drawWaypointLine(unit.x, unit.y, current.getX(), current.getY(), Color.green, true);
+            }
+
+            if(drawBetween){
+                Position prev = current;
+                for(int i = queueOffset; i < ai.commandQueue.size; i++){
+                    Position next = ai.commandQueue.get(i);
+                    if(!(next instanceof Vec2)) continue;
+                    drawWaypointLine(prev.getX(), prev.getY(), next.getX(), next.getY(), Color.green, false);
+                    prev = next;
+                }
+            }
+
+            if(waypointBackground.found()){
+                if(drawBgPulse){
+                    Draw.color(1f, 1f, 1f, bgAlpha);
+                    Draw.rect(waypointBackground, current.getX(), current.getY(), waypointBackgroundWidth * bgScale, waypointBackgroundHeight * bgScale);
+                }
+            }else{
+                if(drawBgPulse){
+                    Draw.color(1f, 1f, 1f, bgAlpha);
+                    Drawf.square(current.getX(), current.getY(), (tilesize * 0.5f) * bgScale, Pal.accent.write(Tmp.c1).a(bgAlpha));
+                }
+            }
+
+            Draw.color();
+            if(waypoint.found()){
+                Draw.rect(waypoint, current.getX(), current.getY(), waypointWidth * pulseScale, waypointHeight * pulseScale);
+            }else{
+                Drawf.square(current.getX(), current.getY(), (tilesize * 0.5f) * pulseScale, Pal.accent);
+            }
+
+            for(int i = queueOffset; i < ai.commandQueue.size; i++){
+                Position next = ai.commandQueue.get(i);
+                if(!(next instanceof Vec2)) continue;
+                if(waypoint.found()){
+                    Draw.rect(waypoint, next.getX(), next.getY(), waypointWidth, waypointHeight);
+                }else{
+                    Drawf.square(next.getX(), next.getY(), tilesize * 0.5f, Pal.accent);
+                }
+            }
+        }
+
+        Draw.reset();
     }
 
     public void drawCommanded(boolean flying){
@@ -1570,6 +1772,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
         bplan.animScale = 1f;
         block.drawPlan(bplan, allPlans(), validPlace(tx, ty, block, placeRotation, null, true), 0.5f);
+        drawPlacementConstraintGrid(block, player.team(), tx, ty, placeRotation);
     }
 
     public void drawOverSelect(){
@@ -2517,6 +2720,52 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
     }
 
+    protected void drawPlacementConstraintGrid(Block block, Team team, int centerTileX, int centerTileY, int rotation){
+        if(block == null || team == null) return;
+
+        float radiusTiles = block.size / 2f + 3f;
+        int range = Mathf.ceil(radiusTiles);
+        float centerX = centerTileX * tilesize + block.offset;
+        float centerY = centerTileY * tilesize + block.offset;
+        float radiusWorld = radiusTiles * tilesize;
+        float radiusWorld2 = radiusWorld * radiusWorld;
+        float half = tilesize / 2f;
+        boolean coreLike = block instanceof CoreBlock;
+
+        Draw.z(Layer.overlayUI + 1.2f);
+        Lines.stroke(0.6f);
+
+        for(int dx = -range; dx <= range; dx++){
+            for(int dy = -range; dy <= range; dy++){
+                int tx = centerTileX + dx;
+                int ty = centerTileY + dy;
+                Tile tile = world.tile(tx, ty);
+                if(tile == null) continue;
+
+                float wx = tile.worldx();
+                float wy = tile.worldy();
+                if(Mathf.dst2(centerX, centerY, wx, wy) > radiusWorld2) continue;
+
+                boolean markInvalid;
+                if(coreLike){
+                    markInvalid = CoreBlock.inResourceExclusion(wx + half, wy + half) || Build.hasSlopeInPlacementArea(block, tx, ty);
+                }else{
+                    markInvalid = !Build.validPlace(block, team, tx, ty, rotation, false);
+                }
+
+                if(markInvalid){
+                    Draw.color(placementGridInvalid, 0.25f);
+                    Fill.crect(wx - half, wy - half, tilesize, tilesize);
+                }
+
+                Draw.color(placementGridLine, 0.16f);
+                Lines.rect(wx - half, wy - half, tilesize, tilesize);
+            }
+        }
+
+        Draw.reset();
+    }
+
     public @Nullable Unit selectedCommandUnit(float x, float y){
         var tree = player.team().data().tree();
         tmpUnits.clear();
@@ -2534,6 +2783,18 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             if(data.items[i].team != player.team()){
                 data.items[i].tree().intersect(x - rad / 2f, y - rad / 2f, rad, rad, tmpUnits);
             }
+        }
+
+        return tmpUnits.min(u -> !u.inFogTo(player.team()), u -> u.dst(x, y) - u.hitSize/2f);
+    }
+
+    public @Nullable Unit selectedAnyUnit(float x, float y){
+        tmpUnits.clear();
+        float rad = 4f;
+
+        Seq<TeamData> data = state.teams.present;
+        for(int i = 0; i < data.size; i++){
+            data.items[i].tree().intersect(x - rad / 2f, y - rad / 2f, rad, rad, tmpUnits);
         }
 
         return tmpUnits.min(u -> !u.inFogTo(player.team()), u -> u.dst(x, y) - u.hitSize/2f);

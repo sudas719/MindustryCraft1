@@ -83,7 +83,7 @@ public class BaseTurret extends Block{
     public void drawPlace(int x, int y, int rotation, boolean valid){
         super.drawPlace(x, y, rotation, valid);
 
-        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range, Pal.placing);
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range + size * tilesize / 2f, Pal.placing);
 
         if(fogRadiusMultiplier < 0.99f && state.rules.fog){
             Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range * fogRadiusMultiplier, Pal.lightishGray);
@@ -123,7 +123,7 @@ public class BaseTurret extends Block{
 
         @Override
         public float range(){
-            return range;
+            return range + hitSize() / 2f;
         }
 
         @Override

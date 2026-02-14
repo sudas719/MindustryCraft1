@@ -231,7 +231,7 @@ public class PrebuildAI extends AIController{
                 return;
             }
 
-            if(unit.within(core, unit.type.range)){
+            if(unit.within(core, unit.range())){
                 if(core.acceptStack(unit.stack.item, unit.stack.amount, unit) > 0){
                     Call.transferItemTo(unit, unit.stack.item, unit.stack.amount, unit.x, unit.y, core);
                 }
@@ -244,7 +244,7 @@ public class PrebuildAI extends AIController{
                 }
             }
 
-            circle(core, unit.type.range / 1.8f);
+            circle(core, unit.range() / 1.8f);
         }
     }
 }

@@ -36,6 +36,29 @@ public class UnitTypes{
     //region standard
 
     private static final UnitDamageEvent unitDamageEvent = new UnitDamageEvent();
+    private static final float coreFlyerLandTime = 60f;
+    private static final IntMap<CoreFlyerData> coreFlyerData = new IntMap<>();
+
+    public static class CoreFlyerData{
+        public final Vec2 target = new Vec2();
+        public boolean active = false;
+        public boolean landing = false;
+        public float landTime = 0f;
+        public float returnRotation = 0f;
+    }
+
+    public static CoreFlyerData getCoreFlyerData(Unit unit){
+        CoreFlyerData data = coreFlyerData.get(unit.id);
+        if(data == null){
+            data = new CoreFlyerData();
+            coreFlyerData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static void clearCoreFlyerData(Unit unit){
+        coreFlyerData.remove(unit.id);
+    }
 
     //mech
     public static @EntityDef({Unitc.class, Mechc.class}) UnitType mace, dagger, reaper, crawler, fortress, ghost, scepter, reign, vela;
@@ -65,7 +88,7 @@ public class UnitTypes{
     public static @EntityDef(value = {Unitc.class}, legacy = true) UnitType poly;
 
     //air + payload
-    public static @EntityDef({Unitc.class, Payloadc.class}) UnitType mega,
+    public static @EntityDef({Unitc.class, Payloadc.class}) UnitType coreFlyer, mega,
     evoke, incite, emanate, quell, disrupt;
 
     //air + payload, legacy
@@ -82,6 +105,9 @@ public class UnitTypes{
 
     //special block unit type
     public static @EntityDef({Unitc.class, BlockUnitc.class}) UnitType block;
+
+    //special internal unit for fog reveal
+    public static @EntityDef({Unitc.class}) UnitType scanProbe;
 
     //special building tethered (has payload capability, because it's necessary sometimes)
     public static @EntityDef({Unitc.class, BuildingTetherc.class, Payloadc.class}) UnitType manifold, assemblyDrone;
@@ -120,6 +146,11 @@ public class UnitTypes{
                 bullet = new PointBulletType(){
                     {
                         damage = 6f;
+                        shootEffect = Fx.none;
+                        smokeEffect = Fx.none;
+                        hitEffect = Fx.none;
+                        despawnEffect = Fx.none;
+                        trailEffect = Fx.none;
                     }
 
                 @Override
@@ -163,6 +194,11 @@ public class UnitTypes{
                 shoot.shots = 2;
                 bullet = new PointBulletType(){{
                     damage = 4f;
+                    shootEffect = Fx.none;
+                    smokeEffect = Fx.none;
+                    hitEffect = Fx.none;
+                    despawnEffect = Fx.none;
+                    trailEffect = Fx.none;
                 }};
             }});
         }
@@ -171,7 +207,7 @@ public class UnitTypes{
             super.load();
             region = Core.atlas.find("alpha");
             outlineRegion = region;
-            baseRegion = region;
+            baseRegion = Core.atlas.find("nova-base", region);
             fullIcon = Core.atlas.find("unit-alpha-full", region);
             uiIcon = Core.atlas.find("unit-alpha-ui", fullIcon);
             shadowRegion = fullIcon;
@@ -184,6 +220,7 @@ public class UnitTypes{
             hitSize = 10f;
             health = 550;
             armor = 4f;
+            population = 2;
             ammoType = new ItemAmmoType(Items.coal);
             immunities.add(StatusEffects.burning);
 
@@ -335,6 +372,11 @@ public class UnitTypes{
                 bullet = new PointBulletType(){
                     {
                         damage = 10f;
+                        shootEffect = Fx.none;
+                        smokeEffect = Fx.none;
+                        hitEffect = Fx.none;
+                        despawnEffect = Fx.none;
+                        trailEffect = Fx.none;
                     }
 
                 @Override
@@ -354,7 +396,7 @@ public class UnitTypes{
             super.load();
             region = Core.atlas.find("atrax");
             outlineRegion = region;
-            baseRegion = Core.atlas.find("atrax-base", region);
+            baseRegion = Core.atlas.find("nova-base", region);
             fullIcon = Core.atlas.find("unit-atrax-full", region);
             uiIcon = Core.atlas.find("unit-atrax-ui", fullIcon);
             shadowRegion = fullIcon;
@@ -368,6 +410,7 @@ public class UnitTypes{
             rotateSpeed = 3f; // 180°/sec
             health = 9000;
             armor = 10f;
+            population = 6;
             mechFrontSway = 1f;
             ammoType = new ItemAmmoType(Items.thorium);
 
@@ -569,7 +612,7 @@ public class UnitTypes{
             armor = 4f;
 
             mineTier = 2;
-            mineSpeed = 3f;
+            mineSpeed = 0.32f;
 
             commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand);
 
@@ -830,6 +873,7 @@ public class UnitTypes{
             speed = 7.5f;
             hitSize = 8f;
             health = 150;
+            population = 2;
             mechSideSway = 0.25f;
             range = 40f;
             ammoType = new ItemAmmoType(Items.coal);
@@ -1220,6 +1264,7 @@ public class UnitTypes{
             drag = 0.04f;
             flying = true;
             health = 70;
+            population = 2;
             engineOffset = 5.75f;
             targetFlags = new BlockFlag[]{BlockFlag.generator, null};
             hitSize = 9;
@@ -1264,6 +1309,7 @@ public class UnitTypes{
             drag = 0.03f;
             flying = true;
             hitSize = 11f;
+            population = 3;
             targetAir = false;
             engineOffset = 7.8f;
             range = 140f;
@@ -1364,6 +1410,7 @@ public class UnitTypes{
             lowAltitude = true;
             health = 7200;
             armor = 9f;
+            population = 6;
             engineOffset = 21;
             engineSize = 5.3f;
             hitSize = 46f;
@@ -1430,6 +1477,14 @@ public class UnitTypes{
                 }};
             }}
             );
+        }
+
+        @Override
+        public void draw(Unit unit){
+            float prevX = Draw.xscl, prevY = Draw.yscl;
+            Draw.scl(prevX * 0.7f, prevY * 0.7f);
+            super.draw(unit);
+            Draw.scl(prevX, prevY);
         }};
 
         eclipse = new UnitType("eclipse"){{
@@ -1591,6 +1646,7 @@ public class UnitTypes{
 
             health = 460;
             armor = 3f;
+            population = 2;
             speed = 18.75f;
             accel = 0.06f;
             drag = 0.017f;
@@ -2875,6 +2931,7 @@ public class UnitTypes{
             rotateSpeed = 3f; // 180°/sec
             health = 2100;
             armor = 8f;
+            population = 2;
             itemCapacity = 0;
             floorMultiplier = 0.8f;
             treadRects = new Rect[]{new Rect(17 - 96f/2f, 10 - 96f/2f, 19, 76)};
@@ -2959,6 +3016,7 @@ public class UnitTypes{
             rotateSpeed = 3f; // 180°/sec
             health = 5000;
             armor = 11f;
+            population = 3;
             itemCapacity = 0;
             floorMultiplier = 0.65f;
             drownTimeMultiplier = 1.2f;
@@ -3515,6 +3573,7 @@ public class UnitTypes{
             rotateSpeed = 3f; // 180°/sec
             health = 2900;
             armor = 7f;
+            population = 3;
             fogRadius = 40f;
             stepShake = 0f;
 
@@ -4016,6 +4075,7 @@ public class UnitTypes{
             accel = 0.09f;
             health = 1100f;
             armor = 3f;
+            population = 2;
             hitSize = 12f;
             engineSize = 0;
             fogRadius = 25;
@@ -4062,6 +4122,7 @@ public class UnitTypes{
             accel = 0.09f;
             health = 2300f;
             armor = 6f;
+            population = 3;
             hitSize = 25f;
             engineSize = 4.3f;
             engineOffset = 54f / 4f;
@@ -4700,6 +4761,133 @@ public class UnitTypes{
 
         //endregion
         //region internal + special
+
+        coreFlyer = new UnitType("core-flyer"){{
+            flying = true;
+            speed = 2.6f;
+            //Keep high accel for near-instant response; drag must stay low here,
+            //as high drag also amplifies effective speed in the unit movement model.
+            accel = 1f;
+            drag = 0.05f;
+            hitSize = 40f;
+            health = 1000f;
+            armor = 1f;
+            rotateSpeed = 6f;
+
+            payloadCapacity = Mathf.sqr(6f) * tilePayload;
+            pickupUnits = false;
+            allowedInPayloads = false;
+            useUnitCap = false;
+
+            canAttack = false;
+            targetAir = false;
+            targetGround = false;
+            omniMovement = false;
+            rotateMoveFirst = true;
+
+            drawBody = false;
+            drawSoftShadow = false;
+            drawCell = false;
+            hidden = true;
+        }
+
+        @Override
+        public void update(Unit unit){
+            if(!(unit instanceof Payloadc payload) || payload.payloads().isEmpty()) return;
+            CoreFlyerData data = getCoreFlyerData(unit);
+            if(!data.active) return;
+
+            if(!data.landing){
+                float alignThreshold = 0.01f;
+                float dx = data.target.x - unit.x;
+                float dy = data.target.y - unit.y;
+                float dst2 = dx * dx + dy * dy;
+                float align2 = alignThreshold * alignThreshold;
+
+                //For landing tasks, drive movement manually so center reaches target without inertial oscillation.
+                if(dst2 > align2){
+                    float dst = Mathf.sqrt(dst2);
+                    float step = unit.speed() * Time.delta;
+                    if(step >= dst){
+                        unit.set(data.target.x, data.target.y);
+                    }else{
+                        float scl = step / dst;
+                        unit.set(unit.x + dx * scl, unit.y + dy * scl);
+                    }
+                    unit.vel.setZero();
+                    unit.rotation(Angles.moveToward(unit.rotation(), Mathf.angle(dx, dy), unit.type.rotateSpeed * Time.delta));
+                    return;
+                }
+
+                unit.vel.setZero();
+
+                //Rotate back to source building angle before beginning landing.
+                float next = Angles.moveToward(unit.rotation(), data.returnRotation, unit.type.rotateSpeed * Time.delta);
+                unit.rotation(next);
+                if(Angles.angleDist(next, data.returnRotation) <= 0.6f){
+                    unit.rotation(data.returnRotation);
+                    data.landing = true;
+                    data.landTime = coreFlyerLandTime;
+                }
+                return;
+            }
+
+            data.landTime -= Time.delta;
+            if(data.landTime > 0f) return;
+
+            unit.set(data.target.x, data.target.y);
+            if(payload.dropLastPayload()){
+                Fx.unitDrop.at(data.target.x, data.target.y);
+                unit.remove();
+                clearCoreFlyerData(unit);
+            }else{
+                data.landing = false;
+                data.active = false;
+            }
+        }
+
+        @Override
+        public void killed(Unit unit){
+            clearCoreFlyerData(unit);
+        }
+
+        @Override
+        public void load(){
+            super.load();
+            region = Core.atlas.find("core-nucleus");
+            uiIcon = Core.atlas.find("core-nucleus");
+            fullIcon = Core.atlas.find("core-nucleus");
+        }
+        };
+
+        scanProbe = new UnitType("scan-probe"){{
+            flying = true;
+            speed = 0f;
+            accel = 1f;
+            drag = 1f;
+            hitSize = 4f;
+            health = 1f;
+            rotateSpeed = 6f;
+
+            canAttack = false;
+            targetAir = false;
+            targetGround = false;
+            useUnitCap = false;
+            isEnemy = false;
+
+            targetable = false;
+            hittable = false;
+            killable = false;
+            physics = false;
+            bounded = false;
+            drawBody = false;
+            drawSoftShadow = false;
+            drawCell = false;
+            drawMinimap = false;
+            hidden = true;
+            internal = true;
+            fogRadius = 10f;
+        }};
 
         block = new UnitType("block"){{
             speed = 0f;

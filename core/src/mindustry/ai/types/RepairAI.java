@@ -18,7 +18,7 @@ public class RepairAI extends AIController{
         if(target instanceof Building){
             boolean shoot = false;
 
-            if(target.within(unit, unit.type.range)){
+            if(target.within(unit, unit.range())){
                 unit.aim(target);
                 shoot = true;
             }
@@ -31,8 +31,8 @@ public class RepairAI extends AIController{
         if(target != null && target instanceof Building b && b.team == unit.team){
             if(unit.type.circleTarget){
                 circleAttack(unit.type.circleTargetRadius);
-            }else if(!target.within(unit, unit.type.range * 0.65f)){
-                moveTo(target, unit.type.range * 0.65f);
+            }else if(!target.within(unit, unit.range() * 0.65f)){
+                moveTo(target, unit.range() * 0.65f);
             }
 
             if(!unit.type.circleTarget){

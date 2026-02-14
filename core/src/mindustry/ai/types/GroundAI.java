@@ -35,7 +35,7 @@ public class GroundAI extends AIController{
             }
         }
 
-        if((core == null || !unit.within(core, unit.type.range * 0.5f))){
+        if((core == null || !unit.within(core, unit.range() * 0.5f))){
             boolean move = true;
 
             if(state.rules.waves && unit.team == state.rules.defaultTeam){

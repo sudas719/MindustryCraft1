@@ -87,7 +87,7 @@ public class RepairTurret extends Block{
         }
 
         consumePowerCond(powerUse, (RepairPointBuild entity) -> entity.target != null);
-        updateClipRadius(repairRadius + tilesize);
+        updateClipRadius(repairRadius + size * tilesize / 2f + tilesize);
         super.init();
     }
 
@@ -95,7 +95,7 @@ public class RepairTurret extends Block{
     public void drawPlace(int x, int y, int rotation, boolean valid){
         super.drawPlace(x, y, rotation, valid);
 
-        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, repairRadius, Pal.accent);
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, repairRadius + size * tilesize / 2f, Pal.accent);
     }
 
     @Override
@@ -175,7 +175,7 @@ public class RepairTurret extends Block{
 
         @Override
         public void drawSelect(){
-            Drawf.dashCircle(x, y, repairRadius, Pal.accent);
+            Drawf.dashCircle(x, y, range(), Pal.accent);
         }
 
         @Override
@@ -190,7 +190,7 @@ public class RepairTurret extends Block{
                 multiplier = 1f + liquids.current().heatCapacity * coolantMultiplier * optionalEfficiency;
             }
 
-            if(target != null && (target.dead() || target.dst(this) - target.hitSize/2f > repairRadius || target.health() >= target.maxHealth())){
+            if(target != null && (target.dead() || target.dst(this) - target.hitSize/2f > range() || target.health() >= target.maxHealth())){
                 target = null;
             }
 
@@ -212,8 +212,9 @@ public class RepairTurret extends Block{
             strength = Mathf.lerpDelta(strength, healed ? 1f : 0f, 0.08f * Time.delta);
 
             if(timer(timerTarget, 20)){
-                rect.setSize(repairRadius * 2).setCenter(x, y);
-                target = Units.closest(team, x, y, repairRadius, Unit::damaged);
+                float realRange = range();
+                rect.setSize(realRange * 2).setCenter(x, y);
+                target = Units.closest(team, x, y, realRange, Unit::damaged);
             }
         }
 
@@ -229,7 +230,7 @@ public class RepairTurret extends Block{
 
         @Override
         public float range(){
-            return repairRadius;
+            return repairRadius + hitSize() / 2f;
         }
 
         @Override

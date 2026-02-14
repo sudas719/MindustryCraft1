@@ -173,7 +173,7 @@ public class LogicBlock extends Block{
     public void drawPlace(int x, int y, int rotation, boolean valid){
         if(privileged) return;
 
-        Drawf.circles(x*tilesize + offset, y*tilesize + offset, range);
+        Drawf.circles(x*tilesize + offset, y*tilesize + offset, range + size * tilesize / 2f);
     }
 
     @Override
@@ -449,7 +449,7 @@ public class LogicBlock extends Block{
 
         @Override
         public float range(){
-            return range;
+            return range + hitSize() / 2f;
         }
 
         @Override
@@ -591,7 +591,7 @@ public class LogicBlock extends Block{
             super.drawConfigure();
 
             if(!privileged){
-                Drawf.circles(x, y, range);
+                Drawf.circles(x, y, range());
             }
 
             for(LogicLink l : links){
@@ -654,7 +654,7 @@ public class LogicBlock extends Block{
         }
 
         public boolean validLink(Building other){
-            return other != null && other.isValid() && (privileged || (!other.block.privileged && other.team == team && other.within(this, range + other.block.size*tilesize/2f))) && !(other instanceof ConstructBuild);
+            return other != null && other.isValid() && (privileged || (!other.block.privileged && other.team == team && other.within(this, range() + other.block.size*tilesize/2f))) && !(other instanceof ConstructBuild);
         }
 
         @Override

@@ -54,6 +54,20 @@ public class HudFragment{
     private Table lastUnlockTable;
     private Table lastUnlockLayout;
     private long lastToast;
+    private Table leftNoticeGroup;
+    private Seq<LeftNotice> leftNotices = new Seq<>();
+
+    private static final int leftNoticeCap = 5;
+    private static final float leftNoticeLifetime = 10f;
+    private static final float leftNoticeFadeTime = 1f;
+    private static final float leftNoticeBaseX = 16f;
+    private static final float leftNoticeBaseY = 140f;
+    private static final float leftNoticeSpacing = 6f;
+    private static final float leftNoticeLerp = 0.2f;
+
+    private static class LeftNotice{
+        Table table;
+    }
 
     private Seq<Block> blocksOut = new Seq<>();
     private Table hudLabel;
@@ -617,6 +631,15 @@ public class HudFragment{
             }).margin(6f);
         });
 
+        leftNoticeGroup = new Table();
+        leftNoticeGroup.setFillParent(true);
+        leftNoticeGroup.touchable = Touchable.disabled;
+        leftNoticeGroup.update(() -> {
+            leftNoticeGroup.visible = shown && !state.isMenu();
+            updateLeftNotices();
+        });
+        parent.addChild(leftNoticeGroup);
+
         //spawner warning
         parent.fill(t -> {
             t.name = "nearpoint";
@@ -768,7 +791,7 @@ public class HudFragment{
             abilityPanel = new UnitAbilityPanel();
             uiLayer.table(abilityTable -> {
                 abilityTable.name = "abilitypanel";
-                abilityTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0);
+                abilityTable.visible(() -> true);
                 abilityTable.add(abilityPanel).pad(4f);
             }).bottom().right();
 
@@ -809,12 +832,65 @@ public class HudFragment{
     }
 
     public void setHudText(String text){
-        showHudText = true;
+        showHudText = false;
         hudText = text;
+        showLeftNotice(UI.formatSudas(text));
     }
 
     public void toggleHudText(boolean shown){
         showHudText = shown;
+    }
+
+    private void updateLeftNotices(){
+        if(leftNoticeGroup == null || leftNotices.isEmpty()) return;
+        float y = leftNoticeBaseY;
+        for(int i = 0; i < leftNotices.size; i++){
+            LeftNotice entry = leftNotices.get(i);
+            if(entry == null || entry.table == null) continue;
+            Table table = entry.table;
+            float targetX = leftNoticeBaseX;
+            float targetY = y;
+            table.setPosition(Mathf.lerpDelta(table.x, targetX, leftNoticeLerp), Mathf.lerpDelta(table.y, targetY, leftNoticeLerp));
+            y += table.getPrefHeight() + leftNoticeSpacing;
+        }
+    }
+
+    private void removeLeftNotice(LeftNotice entry){
+        if(entry == null) return;
+        leftNotices.remove(entry, true);
+        if(entry.table != null){
+            entry.table.remove();
+        }
+    }
+
+    public void showLeftNotice(String text){
+        if(state.isMenu() || leftNoticeGroup == null || text == null || text.isEmpty()) return;
+
+        Table bubble = new Table();
+        bubble.background(Styles.black6);
+        bubble.touchable = Touchable.disabled;
+        bubble.margin(6f);
+        Label label = bubble.add(text).left().wrap().width(260f).get();
+        label.setColor(Pal.remove);
+        bubble.pack();
+
+        LeftNotice entry = new LeftNotice();
+        entry.table = bubble;
+        leftNotices.insert(0, entry);
+        leftNoticeGroup.addChild(bubble);
+
+        bubble.actions(Actions.sequence(
+            Actions.delay(leftNoticeLifetime),
+            Actions.fadeOut(leftNoticeFadeTime),
+            Actions.run(() -> removeLeftNotice(entry))
+        ));
+
+        while(leftNotices.size > leftNoticeCap){
+            LeftNotice old = leftNotices.pop();
+            if(old != null && old.table != null){
+                old.table.remove();
+            }
+        }
     }
 
     private void scheduleToast(Runnable run){

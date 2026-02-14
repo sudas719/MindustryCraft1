@@ -37,7 +37,7 @@ public class Maps{
     };
 
     /** List of all built-in maps. Filenames only. */
-    private static String[] defaultMapNames = {"maze", "fortress", "labyrinth", "islands", "tendrils", "caldera", "wasteland", "shattered", "fork", "triad", "mudFlats", "moltenLake", "archipelago", "debrisField", "domain", "veins", "glacier", "passage"};
+    private static String[] defaultMapNames = {"archipelago"};
     /** Maps tagged as PvP */
     private static String[] pvpMaps = {"veins", "glacier", "passage"};
     /** If true, the defaultMapNames are prefixed with default/ */
@@ -127,9 +127,23 @@ public class Maps{
     public void load(){
         //defaults; must work
         try{
+            boolean loadedDefault = false;
             for(String name : defaultMapNames){
                 Fi file = Core.files.internal((useDefaultFolder ? "maps/default/" : "maps/") + name + "." + mapExtension);
+                if(!file.exists()) continue;
                 loadMap(file, false);
+                loadedDefault = true;
+            }
+
+            if(!loadedDefault){
+                Fi folder = Core.files.internal(useDefaultFolder ? "maps/default" : "maps");
+                if(folder.exists()){
+                    for(Fi file : folder.list()){
+                        if(file.extension().equalsIgnoreCase(mapExtension)){
+                            loadMap(file, false);
+                        }
+                    }
+                }
             }
         }catch(IOException e){
             throw new RuntimeException(e);

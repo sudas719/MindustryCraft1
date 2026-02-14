@@ -43,7 +43,7 @@ public class RepairTower extends Block{
     public void drawPlace(int x, int y, int rotation, boolean valid){
         super.drawPlace(x, y, rotation, valid);
 
-        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range, Pal.placing);
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range + size * tilesize / 2f, Pal.placing);
     }
 
     public class RepairTowerBuild extends Building implements Ranged{
@@ -58,7 +58,8 @@ public class RepairTower extends Block{
             if(potentialEfficiency > 0 && (refresh += Time.delta) >= refreshInterval){
                 targets.clear();
                 refresh = 0f;
-                Units.nearby(team, x, y, range, u -> {
+                float realRange = range();
+                Units.nearby(team, x, y, realRange, u -> {
                     if(u.damaged()){
                         targets.add(u);
                     }
@@ -99,7 +100,7 @@ public class RepairTower extends Block{
             float mod = totalProgress % 1f;
             Draw.color(circleColor);
             Lines.stroke(circleStroke * (1f - mod) * warmup);
-            Lines.circle(x, y, range * mod);
+            Lines.circle(x, y, range() * mod);
             Draw.color(Pal.heal);
             Fill.square(x, y, squareRad * warmup, Time.time / squareSpinScl);
             Draw.reset();
@@ -109,7 +110,7 @@ public class RepairTower extends Block{
 
         @Override
         public float range(){
-            return range;
+            return range + hitSize() / 2f;
         }
 
         @Override
@@ -119,7 +120,7 @@ public class RepairTower extends Block{
 
         @Override
         public void drawSelect(){
-            Drawf.dashCircle(x, y, range, Pal.placing);
+            Drawf.dashCircle(x, y, range(), Pal.placing);
         }
     }
 }

@@ -20,7 +20,7 @@ public class FlyingAI extends AIController{
             if(unit.type.circleTarget){
                 circleAttack(unit.type.circleTargetRadius);
             }else{
-                moveTo(target, unit.type.range * 0.8f);
+                moveTo(target, unit.range() * 0.8f);
                 unit.lookAt(target);
             }
         }

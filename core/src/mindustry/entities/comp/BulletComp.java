@@ -7,6 +7,7 @@ import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.annotations.Annotations.*;
+import mindustry.ai.types.CommandAI;
 import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.entities.*;
@@ -102,6 +103,26 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
         return collided.size != 0 && collided.contains(id);
     }
 
+    private @Nullable Teamc forcedFriendlyTarget(){
+        if(owner instanceof Unit unit && unit.controller() instanceof CommandAI ai){
+            Teamc forced = ai.attackTarget;
+            if(forced != null && forced.team() == team){
+                return forced;
+            }
+        }
+        return null;
+    }
+
+    private boolean canHitForcedFriendly(Hitboxc other){
+        Teamc forced = forcedFriendlyTarget();
+        return forced != null && forced == other;
+    }
+
+    private boolean canHitForcedFriendly(Building build){
+        Teamc forced = forcedFriendlyTarget();
+        return forced != null && forced == build;
+    }
+
     @Replace
     public float clipSize(){
         return type.drawSize;
@@ -110,7 +131,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
     @Replace
     @Override
     public boolean collides(Hitboxc other){
-        return type.collides && (other instanceof Teamc t && t.team() != team)
+        return type.collides && (other instanceof Teamc t && (t.team() != team || canHitForcedFriendly(other)))
             && !(other instanceof Unit f && !f.checkTarget(type.collidesAir, type.collidesGround))
             && !(type.pierce && hasCollided(other.id())) && stickyTarget == null; //prevent multiple collisions
     }
@@ -247,10 +268,10 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 && checkUnderBuild(build, x * tilesize, y * tilesize)
                 && intersectsBuildingCircle(build, lastX, lastY, this.x, this.y)
                 && build.collide(self()) && type.testCollision(self(), build)
-                && !build.dead() && (type.collidesTeam || build.team != team) && !(type.pierceBuilding && hasCollided(build.id))){
+                && !build.dead() && ((type.collidesTeam || build.team != team) || canHitForcedFriendly(build)) && !(type.pierceBuilding && hasCollided(build.id))){
 
                 if(type.sticky){
-                    if(build.team != team){
+                    if(build.team != team || canHitForcedFriendly(build)){
                         //stick to edge of block
                         Vec2 hit = Geometry.raycastRect(lastX, lastY, x, y, Tmp.r1.setCentered(x * tilesize, y * tilesize, tilesize, tilesize));
                         if(hit != null){
@@ -266,7 +287,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                     boolean remove = false;
                     float health = build.health;
 
-                    if(build.team != team){
+                    if(build.team != team || canHitForcedFriendly(build)){
                         remove = build.collision(self());
                     }
 

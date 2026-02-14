@@ -54,9 +54,10 @@ public class OverdriveProjector extends Block{
     public void drawPlace(int x, int y, int rotation, boolean valid){
         super.drawPlace(x, y, rotation, valid);
 
-        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range, baseColor);
+        float placeRange = range + size * tilesize / 2f;
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, placeRange, baseColor);
 
-        indexer.eachBlock(player.team(), x * tilesize + offset, y * tilesize + offset, range, other -> other.block.canOverdrive, other -> Drawf.selected(other, Tmp.c1.set(baseColor).a(Mathf.absin(4f, 1f))));
+        indexer.eachBlock(player.team(), x * tilesize + offset, y * tilesize + offset, placeRange, other -> other.block.canOverdrive, other -> Drawf.selected(other, Tmp.c1.set(baseColor).a(Mathf.absin(4f, 1f))));
     }
 
     @Override
@@ -85,7 +86,7 @@ public class OverdriveProjector extends Block{
 
         @Override
         public float range(){
-            return range;
+            return range + hitSize() / 2f;
         }
 
         @Override
@@ -104,7 +105,7 @@ public class OverdriveProjector extends Block{
             }
 
             if(charge >= reload){
-                float realRange = range + phaseHeat * phaseRangeBoost;
+                float realRange = range() + phaseHeat * phaseRangeBoost;
 
                 charge = 0f;
                 indexer.eachBlock(this, realRange, other -> other.block.canOverdrive, other -> other.applyBoost(realBoost(), reload + 1f));
@@ -126,7 +127,7 @@ public class OverdriveProjector extends Block{
 
         @Override
         public void drawSelect(){
-            float realRange = range + phaseHeat * phaseRangeBoost;
+            float realRange = range() + phaseHeat * phaseRangeBoost;
 
             indexer.eachBlock(this, realRange, other -> other.block.canOverdrive, other -> Drawf.selected(other, Tmp.c1.set(baseColor).a(Mathf.absin(4f, 1f))));
 

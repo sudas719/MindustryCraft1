@@ -94,6 +94,8 @@ public class Pathfinder implements Runnable{
 
     /** tile data, see PathTileStruct - kept as a separate array for threading reasons */
     int[] tiles = {};
+    /** packed cliff marker type per tile index */
+    byte[] cliffs = {};
 
     /** maps team, cost, type to flow field*/
     Flowfield[][][] cache;
@@ -119,6 +121,7 @@ public class Pathfinder implements Runnable{
 
             //reset and update internal tile array
             tiles = new int[world.width() * world.height()];
+            cliffs = new byte[tiles.length];
             wwidth = world.width();
             wheight = world.height();
             threadList = new Seq<>();
@@ -128,6 +131,7 @@ public class Pathfinder implements Runnable{
             for(int i = 0; i < tiles.length; i++){
                 Tile tile = world.tiles.geti(i);
                 tiles[i] = packTile(tile);
+                cliffs[i] = (byte)CliffLayerData.cliff(tile);
             }
 
             //don't bother setting up paths unless necessary
@@ -284,6 +288,22 @@ public class Pathfinder implements Runnable{
         return tile.block().solid;
     }
 
+    private boolean usesCliffBlocking(Flowfield path){
+        return path.cost == costTypes.get(costGround)
+        || path.cost == costTypes.get(costLegs)
+        || path.cost == costTypes.get(costHover)
+        || path.cost == costTypes.get(costNeoplasm);
+    }
+
+    private boolean cliffBlocked(int fromPos, int toPos, int width){
+        if(fromPos < 0 || toPos < 0 || fromPos >= cliffs.length || toPos >= cliffs.length) return false;
+
+        int fx = fromPos % width, fy = fromPos / width;
+        int tx = toPos % width, ty = toPos / width;
+
+        return CliffLayerData.blocks(cliffs[fromPos] & 0xff, cliffs[toPos] & 0xff, tx - fx, ty - fy);
+    }
+
     public int get(int x, int y){
         return tiles[x + y * wwidth];
     }
@@ -318,6 +338,9 @@ public class Pathfinder implements Runnable{
             int pos = t.array();
             if(pos < tiles.length){
                 tiles[pos] = packTile(t);
+                if(pos < cliffs.length){
+                    cliffs[pos] = (byte)CliffLayerData.cliff(t);
+                }
             }
         });
 
@@ -420,6 +443,7 @@ public class Pathfinder implements Runnable{
 
         var points = diagonals ? Geometry.d8 : Geometry.d4;
         int[] avoid = avoidanceId <= 0 ? null : avoidance.getAvoidance();
+        boolean cliffAware = usesCliffBlocking(path);
 
         Tile current = null;
         int tl = 0;
@@ -428,6 +452,7 @@ public class Pathfinder implements Runnable{
 
             Tile other = world.tile(dx, dy);
             if(other == null) continue;
+            if(cliffAware && CliffLayerData.blocks(tile, other)) continue;
 
             int packed = dx/res + dy/res * ww;
             int avoidance = avoid == null ? 0 : avoid[packed] > Integer.MAX_VALUE - avoidanceId ? 1 : 0;
@@ -509,6 +534,7 @@ public class Pathfinder implements Runnable{
 
         int counter = 0;
         int w = path.width, h = path.height;
+        boolean cliffAware = path.resolution == 1 && usesCliffBlocking(path);
 
         while(path.frontier.size > 0){
             int tile = path.frontier.removeLast();
@@ -529,6 +555,7 @@ public class Pathfinder implements Runnable{
                     if(dx < 0 || dy < 0 || dx >= w || dy >= h) continue;
 
                     int newPos = dx + dy * w;
+                    if(cliffAware && cliffBlocked(tile, newPos, w)) continue;
                     int otherCost = path.getCost(tiles, newPos);
 
                     if((path.weights[newPos] > cost + otherCost || path.searches[newPos] < path.search) && otherCost != impassable){

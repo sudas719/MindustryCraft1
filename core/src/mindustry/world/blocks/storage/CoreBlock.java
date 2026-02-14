@@ -43,6 +43,17 @@ public class CoreBlock extends StorageBlock{
     public static final int maxUnitQueue = 5;
     public static final int scvCost = 50;
     public static final float scvBuildTime = 12f * 60f;
+    public static final int scvStorageCapacity = 5;
+    public static final float orbitalEnergyCap = 200f;
+    public static final float orbitalEnergyInit = 50f;
+    public static final float orbitalEnergyRegen = 0.8f;
+    public static final float orbitalAbilityCost = 50f;
+    public static final int orbitalUpgradeCost = 150;
+    public static final float orbitalUpgradeTime = 25f * 60f;
+    public static final int fortressUpgradeCost = 150;
+    public static final int fortressUpgradeGasCost = 150;
+    public static final float fortressUpgradeTime = 36f * 60f;
+    public static final int resourceExclusionRadiusTiles = 5;
 
     public int unitQueueSlots = maxUnitQueue;
     public int activeUnitSlots = 1;
@@ -159,6 +170,15 @@ public class CoreBlock extends StorageBlock{
             () -> Pal.items,
             () -> e.items.total() / ((float)e.storageCapacity * content.items().count(UnlockableContent::unlockedNow))
         ));
+
+        addBar("orbital-energy", (CoreBuild e) -> {
+            if(e.block != Blocks.coreOrbital) return null;
+            return new Bar(
+                () -> "Energy " + Strings.autoFixed(e.orbitalEnergy, 1) + "/" + Strings.autoFixed(orbitalEnergyCap, 1),
+                () -> Color.valueOf("b57aff"),
+                () -> Mathf.clamp(e.orbitalEnergy / orbitalEnergyCap)
+            );
+        });
     }
 
     @Override
@@ -195,6 +215,10 @@ public class CoreBlock extends StorageBlock{
         if(tile == null) return false;
         //in the editor, you can place them anywhere for convenience
         if(state.isEditor()) return true;
+        if(tile.block() instanceof CoreBlock){
+            return size > tile.block().size;
+        }
+        if(blockedByResourceNode(tile)) return false;
 
         CoreBuild core = team.core();
 
@@ -209,13 +233,20 @@ public class CoreBlock extends StorageBlock{
             return false;
         }
 
-        //allow upgrades on existing cores
-        if(tile.block() instanceof CoreBlock){
-            return size > tile.block().size;
-        }
-
         //allow placing cores on any valid floor if resources are available
         return true;
+    }
+
+    private boolean blockedByResourceNode(Tile tile){
+        if(tile == null) return false;
+        tile.getLinkedTilesAs(this, tempTiles);
+        float half = tilesize / 2f;
+        for(Tile linked : tempTiles){
+            if(inResourceExclusion(linked.worldx() + half, linked.worldy() + half)){
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -257,6 +288,10 @@ public class CoreBlock extends StorageBlock{
     @Override
     public void drawPlace(int x, int y, int rotation, boolean valid){
         if(world.tile(x, y) == null) return;
+        if(!(world.tile(x, y).block() instanceof CoreBlock) && blockedByResourceNode(world.tile(x, y))){
+            drawPlaceText("Too close to resource node", x, y, valid);
+            return;
+        }
 
         if(!canPlaceOn(world.tile(x, y), player.team(), rotation)){
 
@@ -280,6 +315,13 @@ public class CoreBlock extends StorageBlock{
         public @Nullable Vec2 commandPos;
         public IntSeq unitQueue = new IntSeq();
         public float unitProgress = 0f;
+        public int storedScvs = 0;
+        public IntSeq loadingScvs = new IntSeq();
+        public float orbitalEnergy = -1f;
+        public boolean upgradingOrbital = false;
+        public float orbitalUpgradeProgress = 0f;
+        public boolean upgradingFortress = false;
+        public float fortressUpgradeProgress = 0f;
 
         protected float cloudSeed, landParticleTimer;
 
@@ -635,12 +677,18 @@ public class CoreBlock extends StorageBlock{
         public void updateTile(){
             iframes -= Time.delta;
             thrusterTime -= Time.delta/90f;
+            updateOrbitalUpgrade();
+            updateFortressUpgrade();
             updateUnitQueue();
+            updateScvLoading();
+            updateOrbitalEnergy();
         }
 
         public boolean canQueueUnit(UnitType type){
             if(type == null) return false;
+            if(isUpgrading()) return false;
             if(unitQueue.size >= queueSlots()) return false;
+            if(!Units.canCreate(team, type)) return false;
             if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
             return items.has(Items.graphite, scvCost);
         }
@@ -722,6 +770,10 @@ public class CoreBlock extends StorageBlock{
         }
 
         private void updateUnitQueue(){
+            if(isUpgrading()){
+                unitProgress = 0f;
+                return;
+            }
             if(unitQueue == null || unitQueue.isEmpty()){
                 unitProgress = 0f;
                 return;
@@ -742,6 +794,69 @@ public class CoreBlock extends StorageBlock{
                 unitQueue.removeIndex(0);
                 spawnUnit(type);
             }
+        }
+
+        private void updateScvLoading(){
+            if(loadingScvs.isEmpty()) return;
+            for(int i = loadingScvs.size - 1; i >= 0; i--){
+                int id = loadingScvs.get(i);
+                Unit unit = Groups.unit.getByID(id);
+                if(unit == null || !unit.isValid() || unit.team != team || unit.type != UnitTypes.nova){
+                    loadingScvs.removeIndex(i);
+                    continue;
+                }
+                if(storedScvs >= scvStorageCapacity){
+                    loadingScvs.removeIndex(i);
+                    continue;
+                }
+                if(unit.within(this, hitSize() / 2f + 4f)){
+                    unit.remove();
+                    storedScvs++;
+                    loadingScvs.removeIndex(i);
+                }
+            }
+        }
+
+        public boolean hasStoredScvs(){
+            return storedScvs > 0;
+        }
+
+        public boolean requestLoadScvs(){
+            int free = scvStorageCapacity - storedScvs - loadingScvs.size;
+            if(free <= 0) return false;
+
+            Seq<Unit> candidates = new Seq<>();
+            for(Unit unit : team.data().units){
+                if(unit == null || !unit.isValid()) continue;
+                if(unit.type != UnitTypes.nova) continue;
+                if(loadingScvs.contains(unit.id)) continue;
+                candidates.add(unit);
+            }
+
+            candidates.sort(Structs.comparingFloat(u -> u.dst2(this)));
+
+            int added = 0;
+            for(int i = 0; i < candidates.size && added < free; i++){
+                Unit unit = candidates.get(i);
+                if(!unit.isCommandable()){
+                    unit.controller(new CommandAI());
+                }
+                unit.command().commandPosition(Tmp.v1.set(x, y));
+                loadingScvs.add(unit.id);
+                added++;
+            }
+
+            return added > 0;
+        }
+
+        public boolean unloadScvs(){
+            if(storedScvs <= 0) return false;
+            int count = storedScvs;
+            storedScvs = 0;
+            for(int i = 0; i < count; i++){
+                spawnUnit(UnitTypes.nova);
+            }
+            return true;
         }
 
         private void spawnUnit(UnitType type){
@@ -808,9 +923,200 @@ public class CoreBlock extends StorageBlock{
             }
         }
 
+        public boolean canLift(){
+            if(block == Blocks.corePlanetaryFortress) return false;
+            return (unitQueue == null || unitQueue.isEmpty()) && !isUpgrading();
+        }
+
+        public @Nullable Unit lift(){
+            if(!canLift()) return null;
+            Unit unit = UnitTypes.coreFlyer.create(team);
+            unit.set(x, y);
+            unit.rotation(225f);
+            unit.add();
+            if(unit instanceof Payloadc payload){
+                payload.pickup(this);
+                UnitTypes.CoreFlyerData data = UnitTypes.getCoreFlyerData(unit);
+                data.active = false;
+                data.landing = false;
+                data.landTime = 0f;
+                data.returnRotation = payload.payloads().peek() instanceof mindustry.world.blocks.payloads.BuildPayload build ? build.build.rotation * 90f : unit.rotation();
+            }
+            return unit;
+        }
+
+        public boolean canStartOrbitalUpgrade(){
+            if(block != Blocks.coreNucleus) return false;
+            if(isUpgrading()) return false;
+            if(unitQueue != null && !unitQueue.isEmpty()) return false;
+            if(unitProgress > 0f) return false;
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
+            return items.has(Items.graphite, orbitalUpgradeCost);
+        }
+
+        public boolean startOrbitalUpgrade(){
+            if(!canStartOrbitalUpgrade()) return false;
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.remove(Items.graphite, orbitalUpgradeCost);
+            }
+            upgradingOrbital = true;
+            orbitalUpgradeProgress = 0f;
+            return true;
+        }
+
+        public boolean cancelOrbitalUpgrade(){
+            if(!upgradingOrbital) return false;
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.add(Items.graphite, orbitalUpgradeCost);
+            }
+            upgradingOrbital = false;
+            orbitalUpgradeProgress = 0f;
+            return true;
+        }
+
+        public boolean isUpgradingOrbital(){
+            return upgradingOrbital;
+        }
+
+        public boolean canStartFortressUpgrade(){
+            if(block != Blocks.coreNucleus) return false;
+            if(isUpgrading()) return false;
+            if(unitQueue != null && !unitQueue.isEmpty()) return false;
+            if(unitProgress > 0f) return false;
+            if(!hasEngineeringStation()) return false;
+            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
+            return items.has(Items.graphite, fortressUpgradeCost) && items.has(Items.highEnergyGas, fortressUpgradeGasCost);
+        }
+
+        public boolean startFortressUpgrade(){
+            if(!canStartFortressUpgrade()) return false;
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.remove(Items.graphite, fortressUpgradeCost);
+                items.remove(Items.highEnergyGas, fortressUpgradeGasCost);
+            }
+            upgradingFortress = true;
+            fortressUpgradeProgress = 0f;
+            return true;
+        }
+
+        public boolean cancelFortressUpgrade(){
+            if(!upgradingFortress) return false;
+            if(!state.rules.infiniteResources && !team.rules().infiniteResources){
+                items.add(Items.graphite, fortressUpgradeCost);
+                items.add(Items.highEnergyGas, fortressUpgradeGasCost);
+            }
+            upgradingFortress = false;
+            fortressUpgradeProgress = 0f;
+            return true;
+        }
+
+        public boolean isUpgradingFortress(){
+            return upgradingFortress;
+        }
+
+        public float fortressUpgradeFraction(){
+            if(!upgradingFortress || fortressUpgradeTime <= 0f) return 0f;
+            return Mathf.clamp(fortressUpgradeProgress / fortressUpgradeTime);
+        }
+
+        public boolean isUpgrading(){
+            return upgradingOrbital || upgradingFortress;
+        }
+
+        public boolean hasEngineeringStation(){
+            return team.data().buildings.contains(b -> b != null && b.isValid() && b.block == Blocks.multiPress);
+        }
+
+        public float orbitalUpgradeFraction(){
+            if(!upgradingOrbital || orbitalUpgradeTime <= 0f) return 0f;
+            return Mathf.clamp(orbitalUpgradeProgress / orbitalUpgradeTime);
+        }
+
+        private void updateFortressUpgrade(){
+            if(!upgradingFortress) return;
+            fortressUpgradeProgress += edelta() * state.rules.buildSpeed(team);
+            if(fortressUpgradeProgress >= fortressUpgradeTime){
+                upgradingFortress = false;
+                fortressUpgradeProgress = 0f;
+                finishFortressUpgrade();
+            }
+        }
+
+        private void updateOrbitalUpgrade(){
+            if(!upgradingOrbital) return;
+            orbitalUpgradeProgress += edelta() * state.rules.buildSpeed(team);
+            if(orbitalUpgradeProgress >= orbitalUpgradeTime){
+                upgradingOrbital = false;
+                orbitalUpgradeProgress = 0f;
+                finishOrbitalUpgrade();
+            }
+        }
+
+        private boolean finishFortressUpgrade(){
+            if(block != Blocks.coreNucleus) return false;
+
+            ItemModule items = this.items.copy();
+            IntSeq queue = new IntSeq();
+            if(unitQueue != null){
+                queue.addAll(unitQueue);
+            }
+            Vec2 cmd = commandPos == null ? null : new Vec2(commandPos);
+            int stored = storedScvs;
+            IntSeq loading = new IntSeq();
+            loading.addAll(loadingScvs);
+            float progress = unitProgress;
+
+            Tile tile = this.tile;
+            int rot = rotation;
+            tile.setBlock(Blocks.corePlanetaryFortress, team, rot);
+            if(tile.build instanceof CoreBuild next){
+                next.items.set(items);
+                next.unitQueue.clear();
+                next.unitQueue.addAll(queue);
+                next.unitProgress = progress;
+                next.commandPos = cmd;
+                next.storedScvs = stored;
+                next.loadingScvs.clear();
+                next.loadingScvs.addAll(loading);
+                next.orbitalEnergy = -1f;
+            }
+            return true;
+        }
+
+        private boolean finishOrbitalUpgrade(){
+            if(block != Blocks.coreNucleus) return false;
+
+            ItemModule items = this.items.copy();
+            IntSeq queue = new IntSeq();
+            if(unitQueue != null){
+                queue.addAll(unitQueue);
+            }
+            Vec2 cmd = commandPos == null ? null : new Vec2(commandPos);
+            int stored = storedScvs;
+            IntSeq loading = new IntSeq();
+            loading.addAll(loadingScvs);
+            float progress = unitProgress;
+
+            Tile tile = this.tile;
+            int rot = rotation;
+            tile.setBlock(Blocks.coreOrbital, team, rot);
+            if(tile.build instanceof CoreBuild next){
+                next.items.set(items);
+                next.unitQueue.clear();
+                next.unitQueue.addAll(queue);
+                next.unitProgress = progress;
+                next.commandPos = cmd;
+                next.storedScvs = stored;
+                next.loadingScvs.clear();
+                next.loadingScvs.addAll(loading);
+                next.orbitalEnergy = orbitalEnergyInit;
+            }
+            return true;
+        }
+
         @Override
         public byte version(){
-            return 1;
+            return 5;
         }
 
         @Override
@@ -824,6 +1130,12 @@ public class CoreBlock extends StorageBlock{
                     write.s(unitQueue.get(i));
                 }
             }
+            write.i(storedScvs);
+            write.f(orbitalEnergy);
+            write.bool(upgradingOrbital);
+            write.f(orbitalUpgradeProgress);
+            write.bool(upgradingFortress);
+            write.f(fortressUpgradeProgress);
         }
 
         @Override
@@ -839,12 +1151,71 @@ public class CoreBlock extends StorageBlock{
                 for(int i = 0; i < count; i++){
                     unitQueue.add(read.s());
                 }
+                if(revision >= 2){
+                    storedScvs = read.i();
+                }else{
+                    storedScvs = 0;
+                }
+                if(revision >= 3){
+                    orbitalEnergy = read.f();
+                }else{
+                    orbitalEnergy = block == Blocks.coreOrbital ? orbitalEnergyInit : -1f;
+                }
+                if(revision >= 4){
+                    upgradingOrbital = read.bool();
+                    orbitalUpgradeProgress = read.f();
+                }else{
+                    upgradingOrbital = false;
+                    orbitalUpgradeProgress = 0f;
+                }
+                if(revision >= 5){
+                    upgradingFortress = read.bool();
+                    fortressUpgradeProgress = read.f();
+                }else{
+                    upgradingFortress = false;
+                    fortressUpgradeProgress = 0f;
+                }
             }else{
                 if(unitQueue == null) unitQueue = new IntSeq();
                 unitQueue.clear();
                 unitProgress = 0f;
                 commandPos = null;
+                storedScvs = 0;
+                orbitalEnergy = block == Blocks.coreOrbital ? orbitalEnergyInit : -1f;
+                upgradingOrbital = false;
+                orbitalUpgradeProgress = 0f;
+                upgradingFortress = false;
+                fortressUpgradeProgress = 0f;
             }
+            loadingScvs.clear();
+            if(block != Blocks.coreNucleus){
+                upgradingOrbital = false;
+                orbitalUpgradeProgress = 0f;
+                upgradingFortress = false;
+                fortressUpgradeProgress = 0f;
+            }
+        }
+
+        private void updateOrbitalEnergy(){
+            if(block != Blocks.coreOrbital) return;
+            if(orbitalEnergy < 0f) orbitalEnergy = orbitalEnergyInit;
+            if(orbitalEnergy < orbitalEnergyCap){
+                orbitalEnergy = Math.min(orbitalEnergy + orbitalEnergyRegen * Time.delta / 60f, orbitalEnergyCap);
+            }
+        }
+
+        public boolean hasOrbitalEnergy(float amount){
+            if(block != Blocks.coreOrbital) return true;
+            if(orbitalEnergy < 0f) orbitalEnergy = orbitalEnergyInit;
+            return orbitalEnergy >= amount;
+        }
+
+        public boolean consumeOrbitalEnergy(float amount){
+            if(block != Blocks.coreOrbital) return true;
+            if(orbitalEnergy < 0f) orbitalEnergy = orbitalEnergyInit;
+            if(orbitalEnergy < amount) return false;
+            orbitalEnergy -= amount;
+            return true;
         }
 
         /** @return Camera zoom while landing or launching. May optionally do other things such as setting camera position to itself. */
@@ -1125,6 +1496,28 @@ public class CoreBlock extends StorageBlock{
             return dataTile;
         }
         return null;
+    }
+
+    public static boolean inResourceExclusion(float worldX, float worldY){
+        float radius = resourceExclusionRadiusTiles * tilesize;
+        float radius2 = radius * radius;
+        float half = tilesize / 2f;
+        int cx = World.toTile(worldX);
+        int cy = World.toTile(worldY);
+        int range = resourceExclusionRadiusTiles + 4;
+
+        for(int dx = -range; dx <= range; dx++){
+            for(int dy = -range; dy <= range; dy++){
+                Tile other = world.tile(cx + dx, cy + dy);
+                Tile resource = resolveResourceTile(other);
+                if(resource == null) continue;
+                if(Mathf.dst2(worldX, worldY, resource.worldx() + half, resource.worldy() + half) <= radius2){
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     static @Nullable Tile findVentTile(Building build){

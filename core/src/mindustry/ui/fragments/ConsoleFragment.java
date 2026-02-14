@@ -13,6 +13,7 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.game.EventType.*;
+import mindustry.core.*;
 import mindustry.input.*;
 import mindustry.ui.*;
 
@@ -242,6 +243,6 @@ public class ConsoleFragment extends Table{
     }
 
     public void addMessage(String message){
-        messages.insert(0, message);
+        messages.insert(0, UI.formatSudas(message));
     }
 }

@@ -12,6 +12,7 @@ import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.io.SaveFileReader.*;
 import mindustry.io.*;
+import mindustry.world.*;
 import mindustry.world.meta.*;
 
 import java.io.*;
@@ -22,6 +23,10 @@ public final class FogControl implements CustomChunk{
     private static volatile int ww, wh;
     private static final int dynamicUpdateInterval = 1000 / 25; //25 FPS
     private static final Object notifyStatic = new Object(), notifyDynamic = new Object();
+    private static final int fogIgnoreHeightBit = 0b1000_0000_0000_0000;
+    private static final int fogViewerMask = 0b0110_0000_0000_0000;
+    private static final int fogViewerShift = 13;
+    private static final int fogRadiusMask = 0b0001_1111_1111_1111;
 
     /** indexed by team */
     private volatile @Nullable FogData[] fog;
@@ -71,7 +76,10 @@ public final class FogControl implements CustomChunk{
                 if(state.rules.staticFog){
                     synchronized(staticEvents){
                         //TODO event per team?
-                        pushEvent(FogEvent.get(event.tile.x, event.tile.y, Mathf.round(event.tile.build.fogRadius()), event.tile.build.team.id), false);
+                        Building build = event.tile.build;
+                        int viewerHeight = HeightLayerData.edgeLayer(build.x, build.y, build.hitSize() / 2f);
+                        int encodedRadius = encodeFogRadius(Mathf.round(build.fogRadius()), false, viewerHeight);
+                        pushEvent(FogEvent.get(event.tile.x, event.tile.y, encodedRadius, build.team.id), false);
                     }
                 }
             }
@@ -158,7 +166,9 @@ public final class FogControl implements CustomChunk{
                         fog[build.team.id] = new FogData();
                     }
 
-                    pushEvent(FogEvent.get(build.tile.x, build.tile.y, Mathf.round(build.fogRadius()), build.team.id), initial);
+                    int viewerHeight = HeightLayerData.edgeLayer(build.x, build.y, build.hitSize() / 2f);
+                    int encodedRadius = encodeFogRadius(Mathf.round(build.fogRadius()), false, viewerHeight);
+                    pushEvent(FogEvent.get(build.tile.x, build.tile.y, encodedRadius, build.team.id), initial);
                 }
             }
         }
@@ -180,7 +190,9 @@ public final class FogControl implements CustomChunk{
 
             if(state.rules.staticFog){
                 synchronized(staticEvents){
-                    pushEvent(FogEvent.get(build.tile.x, build.tile.y, Mathf.round(build.fogRadius()), build.team.id), false);
+                    int viewerHeight = HeightLayerData.edgeLayer(build.x, build.y, build.hitSize() / 2f);
+                    int encodedRadius = encodeFogRadius(Mathf.round(build.fogRadius()), false, viewerHeight);
+                    pushEvent(FogEvent.get(build.tile.x, build.tile.y, encodedRadius, build.team.id), false);
                 }
             }
         }
@@ -257,7 +269,11 @@ public final class FogControl implements CustomChunk{
                     for(var unit : team.units){
                         int tx = unit.tileX(), ty = unit.tileY(), pos = tx + ty * ww;
                         if(unit.type.fogRadius <= 0f) continue;
-                        long event = FogEvent.get(tx, ty, (int)unit.type.fogRadius, team.team.id);
+                        int radius = (int)unit.type.fogRadius;
+                        boolean ignoreHeight = unit.isFlying();
+                        int viewerHeight = ignoreHeight ? HeightLayerData.maxLayer : HeightLayerData.edgeLayer(unit.x, unit.y, unit.hitSize / 2f);
+                        int encodedRadius = encodeFogRadius(radius, ignoreHeight, viewerHeight);
+                        long event = FogEvent.get(tx, ty, encodedRadius, team.team.id);
 
                         //always update the dynamic events, but only *flush* the results when necessary?
                         unitEventQueue.add(event);
@@ -277,7 +293,9 @@ public final class FogControl implements CustomChunk{
 
                     //add building updates
                     for(var build : indexer.getFlagged(team.team, BlockFlag.hasFogRadius)){
-                        dynamicEventQueue.add(FogEvent.get(build.tile.x, build.tile.y, Mathf.round(build.fogRadius()), build.team.id));
+                        int viewerHeight = HeightLayerData.edgeLayer(build.x, build.y, build.hitSize() / 2f);
+                        int encodedRadius = encodeFogRadius(Mathf.round(build.fogRadius()), false, viewerHeight);
+                        dynamicEventQueue.add(FogEvent.get(build.tile.x, build.tile.y, encodedRadius, build.team.id));
                     }
 
                     //add unit updates
@@ -349,10 +367,13 @@ public final class FogControl implements CustomChunk{
             int size = staticEvents.size;
             for(int i = 0; i < size; i++){
                 long event = staticEvents.items[i];
-                int x = FogEvent.x(event), y = FogEvent.y(event), rad = FogEvent.radius(event), team = FogEvent.team(event);
+                int x = FogEvent.x(event), y = FogEvent.y(event), encodedRadius = FogEvent.radius(event), team = FogEvent.team(event);
+                boolean ignoreHeight = decodeFogIgnoreHeight(encodedRadius);
+                int rad = decodeFogRadius(encodedRadius);
                 var data = fog[team];
                 if(data != null){
-                    circle(data.staticData, x, y, rad);
+                    int viewerHeight = ignoreHeight ? HeightLayerData.maxLayer : decodeFogViewerHeight(encodedRadius);
+                    circle(data.staticData, x, y, rad, viewerHeight, ignoreHeight);
                 }
             }
             staticEvents.clear();
@@ -402,7 +423,9 @@ public final class FogControl implements CustomChunk{
             //draw step
             for(int i = 0; i < size; i++){
                 long event = dynamicEvents.items[i];
-                int x = FogEvent.x(event), y = FogEvent.y(event), rad = FogEvent.radius(event), team = FogEvent.team(event);
+                int x = FogEvent.x(event), y = FogEvent.y(event), encodedRadius = FogEvent.radius(event), team = FogEvent.team(event);
+                boolean ignoreHeight = decodeFogIgnoreHeight(encodedRadius);
+                int rad = decodeFogRadius(encodedRadius);
 
                 if(rad <= 0) continue;
 
@@ -417,7 +440,8 @@ public final class FogControl implements CustomChunk{
                     }
 
                     //radius is always +1 to keep up with visuals
-                    circle(data.write, x, y, rad + 1);
+                    int viewerHeight = ignoreHeight ? HeightLayerData.maxLayer : decodeFogViewerHeight(encodedRadius);
+                    circle(data.write, x, y, rad + 1, viewerHeight, ignoreHeight);
                 }
             }
             dynamicEvents.clear();
@@ -511,14 +535,83 @@ public final class FogControl implements CustomChunk{
         return state.rules.fog && state.rules.staticFog && fog != null;
     }
 
-    static void circle(Bits arr, int x, int y, int radius){
+    public static int encodeFogRadius(int radius, boolean ignoreHeight, int viewerHeight){
+        int clampedRadius = Mathf.clamp(radius, 0, fogRadiusMask);
+        int encodedHeight = (Mathf.clamp(viewerHeight, HeightLayerData.minLayer, HeightLayerData.maxLayer) - 1) << fogViewerShift;
+        return clampedRadius | encodedHeight | (ignoreHeight ? fogIgnoreHeightBit : 0);
+    }
+
+    public static int decodeFogRadius(int encodedRadius){
+        return encodedRadius & fogRadiusMask;
+    }
+
+    public static boolean decodeFogIgnoreHeight(int encodedRadius){
+        return (encodedRadius & fogIgnoreHeightBit) != 0;
+    }
+
+    public static int decodeFogViewerHeight(int encodedRadius){
+        int layer = ((encodedRadius & fogViewerMask) >>> fogViewerShift) + 1;
+        return Mathf.clamp(layer, HeightLayerData.minLayer, HeightLayerData.maxLayer);
+    }
+
+    public static boolean blocksVision(Tile tile){
+        if(tile == null) return true;
+
+        Block block = tile.block();
+        if(block != null && !block.isAir() && block.solid && block.obstructsLight){
+            return true;
+        }
+
+        Block overlay = tile.overlay();
+        if(overlay != null && !overlay.isAir() && overlay.obstructsLight){
+            return true;
+        }
+
+        Block floor = tile.floor();
+        return floor != null && !floor.isAir() && floor.obstructsLight;
+    }
+
+    public static boolean hasVisionPath(int fromX, int fromY, int toX, int toY){
+        if(fromX == toX && fromY == toY) return true;
+
+        int x = fromX, y = fromY;
+        int dx = Math.abs(toX - fromX), dy = Math.abs(toY - fromY);
+        int sx = fromX < toX ? 1 : -1;
+        int sy = fromY < toY ? 1 : -1;
+        int err = dx - dy;
+
+        while(!(x == toX && y == toY)){
+            int e2 = err << 1;
+            if(e2 > -dy){
+                err -= dy;
+                x += sx;
+            }
+            if(e2 < dx){
+                err += dx;
+                y += sy;
+            }
+
+            if(x == toX && y == toY){
+                return true;
+            }
+
+            if(blocksVision(world.tile(x, y))){
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static void circle(Bits arr, int x, int y, int radius, int viewerHeight, boolean ignoreHeight){
+        if(radius <= 0) return;
         int f = 1 - radius;
         int ddFx = 1, ddFy = -2 * radius;
         int px = 0, py = radius;
 
-        hline(arr, x, x, y + radius);
-        hline(arr, x, x, y - radius);
-        hline(arr, x - radius, x + radius, y);
+        hline(arr, x, y, x, x, y + radius, viewerHeight, ignoreHeight);
+        hline(arr, x, y, x, x, y - radius, viewerHeight, ignoreHeight);
+        hline(arr, x, y, x - radius, x + radius, y, viewerHeight, ignoreHeight);
 
         while(px < py){
             if(f >= 0){
@@ -529,14 +622,14 @@ public final class FogControl implements CustomChunk{
             px++;
             ddFx += 2;
             f += ddFx;
-            hline(arr, x - px, x + px, y + py);
-            hline(arr, x - px, x + px, y - py);
-            hline(arr, x - py, x + py, y + px);
-            hline(arr, x - py, x + py, y - px);
+            hline(arr, x, y, x - px, x + px, y + py, viewerHeight, ignoreHeight);
+            hline(arr, x, y, x - px, x + px, y - py, viewerHeight, ignoreHeight);
+            hline(arr, x, y, x - py, x + py, y + px, viewerHeight, ignoreHeight);
+            hline(arr, x, y, x - py, x + py, y - px, viewerHeight, ignoreHeight);
         }
     }
 
-    static void hline(Bits arr, int x1, int x2, int y){
+    static void hline(Bits arr, int sourceX, int sourceY, int x1, int x2, int y, int viewerHeight, boolean ignoreHeight){
         if(y < 0 || y >= wh) return;
         int tmp;
 
@@ -551,10 +644,20 @@ public final class FogControl implements CustomChunk{
 
         if(x1 < 0) x1 = 0;
         if(x2 >= ww) x2 = ww - 1;
-        x2++;
         int off = y * ww;
 
-        arr.set(off + x1, off + x2);
+        if(ignoreHeight){
+            arr.set(off + x1, off + x2 + 1);
+            return;
+        }
+
+        for(int x = x1; x <= x2; x++){
+            if(!hasVisionPath(sourceX, sourceY, x, y)) continue;
+            Tile tile = world.tile(x, y);
+            if(HeightLayerData.fogLayer(tile) <= viewerHeight){
+                arr.set(off + x);
+            }
+        }
     }
 
     static class FogData{

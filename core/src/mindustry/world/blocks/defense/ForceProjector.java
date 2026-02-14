@@ -88,7 +88,7 @@ public class ForceProjector extends Block{
 
     @Override
     public void init(){
-        updateClipRadius(radius + phaseRadiusBoost + 3f);
+        updateClipRadius(radius + phaseRadiusBoost + size * tilesize / 2f + 3f);
         super.init();
     }
 
@@ -153,10 +153,10 @@ public class ForceProjector extends Block{
 
         Draw.color(Pal.gray);
         Lines.stroke(3f);
-        Lines.poly(x * tilesize + offset, y * tilesize + offset, sides, radius, shieldRotation);
+        Lines.poly(x * tilesize + offset, y * tilesize + offset, sides, radius + size * tilesize / 2f, shieldRotation);
         Draw.color(player.team().color);
         Lines.stroke(1f);
-        Lines.poly(x * tilesize + offset, y * tilesize + offset, sides, radius, shieldRotation);
+        Lines.poly(x * tilesize + offset, y * tilesize + offset, sides, radius + size * tilesize / 2f, shieldRotation);
         Draw.color();
     }
 
@@ -276,7 +276,7 @@ public class ForceProjector extends Block{
         }
 
         public float realRadius(){
-            return (radius + phaseHeat * phaseRadiusBoost) * radscl;
+            return (radius + phaseHeat * phaseRadiusBoost + hitSize() / 2f) * radscl;
         }
 
         @Override

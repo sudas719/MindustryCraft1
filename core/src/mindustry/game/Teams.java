@@ -10,6 +10,7 @@ import mindustry.*;
 import mindustry.ai.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.gen.*;
+import mindustry.content.*;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
@@ -429,16 +430,21 @@ public class Teams{
         }
 
         public boolean active(){
-            return (team == state.rules.waveTeam && state.rules.waves) || cores.size > 0 || buildings.size > 0 || (team == Team.neoplastic && units.size > 0);
+            return (team == state.rules.waveTeam && state.rules.waves)
+                || cores.size > 0
+                || buildings.size > 0
+                || units.contains(u -> u != null && u.isValid() && u.type == UnitTypes.coreFlyer)
+                || (team == Team.neoplastic && units.size > 0);
         }
 
         public boolean hasCore(){
-            return cores.size > 0;
+            if(cores.size > 0) return true;
+            return units.contains(u -> u != null && u.isValid() && u.type == UnitTypes.coreFlyer);
         }
 
         /** @return whether this team has any cores (standard team), or any hearts (neoplasm). */
         public boolean isAlive(){
-            return hasCore();
+            return hasCore() || buildings.size > 0 || (team == Team.neoplastic && units.size > 0);
         }
 
         public boolean noCores(){
@@ -447,7 +453,18 @@ public class Teams{
 
         @Nullable
         public CoreBuild core(){
-            return cores.isEmpty() ? null : cores.first();
+            if(!cores.isEmpty()){
+                return cores.first();
+            }
+            for(Unit unit : units){
+                if(unit == null || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+                for(Payload pay : payload.payloads()){
+                    if(pay instanceof BuildPayload buildPayload && buildPayload.build instanceof CoreBuild core){
+                        return core;
+                    }
+                }
+            }
+            return null;
         }
 
         /** @return whether this team is controlled by the AI and builds bases. */

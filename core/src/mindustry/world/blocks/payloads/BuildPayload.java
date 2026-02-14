@@ -122,7 +122,12 @@ public class BuildPayload implements Payload{
             0.0011f + Math.min(Mathf.clamp((z - prevZ)/100f, -0.0009f, 0.9f) + prevZ, Layer.flyingUnitLow - 1f)
         );
         build.tile = emptyTile;
+        Draw.flush();
+        Tmp.m1.set(Draw.trans());
+        Draw.trans().translate(build.x, build.y).rotate(build.payloadRotation).translate(-build.x, -build.y);
         build.payloadDraw();
+        Draw.flush();
+        Draw.trans().set(Tmp.m1);
         Draw.zTransform();
         Draw.z(prevZ);
     }

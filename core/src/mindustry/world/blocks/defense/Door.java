@@ -27,6 +27,7 @@ public class Door extends Wall{
     public Effect closefx = Fx.doorclose;
     public Sound doorSound = Sounds.door;
     public boolean chainEffect = false;
+    public boolean linkAdjacent = true;
     public @Load("@-open") TextureRegion openRegion;
 
     public Door(String name){
@@ -111,6 +112,11 @@ public class Door extends Wall{
         }
 
         public void updateChained(){
+            if(!linkAdjacent){
+                chained = new Seq<>();
+                chained.add(this);
+                return;
+            }
             chained = new Seq<>();
             doorQueue.clear();
             doorQueue.add(this);

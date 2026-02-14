@@ -9,6 +9,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.content.*;
 import mindustry.graphics.*;
+import mindustry.world.HeightLayerData;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
 
@@ -25,6 +26,7 @@ public class EditorRenderer implements Disposable{
     private float packWidth, packHeight;
 
     private Shader shader;
+    private TextureRegion firstLayerRegion, secondLayerRegion, thirdLayerRegion, fourthLayerRegion, slopeLayerRegion;
 
     public void resize(int width, int height){
         dispose();
@@ -123,6 +125,24 @@ public class EditorRenderer implements Disposable{
         if(editor.showTerrain){
             renderer.blocks.floor.drawLayer(CacheLayer.walls);
         }
+        if(editor.showHeight){
+            Draw.proj(Core.camera.mat);
+            Draw.color();
+            Draw.blend();
+            Draw.shader();
+            drawHeightOverlay();
+            Draw.color();
+            Draw.proj(Tmp.m2);
+        }
+        if(editor.showCliff){
+            Draw.proj(Core.camera.mat);
+            Draw.color(1f, 1f, 1f, 0.1f);
+            Draw.blend();
+            Draw.shader();
+            drawCliffOverlay();
+            Draw.color();
+            Draw.proj(Tmp.m2);
+        }
         renderer.animateWater = prev;
 
         if(chunks == null) return;
@@ -150,6 +170,73 @@ public class EditorRenderer implements Disposable{
 
         Core.camera.position.set(Tmp.v3);
         Draw.trans(Tmp.m4);
+    }
+
+    private void drawHeightOverlay(){
+        ensureHeightRegions();
+        if(firstLayerRegion == null || !firstLayerRegion.found()) return;
+
+        for(Tile tile : world.tiles){
+            if(tile == null) continue;
+
+            TextureRegion region;
+            if(HeightLayerData.slope(tile) && slopeLayerRegion != null && slopeLayerRegion.found()){
+                region = slopeLayerRegion;
+            }else{
+                region = switch(HeightLayerData.layer(tile)){
+                    case 2 -> secondLayerRegion;
+                    case 3 -> thirdLayerRegion;
+                    case 4 -> fourthLayerRegion;
+                    default -> firstLayerRegion;
+                };
+            }
+
+            if(region != null && region.found()){
+                Draw.rect(region, tile.worldx(), tile.worldy(), tilesize, tilesize);
+            }
+        }
+    }
+
+    private void drawCliffOverlay(){
+        for(Tile tile : world.tiles){
+            if(tile == null) continue;
+
+            CliffLayerMarker marker = editor.cliffMarkerForTile(tile);
+            if(marker == null) continue;
+
+            TextureRegion region = marker.region;
+            if(region != null && region.found()){
+                Draw.rect(region, tile.worldx(), tile.worldy(), tilesize, tilesize);
+            }
+        }
+    }
+
+    private void ensureHeightRegions(){
+        if(firstLayerRegion == null || !firstLayerRegion.found()){
+            firstLayerRegion = findHeightRegion("firstLayer", "layer-firstLayer", "layer/firstLayer", "first-layer");
+        }
+        if(secondLayerRegion == null || !secondLayerRegion.found()){
+            secondLayerRegion = findHeightRegion("secondLayer", "layer-secondLayer", "layer/secondLayer", "second-layer");
+        }
+        if(thirdLayerRegion == null || !thirdLayerRegion.found()){
+            thirdLayerRegion = findHeightRegion("thirdLayer", "layer-thirdLayer", "layer/thirdLayer", "third-layer");
+        }
+        if(fourthLayerRegion == null || !fourthLayerRegion.found()){
+            fourthLayerRegion = findHeightRegion("fourthLayer", "layer-fourthLayer", "layer/fourthLayer", "fourth-layer");
+        }
+        if(slopeLayerRegion == null || !slopeLayerRegion.found()){
+            slopeLayerRegion = findHeightRegion("Slope", "slope", "layer-Slope", "layer-slope", "layer/Slope");
+        }
+    }
+
+    private TextureRegion findHeightRegion(String... names){
+        for(String name : names){
+            TextureRegion found = Core.atlas.find(name);
+            if(found.found()){
+                return found;
+            }
+        }
+        return null;
     }
 
     void updateStatic(int x, int y){

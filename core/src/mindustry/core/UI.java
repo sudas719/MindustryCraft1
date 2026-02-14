@@ -83,6 +83,7 @@ public class UI implements ApplicationListener, Loadable{
 
     public Cursor drillCursor, unloadCursor, targetCursor, repairCursor;
     public Cursor hoverGreenCursor, hoverRedCursor, hoverYellowCursor;
+    public Cursor targetGreenCursor, targetRedCursor, targetYellowCursor;
     public TextureRegion rallyPointRegion;
 
     private @Nullable Element lastAnnouncement;
@@ -144,11 +145,14 @@ public class UI implements ApplicationListener, Loadable{
 
         drillCursor = Core.graphics.newCursor("drill", Fonts.cursorScale());
         unloadCursor = Core.graphics.newCursor("unload", Fonts.cursorScale());
-        targetCursor = Core.graphics.newCursor("target", Fonts.cursorScale());
+        targetCursor = Core.graphics.newCursor("target-yellow", Fonts.cursorScale());
         repairCursor = Core.graphics.newCursor("repair", Fonts.cursorScale());
         hoverGreenCursor = Core.graphics.newCursor("hover-green", Fonts.cursorScale());
         hoverRedCursor = Core.graphics.newCursor("hover-red", Fonts.cursorScale());
         hoverYellowCursor = Core.graphics.newCursor("hover-yellow", Fonts.cursorScale());
+        targetGreenCursor = Core.graphics.newCursor("target-green", Fonts.cursorScale());
+        targetRedCursor = Core.graphics.newCursor("target-red", Fonts.cursorScale());
+        targetYellowCursor = Core.graphics.newCursor("target-yellow", Fonts.cursorScale());
 
         rallyPointRegion = new TextureRegion(new Texture(Core.files.internal("cursors/rallypoint.png")));
     }
@@ -734,7 +738,50 @@ public class UI implements ApplicationListener, Loadable{
             }
         }
 
-        return changed ? buffer.toString() : s;
+        String result = changed ? buffer.toString() : s;
+        return formatSudas(result);
+    }
+
+    public static String formatSudas(String s){
+        if(s == null || !s.contains("[sudas]")) return s;
+
+        StringBuilder out = new StringBuilder(s.length() + 16);
+        boolean sudas = false;
+        boolean a = true;
+        int i = 0;
+        while(i < s.length()){
+            if(!sudas){
+                if(s.startsWith("[sudas]", i)){
+                    sudas = true;
+                    a = true;
+                    i += 7;
+                }else{
+                    out.append(s.charAt(i++));
+                }
+            }else{
+                char c = s.charAt(i);
+                if(c == '['){
+                    int end = s.indexOf(']', i + 1);
+                    if(end != -1){
+                        String tag = s.substring(i + 1, end);
+                        out.append('[').append(tag).append(']');
+                        i = end + 1;
+                        if(!"sudas".equals(tag)){
+                            sudas = false;
+                        }else{
+                            a = true;
+                        }
+                        continue;
+                    }
+                }
+
+                out.append(a ? "[#69FDD6]" : "[#FF95EB]");
+                out.append(c);
+                a = !a;
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     /** Formats time with hours:minutes:seconds. */
