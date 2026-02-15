@@ -351,8 +351,12 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         return  "[#" + color.toString().toUpperCase() + "]" + UI.formatSudas(name);
     }
 
+    String name(){
+        return UI.formatSudas(name);
+    }
+
     String plainName(){
-        return Strings.stripColors(name);
+        return Strings.stripColors(name());
     }
 
     void sendMessage(String text){

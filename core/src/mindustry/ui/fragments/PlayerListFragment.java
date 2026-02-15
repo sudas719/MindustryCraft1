@@ -127,12 +127,12 @@ public class PlayerListFragment{
             iconTable.tapped(() -> {
                 if(!user.dead() && clickable){
                     control.input.spectate(user.unit());
-                    ui.showInfoFade(Core.bundle.format("viewplayer", user.name), 1f);
+                    ui.showInfoFade(Core.bundle.format("viewplayer", user.name()), 1f);
                 }
             });
 
             button.add(iconTable).size(h);
-            button.labelWrap("[#" + user.color().toString().toUpperCase() + "]" + user.name()).style(Styles.outlineLabel).width(170f).pad(10);
+            button.labelWrap(user.coloredName()).style(Styles.outlineLabel).width(170f).pad(10);
             button.add().grow();
 
             button.background(Tex.underline);
@@ -187,7 +187,7 @@ public class PlayerListFragment{
                             //there's generally no reason to team switch outside PvP or sandbox, and it's basically an easy way to cheat
                             if(allowTeamSwitch){
                                 t.button("@player.team", Icon.redo, bstyle, () -> {
-                                    var teamSelect = new BaseDialog(Core.bundle.get("player.team") + ": " + user.name);
+                                    var teamSelect = new BaseDialog(Core.bundle.get("player.team") + ": " + user.name());
                                     teamSelect.setFillParent(false);
 
                                     var group = new ButtonGroup<>();

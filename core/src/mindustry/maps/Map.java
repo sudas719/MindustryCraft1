@@ -7,6 +7,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.content.*;
+import mindustry.core.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.io.*;
@@ -125,15 +126,15 @@ public class Map implements Comparable<Map>, Publishable{
     }
 
     public String name(){
-        return tag("name");
+        return UI.formatSudas(tag("name"));
     }
 
     public String author(){
-        return tag("author");
+        return UI.formatSudas(tag("author"));
     }
 
     public String description(){
-        return tag("description");
+        return UI.formatSudas(tag("description"));
     }
 
     public String plainName() {
