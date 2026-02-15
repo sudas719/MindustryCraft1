@@ -97,8 +97,7 @@ public class CliffLayerData{
             case topRight -> side == sideUp || side == sideRight;
             case bottomLeft -> side == sideDown || side == sideLeft;
             case bottomRight -> side == sideDown || side == sideRight;
-            case topLeftToBottomRight -> side == sideUp || side == sideLeft;
-            case topRightToBottomLeft -> side == sideUp || side == sideRight;
+            case topLeftToBottomRight, topRightToBottomLeft -> false;
             default -> false;
         };
     }

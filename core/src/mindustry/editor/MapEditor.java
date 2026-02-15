@@ -368,6 +368,17 @@ public class MapEditor{
         tile.floorData = updated;
     }
 
+    public void clearCliffMarker(Tile tile){
+        if(tile == null) return;
+
+        byte oldFloorData = tile.floorData;
+        byte updated = CliffLayerData.withCliff(oldFloorData, CliffLayerData.none);
+
+        if(updated == oldFloorData) return;
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        tile.floorData = updated;
+    }
+
     public HeightLayerMarker markerForTile(Tile tile){
         if(tile == null) return null;
         if(HeightLayerData.slope(tile)) return (HeightLayerMarker)Blocks.heightLayerSlope;

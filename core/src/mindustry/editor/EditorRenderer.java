@@ -140,6 +140,7 @@ public class EditorRenderer implements Disposable{
             Draw.blend();
             Draw.shader();
             drawCliffOverlay();
+            drawCliffBlockingLines();
             Draw.color();
             Draw.proj(Tmp.m2);
         }
@@ -209,6 +210,46 @@ public class EditorRenderer implements Disposable{
                 Draw.rect(region, tile.worldx(), tile.worldy(), tilesize, tilesize);
             }
         }
+    }
+
+    private void drawCliffBlockingLines(){
+        float half = tilesize / 2f;
+        Draw.color(Color.magenta);
+        Lines.stroke(1.35f);
+
+        for(Tile tile : world.tiles){
+            if(tile == null) continue;
+
+            float wx = tile.worldx(), wy = tile.worldy();
+            int type = CliffLayerData.cliff(tile);
+
+            switch(type){
+                case CliffLayerData.top -> Lines.line(wx - half, wy + half, wx + half, wy + half);
+                case CliffLayerData.bottom -> Lines.line(wx - half, wy - half, wx + half, wy - half);
+                case CliffLayerData.left -> Lines.line(wx - half, wy - half, wx - half, wy + half);
+                case CliffLayerData.right -> Lines.line(wx + half, wy - half, wx + half, wy + half);
+                case CliffLayerData.topLeft -> {
+                    Lines.line(wx - half, wy + half, wx + half, wy + half);
+                    Lines.line(wx - half, wy - half, wx - half, wy + half);
+                }
+                case CliffLayerData.topRight -> {
+                    Lines.line(wx - half, wy + half, wx + half, wy + half);
+                    Lines.line(wx + half, wy - half, wx + half, wy + half);
+                }
+                case CliffLayerData.bottomLeft -> {
+                    Lines.line(wx - half, wy - half, wx + half, wy - half);
+                    Lines.line(wx - half, wy - half, wx - half, wy + half);
+                }
+                case CliffLayerData.bottomRight -> {
+                    Lines.line(wx - half, wy - half, wx + half, wy - half);
+                    Lines.line(wx + half, wy - half, wx + half, wy + half);
+                }
+                case CliffLayerData.topLeftToBottomRight -> Lines.line(wx - half, wy + half, wx + half, wy - half);
+                case CliffLayerData.topRightToBottomLeft -> Lines.line(wx + half, wy + half, wx - half, wy - half);
+            }
+        }
+
+        Draw.color();
     }
 
     private void ensureHeightRegions(){

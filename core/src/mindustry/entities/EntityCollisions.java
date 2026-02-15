@@ -16,6 +16,7 @@ import static mindustry.Vars.*;
 public class EntityCollisions{
     //move in 1-unit chunks (can this be made more efficient?)
     private static final float seg = 1f, maxDelta = 1000f;
+    private static final float cliffBarrierWidth = 2f;
 
     //tile collisions
     private Vec2 vector = new Vec2(), l1 = new Vec2();
@@ -98,8 +99,97 @@ public class EntityCollisions{
             }
         }
 
+        if(entity instanceof Unitc unit && unit.isGrounded()){
+            resolveCliffBarriers(tilex, tiley, r, x);
+        }
+
         resolveBuildingCircles(entity);
         entity.trns(r1.x - r2.x, r1.y - r2.y);
+    }
+
+    private void resolveCliffBarriers(int tilex, int tiley, int r, boolean xAxis){
+        float half = tilesize / 2f;
+
+        for(int dx = -r - 1; dx <= r + 1; dx++){
+            for(int dy = -r - 1; dy <= r + 1; dy++){
+                int wx = dx + tilex, wy = dy + tiley;
+                Tile tile = world.tile(wx, wy);
+                if(tile == null) continue;
+
+                int type = CliffLayerData.cliff(tile);
+                if(type == CliffLayerData.none) continue;
+
+                float cx = wx * tilesize, cy = wy * tilesize;
+
+                if(cliffTop(type)){
+                    resolveCliffRect(cx - half, cy + half - cliffBarrierWidth / 2f, tilesize, cliffBarrierWidth, xAxis);
+                }
+                if(cliffBottom(type)){
+                    resolveCliffRect(cx - half, cy - half - cliffBarrierWidth / 2f, tilesize, cliffBarrierWidth, xAxis);
+                }
+                if(cliffLeft(type)){
+                    resolveCliffRect(cx - half - cliffBarrierWidth / 2f, cy - half, cliffBarrierWidth, tilesize, xAxis);
+                }
+                if(cliffRight(type)){
+                    resolveCliffRect(cx + half - cliffBarrierWidth / 2f, cy - half, cliffBarrierWidth, tilesize, xAxis);
+                }
+
+                if(type == CliffLayerData.topLeftToBottomRight){
+                    resolveCliffDiagonal(cx - half, cy + half, cx + half, cy - half, xAxis);
+                }else if(type == CliffLayerData.topRightToBottomLeft){
+                    resolveCliffDiagonal(cx + half, cy + half, cx - half, cy - half, xAxis);
+                }
+            }
+        }
+    }
+
+    private void resolveCliffRect(float x, float y, float width, float height, boolean xAxis){
+        tmp.set(x, y, width, height);
+        if(tmp.overlaps(r1)){
+            Vec2 v = Geometry.overlap(r1, tmp, xAxis);
+            r1.x += v.x;
+            r1.y += v.y;
+        }
+    }
+
+    private void resolveCliffDiagonal(float x1, float y1, float x2, float y2, boolean xAxis){
+        float nodeSize = cliffBarrierWidth + 0.8f;
+        int steps = Math.max(3, Mathf.ceil(tilesize / Math.max(1f, cliffBarrierWidth * 0.7f)));
+
+        for(int i = 0; i <= steps; i++){
+            float t = i / (float)steps;
+            float cx = Mathf.lerp(x1, x2, t);
+            float cy = Mathf.lerp(y1, y2, t);
+            resolveCliffRect(cx - nodeSize / 2f, cy - nodeSize / 2f, nodeSize, nodeSize, xAxis);
+        }
+    }
+
+    private static boolean cliffTop(int type){
+        return switch(type){
+            case CliffLayerData.top, CliffLayerData.topLeft, CliffLayerData.topRight -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean cliffBottom(int type){
+        return switch(type){
+            case CliffLayerData.bottom, CliffLayerData.bottomLeft, CliffLayerData.bottomRight -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean cliffLeft(int type){
+        return switch(type){
+            case CliffLayerData.left, CliffLayerData.topLeft, CliffLayerData.bottomLeft -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean cliffRight(int type){
+        return switch(type){
+            case CliffLayerData.right, CliffLayerData.topRight, CliffLayerData.bottomRight -> true;
+            default -> false;
+        };
     }
 
     public boolean overlapsTile(Rect rect, @Nullable SolidPred solidChecker){

@@ -573,7 +573,7 @@ public class Tile implements Position, QuadTreeObject, Displayable{
     }
 
     public boolean shouldSaveData(){
-        return floor.saveData || overlay.saveData || block.saveData;
+        return floor.saveData || overlay.saveData || block.saveData || floorData != 0 || overlayData != 0;
     }
 
     public int staticDarkness(){

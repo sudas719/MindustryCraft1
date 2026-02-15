@@ -89,7 +89,7 @@ public enum EditorTool{
 
         }
     },
-    eraser(KeyCode.e, "eraseores"){
+    eraser(KeyCode.e, "eraseores", "erasecliffs"){
         {
             edit = true;
             draggable = true;
@@ -104,6 +104,9 @@ public enum EditorTool{
                 }else if(mode == 0){
                     //erase ore
                     tile.clearOverlay();
+                }else if(mode == 1){
+                    //erase cliff layer only
+                    editor.clearCliffMarker(tile);
                 }
             });
         }
