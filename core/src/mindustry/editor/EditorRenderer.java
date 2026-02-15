@@ -180,20 +180,19 @@ public class EditorRenderer implements Disposable{
         for(Tile tile : world.tiles){
             if(tile == null) continue;
 
-            TextureRegion region;
-            if(HeightLayerData.slope(tile) && slopeLayerRegion != null && slopeLayerRegion.found()){
-                region = slopeLayerRegion;
-            }else{
-                region = switch(HeightLayerData.layer(tile)){
-                    case 2 -> secondLayerRegion;
-                    case 3 -> thirdLayerRegion;
-                    case 4 -> fourthLayerRegion;
-                    default -> firstLayerRegion;
-                };
-            }
+            TextureRegion region = switch(HeightLayerData.layer(tile)){
+                case 2 -> secondLayerRegion;
+                case 3 -> thirdLayerRegion;
+                case 4 -> fourthLayerRegion;
+                default -> firstLayerRegion;
+            };
 
             if(region != null && region.found()){
                 Draw.rect(region, tile.worldx(), tile.worldy(), tilesize, tilesize);
+            }
+
+            if(HeightLayerData.slope(tile) && slopeLayerRegion != null && slopeLayerRegion.found()){
+                Draw.rect(slopeLayerRegion, tile.worldx(), tile.worldy(), tilesize, tilesize);
             }
         }
     }

@@ -155,7 +155,7 @@ public final class FogRenderer{
             for(int y = miny; y <= maxy; y++){
                 float dy = y + 0.5f - (cy + 0.5f);
                 if(dx * dx + dy * dy > radius2) continue;
-                if(!FogControl.hasVisionPath(cx, cy, x, y)) continue;
+                if(!FogControl.hasVisionPath(cx, cy, x, y, viewerHeight)) continue;
 
                 Tile tile = world.tile(x, y);
                 if(HeightLayerData.fogLayer(tile) <= viewerHeight){
@@ -186,7 +186,7 @@ public final class FogRenderer{
                 float ty = y * tilesize;
                 float dy = ty - wy;
                 if(dx * dx + dy * dy > radius2) continue;
-                if(!FogControl.hasVisionPath(sourceX, sourceY, x, y)) continue;
+                if(!FogControl.hasVisionPath(sourceX, sourceY, x, y, viewerHeight)) continue;
 
                 Tile tile = world.tile(x, y);
                 if(HeightLayerData.fogLayer(tile) <= viewerHeight){

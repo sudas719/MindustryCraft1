@@ -37,7 +37,8 @@ public class Maps{
     };
 
     /** List of all built-in maps. Filenames only. */
-    private static String[] defaultMapNames = {"archipelago"};
+    private static String[] defaultMapNames = {"SCtester"};
+    private static String onlyBuiltinMap = "SCtester";
     /** Maps tagged as PvP */
     private static String[] pvpMaps = {"veins", "glacier", "passage"};
     /** If true, the defaultMapNames are prefixed with default/ */
@@ -185,6 +186,14 @@ public class Maps{
                 Log.err(e);
             }
         });
+
+        //keep only one built-in map; custom/workshop/mod maps are unaffected
+        maps.removeAll(map ->
+            !map.custom &&
+            !map.workshop &&
+            map.mod == null &&
+            !map.file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)
+        );
     }
 
     public void reload(){
@@ -388,6 +397,11 @@ public class Maps{
     public void loadPreviews(){
 
         for(Map map : maps){
+            if(!map.custom && map.file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)){
+                queueNewPreview(map);
+                continue;
+            }
+
             //try to load preview
             if(map.previewFile().exists()){
                 //this may fail, but calls queueNewPreview
@@ -481,6 +495,14 @@ public class Maps{
 
     private Map loadMap(Fi file, boolean custom) throws IOException{
         Map map = MapIO.createMap(file, custom);
+
+        if(!custom && file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)){
+            //force canonical display name for this built-in map
+            map.tags.put("name", onlyBuiltinMap);
+        }else if(!custom && Strings.stripColors(map.name()).equalsIgnoreCase("oh no")){
+            //fallback for broken/default metadata names
+            map.tags.put("name", file.nameWithoutExtension());
+        }
 
         if(map.name() == null){
             throw new IOException("Map name cannot be empty! File: " + file);

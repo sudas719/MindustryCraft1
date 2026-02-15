@@ -13,6 +13,7 @@ import mindustry.gen.*;
 import mindustry.io.SaveFileReader.*;
 import mindustry.io.*;
 import mindustry.world.*;
+import mindustry.world.blocks.environment.*;
 import mindustry.world.meta.*;
 
 import java.io.*;
@@ -557,21 +558,38 @@ public final class FogControl implements CustomChunk{
     public static boolean blocksVision(Tile tile){
         if(tile == null) return true;
 
+        Block overlay = tile.overlay();
+        if(overlay instanceof OreBlock || (overlay instanceof Floor floor && floor.wallOre)){
+            return false;
+        }
+
         Block block = tile.block();
-        if(block != null && !block.isAir() && block.solid && block.obstructsLight){
+        if(block instanceof VentSpout || block instanceof Cliff || block instanceof CrystalMineralWall){
+            return false;
+        }
+
+        Block floor = tile.floor();
+        if(floor instanceof SteamVent){
+            return false;
+        }
+
+        //constructed buildings should not block fog line-of-sight
+        if(tile.build == null && block != null && !block.isAir() && block.solid && block.obstructsLight){
             return true;
         }
 
-        Block overlay = tile.overlay();
         if(overlay != null && !overlay.isAir() && overlay.obstructsLight){
             return true;
         }
 
-        Block floor = tile.floor();
         return floor != null && !floor.isAir() && floor.obstructsLight;
     }
 
     public static boolean hasVisionPath(int fromX, int fromY, int toX, int toY){
+        return hasVisionPath(fromX, fromY, toX, toY, HeightLayerData.maxLayer);
+    }
+
+    public static boolean hasVisionPath(int fromX, int fromY, int toX, int toY, int viewerHeight){
         if(fromX == toX && fromY == toY) return true;
 
         int x = fromX, y = fromY;
@@ -595,7 +613,8 @@ public final class FogControl implements CustomChunk{
                 return true;
             }
 
-            if(blocksVision(world.tile(x, y))){
+            Tile tile = world.tile(x, y);
+            if(HeightLayerData.fogLayer(tile) > viewerHeight || blocksVision(tile)){
                 return false;
             }
         }
@@ -652,7 +671,7 @@ public final class FogControl implements CustomChunk{
         }
 
         for(int x = x1; x <= x2; x++){
-            if(!hasVisionPath(sourceX, sourceY, x, y)) continue;
+            if(!hasVisionPath(sourceX, sourceY, x, y, viewerHeight)) continue;
             Tile tile = world.tile(x, y);
             if(HeightLayerData.fogLayer(tile) <= viewerHeight){
                 arr.set(off + x);
