@@ -96,10 +96,14 @@ public class UnitTypes{
     private static final float battlecruiserYamatoCooldown = 71f * 60f;
     private static final float battlecruiserWarpChargeTime = 1f * 60f;
     private static final float battlecruiserWarpTransitTime = 4f * 60f;
+    // visual-only departure animation window; does not affect warp invulnerability/timing
+    private static final float battlecruiserWarpDepartureTime = 0.45f * 60f;
+    private static final float battlecruiserWarpDepartureBackPhase = 0.46f;
     private static final float battlecruiserWarpCooldown = 71f * 60f;
     private static final float battlecruiserWarpAppearTime = 0.9f * 60f;
     private static final float battlecruiserWarpEmergenceStart = 0.74f;
     private static final float battlecruiserBodyScale = 0.60f;
+    private static final float battlecruiserTextureXScale = 0.8f;
     private static final float battlecruiserGhostScale = battlecruiserBodyScale;
     private static final float battlecruiserMaterializeFrontDelay = 0f;
     private static final float battlecruiserMaterializeFrontDuration = 0.45f;
@@ -110,7 +114,7 @@ public class UnitTypes{
     private static final Seq<BattlecruiserAfterDraw> battlecruiserAfterDrawQueue = new Seq<>();
     private static int battlecruiserAfterDrawCount = 0;
     private static boolean battlecruiserAfterDrawHooked = false;
-    private static final Effect battlecruiserWarpDisintegrateEffect = new Effect(24f, e -> {
+    private static final Effect battlecruiserWarpDisintegrateEffect = new Effect(16f, e -> {
         Draw.z(Layer.effect + 0.2f);
         float rot = e.rotation;
         float size = e.data instanceof Float ? Math.max((Float)e.data, 20f) : 30f;
@@ -118,34 +122,46 @@ public class UnitTypes{
         float fout = e.fout();
         float fx = Angles.trnsx(rot, 1f), fy = Angles.trnsy(rot, 1f);
         float nx = Angles.trnsx(rot + 90f, 1f), ny = Angles.trnsy(rot + 90f, 1f);
+        TextureRegion white = Core.atlas.find("whiteui");
+        if(!white.found()) return;
 
-        Fx.rand.setSeed(e.id);
-        for(int i = 0; i < 64; i++){
-            float lane = Fx.rand.range(size * 0.55f);
-            float along = Fx.rand.range(size * 0.45f) + fin * Fx.rand.random(5f, 18f);
-            float lx = e.x + nx * lane + fx * along;
-            float ly = e.y + ny * lane + fy * along;
-            float segment = Fx.rand.random(3.2f, 11.5f) * (0.35f + fout * 0.9f);
-            float alpha = (0.2f + 0.62f * fout) * Fx.rand.random(0.65f, 1f);
-
-            Draw.color(0.3f, 1f, 0.45f, alpha);
-            Lines.stroke((0.3f + Fx.rand.random(0.7f)) * fout + 0.08f);
-            Lines.lineAngleCenter(lx, ly, rot + Fx.rand.range(5f), segment);
-        }
-
-        Fx.rand.setSeed(e.id * 37L + 5L);
-        for(int i = 0; i < 56; i++){
-            float lane = Fx.rand.range(size * 0.58f);
-            float along = Fx.rand.range(size * 0.52f) + fin * Fx.rand.random(2f, 14f);
+        Fx.rand.setSeed(e.id * 911L + 17L);
+        for(int i = 0; i < 76; i++){
+            // converge strips toward center lane
+            float lane = Fx.rand.range(size * 0.28f) * Fx.rand.random(1f) * Fx.rand.random(1f);
+            float alongStart = Fx.rand.random(-size * 0.2f, size * 0.16f);
+            boolean slowGroup = Fx.rand.random(1f) < 0.58f;
+            // many strips barely move; others move forward up to current max speed
+            float moveSpeed = slowGroup ? Fx.rand.random(0.02f, 0.42f) : Fx.rand.random(4.8f, 18f);
+            float along = alongStart + fin * moveSpeed;
             float px = e.x + nx * lane + fx * along;
             float py = e.y + ny * lane + fy * along;
-            float alpha = (0.12f + 0.5f * fout) * Fx.rand.random(0.55f, 1f);
 
-            Draw.color(0.35f, 1f, 0.5f, alpha);
-            Fill.circle(px, py, (0.2f + Fx.rand.random(0.5f)) * fout + 0.04f);
+            // raise short-strip ratio
+            boolean shortShape = Fx.rand.random(1f) < 0.62f;
+            float width = Fx.rand.random(0.85f, 1.65f) * (0.82f + fout * 0.38f);
+            float length = shortShape ? Fx.rand.random(width * 0.95f, width * 1.35f) : Fx.rand.random(width * 4.8f, width * 10.8f);
+            // fixed direction
+            float drawRot = rot;
+            float alpha = (0.12f + 0.45f * fout) * Fx.rand.random(0.6f, 1f);
+
+            // glowing green frame
+            Draw.blend(Blending.additive);
+            Draw.color(0.36f, 1f, 0.44f, alpha * 0.4f);
+            Lines.stroke(Math.max(0.14f, Math.min(width, length) * 0.16f));
+            drawBattlecruiserRectOutline(px, py, length + 1.1f, width + 1.1f, drawRot);
+            Draw.blend();
+
+            Draw.color(0.38f, 1f, 0.5f, alpha * 0.95f);
+            Lines.stroke(Math.max(0.11f, Math.min(width, length) * 0.11f));
+            drawBattlecruiserRectOutline(px, py, length + 0.66f, width + 0.66f, drawRot);
+
+            // very transparent green center
+            Draw.color(0.22f, 1f, 0.34f, alpha * 0.028f);
+            Draw.rect(white, px, py, Math.max(0.14f, length - 1.32f), Math.max(0.14f, width - 1.32f), drawRot);
         }
 
-        Drawf.light(e.x, e.y, 18f + size * 0.65f, Color.valueOf("54ff8b"), 0.15f * fout);
+        Drawf.light(e.x, e.y, 16f + size * 0.58f, Color.valueOf("54ff8b"), 0.12f * fout);
         Draw.reset();
     });
     private static final Effect battlecruiserWarpRippleEffect = new Effect(1f, e -> {
@@ -225,6 +241,8 @@ public class UnitTypes{
         public float warpRotation = 0f;
         public float warpAppearTime = 0f;
         public boolean warpRippleTriggered = false;
+        public float warpDepartureTime = 0f;
+        public boolean warpDepartureBurstTriggered = false;
     }
 
     private static class BattlecruiserAfterDraw{
@@ -234,6 +252,8 @@ public class UnitTypes{
         float rotation;
         float scanFin;
         boolean drawWeapons;
+        boolean targetGhost;
+        float ghostFade;
 
         BattlecruiserAfterDraw set(Unit unit, float x, float y, float rotation, float scanFin, boolean drawWeapons){
             this.unit = unit;
@@ -242,6 +262,20 @@ public class UnitTypes{
             this.rotation = rotation;
             this.scanFin = scanFin;
             this.drawWeapons = drawWeapons;
+            this.targetGhost = false;
+            this.ghostFade = 1f;
+            return this;
+        }
+
+        BattlecruiserAfterDraw setTargetGhost(Unit unit, float x, float y, float rotation, float scanFin, float ghostFade){
+            this.unit = unit;
+            this.x = x;
+            this.y = y;
+            this.rotation = rotation;
+            this.scanFin = scanFin;
+            this.drawWeapons = false;
+            this.targetGhost = true;
+            this.ghostFade = ghostFade;
             return this;
         }
     }
@@ -262,8 +296,12 @@ public class UnitTypes{
                 if(entry.unit == null) continue;
                 if(entry.unit.dead || !entry.unit.isAdded()) continue;
 
-                drawBattlecruiserArrivalStrips(entry.unit, entry.x, entry.y, entry.rotation, entry.scanFin);
-                drawBattlecruiserMaterialization(entry.unit, entry.x, entry.y, entry.rotation, entry.scanFin, entry.drawWeapons);
+                if(entry.targetGhost){
+                    drawBattlecruiserTargetScanGhost(entry.unit, entry.x, entry.y, entry.rotation, entry.scanFin, entry.ghostFade);
+                }else{
+                    drawBattlecruiserArrivalStrips(entry.unit, entry.x, entry.y, entry.rotation, entry.scanFin);
+                    drawBattlecruiserMaterialization(entry.unit, entry.x, entry.y, entry.rotation, entry.scanFin, entry.drawWeapons);
+                }
             }
 
             Draw.flush();
@@ -281,6 +319,17 @@ public class UnitTypes{
         }
 
         battlecruiserAfterDrawQueue.get(index).set(unit, x, y, rotation, scanFin, drawWeapons);
+    }
+
+    private static void queueBattlecruiserTargetGhostAfterDraw(Unit unit, float x, float y, float rotation, float scanFin, float fade){
+        ensureBattlecruiserAfterDrawHook();
+
+        int index = battlecruiserAfterDrawCount++;
+        if(index >= battlecruiserAfterDrawQueue.size){
+            battlecruiserAfterDrawQueue.add(new BattlecruiserAfterDraw());
+        }
+
+        battlecruiserAfterDrawQueue.get(index).setTargetGhost(unit, x, y, rotation, scanFin, fade);
     }
 
     private static void drawRegionExplicit(TextureRegion region, float x, float y, float rotation){
@@ -1240,6 +1289,8 @@ public class UnitTypes{
             data.pendingWarp = false;
             data.yamatoCharging = false;
             data.warpCharging = false;
+            data.warpDepartureTime = 0f;
+            data.warpDepartureBurstTriggered = false;
             data.yamatoTargetId = -1;
             data.yamatoBuildPos = -1;
             return;
@@ -1252,6 +1303,17 @@ public class UnitTypes{
             }
             unit.isShooting = false;
             unit.vel.setZero();
+
+            if(data.warpDepartureTime > 0f){
+                float last = data.warpDepartureTime;
+                data.warpDepartureTime = Math.max(0f, data.warpDepartureTime - Time.delta);
+                float burstAt = battlecruiserWarpDepartureTime * (1f - battlecruiserWarpDepartureBackPhase);
+                if(!data.warpDepartureBurstTriggered && last > burstAt && data.warpDepartureTime <= burstAt){
+                    data.warpDepartureBurstTriggered = true;
+                    battlecruiserWarpDisintegrateEffect.at(data.warpFrom.x, data.warpFrom.y, data.warpRotation, Color.valueOf("54ff8b"), Float.valueOf(unit.hitSize));
+                }
+            }
+
             data.warpTransitTime = Math.max(0f, data.warpTransitTime - Time.delta);
             float fin = Mathf.clamp(1f - data.warpTransitTime / battlecruiserWarpTransitTime);
             if(!data.warpRippleTriggered && fin >= battlecruiserWarpEmergenceStart){
@@ -1276,6 +1338,7 @@ public class UnitTypes{
                 unit.rotation(data.warpRotation);
                 unit.snapInterpolation();
                 data.warping = false;
+                data.warpDepartureTime = 0f;
                 data.warpAppearTime = 0f;
             }
             return;
@@ -1297,7 +1360,12 @@ public class UnitTypes{
                 data.warping = true;
                 data.warpTransitTime = battlecruiserWarpTransitTime;
                 data.warpFrom.set(unit.x, unit.y);
-                battlecruiserWarpDisintegrateEffect.at(unit.x, unit.y, unit.rotation, Color.valueOf("54ff8b"), Float.valueOf(unit.hitSize));
+                data.warpDepartureTime = battlecruiserWarpDepartureTime;
+                data.warpDepartureBurstTriggered = false;
+                if(Shaders.shockwave != null){
+                    float lensLife = Math.max(1f, battlecruiserWarpDepartureTime * battlecruiserWarpDepartureBackPhase);
+                    Shaders.shockwave.addLensSphere(unit.x, unit.y, Math.max(unit.hitSize * 0.58f, 13f), lensLife, 0.92f);
+                }
             }
             return;
         }
@@ -1312,6 +1380,8 @@ public class UnitTypes{
             data.warpCharging = true;
             data.warpCooldown = battlecruiserWarpCooldown;
             data.warpRippleTriggered = false;
+            data.warpDepartureTime = 0f;
+            data.warpDepartureBurstTriggered = false;
             unit.lookAt(data.warpTarget);
             data.warpRotation = unit.rotation;
             return;
@@ -1379,6 +1449,13 @@ public class UnitTypes{
         float fin = Mathf.clamp(1f - data.warpTransitTime / battlecruiserWarpTransitTime);
         TextureRegion ghostRegion = unit.type.region != null && unit.type.region.found() ? unit.type.region : unit.type.fullIcon;
 
+        // target-point ghost starts immediately when entering warp space: back -> front scan reveal
+        float targetScan = Mathf.clamp(fin / 0.18f);
+        float targetFade = Mathf.clamp(1f - Math.max(0f, fin - 0.82f) / 0.18f);
+        if(targetFade > 0.001f){
+            queueBattlecruiserTargetGhostAfterDraw(unit, data.warpTarget.x, data.warpTarget.y, data.warpRotation, targetScan, targetFade);
+        }
+
         float emerge = Mathf.clamp((fin - battlecruiserWarpEmergenceStart) / (1f - battlecruiserWarpEmergenceStart));
         if(emerge > 0f){
             float eased = Interp.pow3Out.apply(emerge);
@@ -1396,8 +1473,166 @@ public class UnitTypes{
         Draw.reset();
     }
 
+    private static void drawBattlecruiserTargetScanGhost(Unit unit, float x, float y, float rotation, float scan, float fade){
+        TextureRegion bodyRegion = unit.type.region != null && unit.type.region.found() ? unit.type.region : unit.type.fullIcon;
+        TextureRegion outlineRegion = unit.type.outlineRegion != null && unit.type.outlineRegion.found() ? unit.type.outlineRegion : bodyRegion;
+        TextureRegion cellRegion = unit.type.cellRegion != null && unit.type.cellRegion.found() ? unit.type.cellRegion : bodyRegion;
+        if(bodyRegion == null || !bodyRegion.found()) return;
+
+        float z = Math.max(Layer.flyingUnit, unit.type.flyingLayer) + 0.36f;
+        float a = Mathf.clamp(fade);
+        Color ghostColor = Tmp.c1.set(unit.team.color).lerp(Color.white, 0.45f);
+
+        Draw.z(z);
+        if(scan >= 0.999f){
+            // after scan completes: transparent interior + team-color edge + tiled scanlines (masked by alpha)
+            drawBattlecruiserTargetPostScanGhost(bodyRegion, x, y, rotation, ghostColor, 0.72f * a);
+            drawBattlecruiserTargetPostScanGhost(outlineRegion, x, y, rotation, ghostColor, 0.84f * a);
+            drawBattlecruiserTargetPostScanGhost(cellRegion, x, y, rotation, ghostColor, 0.42f * a);
+        }else{
+            drawBattlecruiserRearRevealSliceScaled(bodyRegion, x, y, rotation, scan, 1f, 1f, ghostColor, 0.58f * a);
+            drawBattlecruiserRearRevealSliceScaled(outlineRegion, x, y, rotation, scan, 1f, 1f, ghostColor, 0.68f * a);
+            drawBattlecruiserRearRevealSliceScaled(cellRegion, x, y, rotation, scan, 1f, 1f, ghostColor, 0.34f * a);
+        }
+
+        Draw.reset();
+    }
+
+    private static void drawBattlecruiserTargetPostScanGhost(TextureRegion source, float x, float y, float rotation, Color color, float alpha){
+        if(source == null || !source.found() || alpha <= 0.001f) return;
+
+        float drawW = battlecruiserRegionWidth(source);
+        float drawH = battlecruiserRegionHeight(source);
+        if(drawW <= 0.001f || drawH <= 0.001f) return;
+
+        float rot = rotation - 90f;
+        if(Shaders.unitGhost != null){
+            Shaders.unitGhost.region = source;
+            Shaders.unitGhost.mode = 1f;
+            Shaders.unitGhost.color.set(color);
+            Shaders.unitGhost.color.a = alpha;
+            Shaders.unitGhost.time = Time.time / 60f;
+            // denser than 1-tile spacing
+            Shaders.unitGhost.lineStep = Mathf.clamp(tilesize * 0.55f / drawH, 0.008f, 0.32f);
+            Shaders.unitGhost.lineWidth = 0.06f;
+            Draw.shader(Shaders.unitGhost);
+            Draw.rect(source, x, y, drawW, drawH, rot);
+            Draw.shader();
+        }else{
+            Draw.color(color.r, color.g, color.b, alpha * 0.28f);
+            Draw.rect(source, x, y, drawW, drawH, rot);
+            Draw.color();
+        }
+    }
+
+    private static void drawBattlecruiserWarpDeparture(Unit unit, BattlecruiserData data){
+        if(data.warpDepartureTime <= 0.001f) return;
+
+        TextureRegion bodyRegion = unit.type.region != null && unit.type.region.found() ? unit.type.region : unit.type.fullIcon;
+        TextureRegion outlineRegion = unit.type.outlineRegion != null && unit.type.outlineRegion.found() ? unit.type.outlineRegion : bodyRegion;
+        TextureRegion cellRegion = unit.type.cellRegion != null && unit.type.cellRegion.found() ? unit.type.cellRegion : bodyRegion;
+        if(bodyRegion == null || !bodyRegion.found()) return;
+
+        float fin = Mathf.clamp(1f - data.warpDepartureTime / battlecruiserWarpDepartureTime);
+        float split = battlecruiserWarpDepartureBackPhase;
+        float back = Mathf.clamp(fin / Math.max(split, 0.001f));
+        float forward = Mathf.clamp((fin - split) / Math.max(1f - split, 0.001f));
+
+        float lengthScale;
+        float widthScale;
+        float alpha;
+
+        if(fin <= split){
+            float t = Interp.pow3Out.apply(back);
+            lengthScale = Mathf.lerp(1f, 0.78f, t);
+            // keep departure phase visually within the new 0.8x body width baseline
+            widthScale = Mathf.lerp(1f, 0.9f, t);
+            alpha = 1f;
+            drawBattlecruiserDepartureSphereFog(unit, data.warpFrom.x, data.warpFrom.y, t);
+        }else{
+            float t = Interp.pow2Out.apply(forward);
+            lengthScale = Mathf.lerp(0.78f, 1.42f, t);
+            widthScale = Mathf.lerp(0.9f, 0.62f, t);
+            alpha = Mathf.clamp(1f - t * 1.14f);
+        }
+
+        float baseW = battlecruiserRegionWidth(bodyRegion);
+        float baseH = battlecruiserRegionHeight(bodyRegion);
+        float along = (lengthScale - 1f) * baseH * 0.5f;
+        float x = data.warpFrom.x + Angles.trnsx(data.warpRotation, along);
+        float y = data.warpFrom.y + Angles.trnsy(data.warpRotation, along);
+        float rot = data.warpRotation - 90f;
+        float z = Math.max(Layer.flyingUnit, unit.type.flyingLayer) + 0.45f;
+
+        Draw.z(z);
+        if(fin <= split){
+            float scan = Interp.pow2Out.apply(back);
+
+            //unscanned back section keeps normal rendering
+            drawBattlecruiserBackSliceScaled(bodyRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, alpha);
+            drawBattlecruiserBackSliceScaled(outlineRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, alpha * 0.95f);
+            drawBattlecruiserBackSliceScaled(cellRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, alpha * 0.36f);
+
+            //front scanned section turns green + transparent
+            float scannedAlpha = alpha * Mathf.lerp(0.14f, 0.34f, scan);
+            Draw.mixcol(Color.valueOf("54ff8b"), 0.88f);
+            drawBattlecruiserFrontSliceScaled(bodyRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, scannedAlpha);
+            drawBattlecruiserFrontSliceScaled(outlineRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, scannedAlpha * 1.05f);
+            drawBattlecruiserFrontSliceScaled(cellRegion, x, y, data.warpRotation, scan, widthScale, lengthScale, scannedAlpha * 0.92f);
+            Draw.mixcol();
+        }else{
+            //after full scan, keep only a thin green transparent shell before final disappear
+            Draw.mixcol(Color.valueOf("54ff8b"), 0.9f);
+            Draw.color(1f, 1f, 1f, alpha * 0.34f);
+            Draw.rect(bodyRegion, x, y, baseW * widthScale, baseH * lengthScale, rot);
+            Draw.color(1f, 1f, 1f, alpha * 0.33f);
+            Draw.rect(outlineRegion, x, y, battlecruiserRegionWidth(outlineRegion) * widthScale, battlecruiserRegionHeight(outlineRegion) * lengthScale, rot);
+            Draw.color(1f, 1f, 1f, alpha * 0.20f);
+            Draw.rect(cellRegion, x, y, battlecruiserRegionWidth(cellRegion) * widthScale, battlecruiserRegionHeight(cellRegion) * lengthScale, rot);
+            Draw.mixcol();
+        }
+        Draw.reset();
+    }
+
+    private static void drawBattlecruiserDepartureSphereFog(Unit unit, float x, float y, float fin){
+        float p = Mathf.clamp(fin);
+        float fade = Mathf.clamp(1f - p * 0.95f);
+        if(fade <= 0.001f) return;
+
+        TextureRegion softCircle = Core.atlas.find("circle-shadow", "circle");
+        if(!softCircle.found()) return;
+
+        float sphere = Mathf.lerp(Math.max(unit.hitSize * 0.42f, 8f), Math.max(unit.hitSize * 0.65f, 14f), Interp.pow2Out.apply(p));
+        Draw.z(Math.max(Layer.flyingUnit, unit.type.flyingLayer) + 0.3f);
+        Draw.blend(Blending.additive);
+        Draw.color(0.22f, 1f, 0.52f, (0.08f + 0.16f * (1f - p)) * fade);
+        Draw.rect(softCircle, x, y, sphere * 2f, sphere * 2f);
+
+        int fogCount = Math.max(10, (int)Mathf.lerp(10f, 28f, p));
+        float fogRadius = Mathf.lerp(Math.max(unit.hitSize * 0.26f, 4f), Math.max(unit.hitSize * 0.56f, 10f), p);
+        Fx.rand.setSeed(((long)unit.id << 32) ^ ((long)(Time.time * 10f) * 131L + 73L));
+        for(int i = 0; i < fogCount; i++){
+            float ang = Fx.rand.random(360f);
+            float rr = fogRadius * Mathf.sqrt(Fx.rand.random(1f));
+            float px = x + Angles.trnsx(ang, rr);
+            float py = y + Angles.trnsy(ang, rr);
+            float size = Fx.rand.random(0.35f, 1.18f) * (0.65f + (1f - rr / Math.max(fogRadius, 0.001f)) * 0.75f);
+            float a = (0.02f + 0.09f * (1f - rr / Math.max(fogRadius, 0.001f))) * fade * Fx.rand.random(0.55f, 1f);
+
+            Draw.color(0.30f, 1f, 0.54f, a);
+            Fill.circle(px, py, size);
+            if((i & 3) == 0){
+                Draw.color(0.62f, 1f, 0.82f, a * 0.45f);
+                Fill.circle(px, py, size * 0.45f);
+            }
+        }
+
+        Draw.blend();
+        Draw.reset();
+    }
+
     private static float battlecruiserRegionWidth(TextureRegion region){
-        return region.width * region.scale / 4f;
+        return region.width * region.scale / 4f * battlecruiserTextureXScale;
     }
 
     private static float battlecruiserRegionHeight(TextureRegion region){
@@ -1440,6 +1675,119 @@ public class UnitTypes{
             Lines.lineAngleCenter(ex, ey, rotation + 90f, drawW * 0.96f);
             Draw.blend();
             Draw.color();
+        }
+        Draw.color();
+    }
+
+    private static void drawBattlecruiserFrontSliceScaled(TextureRegion source, float x, float y, float rotation, float reveal, float widthScale, float lengthScale, float alpha){
+        if(source == null || !source.found()) return;
+        if(reveal <= 0.001f || alpha <= 0.001f) return;
+
+        float drawW = battlecruiserRegionWidth(source) * widthScale;
+        float drawH = battlecruiserRegionHeight(source) * lengthScale;
+        if(drawW <= 0.001f || drawH <= 0.001f) return;
+
+        float r = Mathf.clamp(reveal);
+        float vFront = source.v;
+        float vBack = source.v2;
+        float rot = rotation - 90f;
+
+        Draw.color(1f, 1f, 1f, alpha);
+        if(r >= 0.999f){
+            Draw.rect(source, x, y, drawW, drawH, rot);
+        }else{
+            float vEdge = Mathf.lerp(vFront, vBack, r);
+            Tmp.tr1.set(source);
+            Tmp.tr1.set(source.u, vFront, source.u2, vEdge);
+
+            float localForward = (0.5f - r * 0.5f) * drawH;
+            float px = x + Angles.trnsx(rotation, localForward);
+            float py = y + Angles.trnsy(rotation, localForward);
+            Draw.rect(Tmp.tr1, px, py, drawW, drawH * r, rot);
+
+            float edgeForward = (0.5f - r) * drawH;
+            float ex = x + Angles.trnsx(rotation, edgeForward);
+            float ey = y + Angles.trnsy(rotation, edgeForward);
+            Draw.blend(Blending.additive);
+            Draw.color(0.40f, 1f, 0.46f, alpha * (0.36f + 0.4f * (1f - r)));
+            Lines.stroke(1.1f);
+            Lines.lineAngleCenter(ex, ey, rotation + 90f, drawW * 0.96f);
+            Draw.blend();
+            Draw.color();
+        }
+        Draw.color();
+    }
+
+    private static void drawBattlecruiserRearRevealSliceScaled(TextureRegion source, float x, float y, float rotation, float reveal, float widthScale, float lengthScale, Color color, float alpha){
+        if(source == null || !source.found()) return;
+        if(reveal <= 0.001f || alpha <= 0.001f) return;
+
+        float drawW = battlecruiserRegionWidth(source) * widthScale;
+        float drawH = battlecruiserRegionHeight(source) * lengthScale;
+        if(drawW <= 0.001f || drawH <= 0.001f) return;
+
+        float r = Mathf.clamp(reveal);
+        float rot = rotation - 90f;
+
+        TextureRegion drawRegion = source;
+        float outW = drawW;
+        float outH = drawH;
+        float px = x;
+        float py = y;
+
+        if(r < 0.999f){
+            // build from rear to front
+            float vEdge = Mathf.lerp(source.v2, source.v, r);
+            Tmp.tr1.set(source);
+            Tmp.tr1.set(source.u, vEdge, source.u2, source.v2);
+            drawRegion = Tmp.tr1;
+            outH = drawH * r;
+            px = x + Angles.trnsx(rotation, (-0.5f + r * 0.5f) * drawH);
+            py = y + Angles.trnsy(rotation, (-0.5f + r * 0.5f) * drawH);
+        }
+
+        // pure-color alpha-mask ghost: no base texture detail, no build stripes
+        if(Shaders.unitGhost != null){
+            Shaders.unitGhost.region = drawRegion;
+            Shaders.unitGhost.mode = 0f;
+            Shaders.unitGhost.time = Time.time / 60f;
+            Shaders.unitGhost.color.set(color);
+            Shaders.unitGhost.color.a = alpha;
+            Draw.shader(Shaders.unitGhost);
+            Draw.rect(drawRegion, px, py, outW, outH, rot);
+            Draw.shader();
+        }else{
+            Draw.color(color.r, color.g, color.b, alpha);
+            Draw.rect(drawRegion, px, py, outW, outH, rot);
+            Draw.color();
+        }
+    }
+
+    private static void drawBattlecruiserBackSliceScaled(TextureRegion source, float x, float y, float rotation, float reveal, float widthScale, float lengthScale, float alpha){
+        if(source == null || !source.found()) return;
+        if(alpha <= 0.001f) return;
+
+        float drawW = battlecruiserRegionWidth(source) * widthScale;
+        float drawH = battlecruiserRegionHeight(source) * lengthScale;
+        if(drawW <= 0.001f || drawH <= 0.001f) return;
+
+        float r = Mathf.clamp(reveal);
+        if(r >= 0.999f) return;
+
+        float rot = rotation - 90f;
+        Draw.color(1f, 1f, 1f, alpha);
+        if(r <= 0.001f){
+            Draw.rect(source, x, y, drawW, drawH, rot);
+        }else{
+            float vEdge = Mathf.lerp(source.v, source.v2, r);
+            Tmp.tr1.set(source);
+            Tmp.tr1.set(source.u, vEdge, source.u2, source.v2);
+
+            float remain = 1f - r;
+            float localForward = -r * 0.5f * drawH;
+            float px = x + Angles.trnsx(rotation, localForward);
+            float py = y + Angles.trnsy(rotation, localForward);
+            Draw.rect(Tmp.tr1, px, py, drawW, drawH * remain, rot);
         }
         Draw.color();
     }
@@ -1642,6 +1990,7 @@ public class UnitTypes{
         BattlecruiserData data = getBattlecruiserData(unit);
 
         if(data.warping){
+            drawBattlecruiserWarpDeparture(unit, data);
             drawBattlecruiserWarpGhost(unit, data);
             return;
         }
@@ -1702,14 +2051,18 @@ public class UnitTypes{
                 }
             }else{
                 // after 0.4s: stable blue transparent shell with stronger edge opacity
+                float bodyW = battlecruiserRegionWidth(bodyRegion);
+                float bodyH = battlecruiserRegionHeight(bodyRegion);
                 Draw.color(0.36f, 0.62f, 1f, 0.16f);
-                Draw.rect(bodyRegion, unit.x, unit.y, unit.rotation - 90f);
+                Draw.rect(bodyRegion, unit.x, unit.y, bodyW, bodyH, unit.rotation - 90f);
                 Draw.color(0.52f, 0.74f, 1f, 0.1f);
-                Draw.rect(bodyRegion, unit.x, unit.y, unit.rotation - 90f);
+                Draw.rect(bodyRegion, unit.x, unit.y, bodyW, bodyH, unit.rotation - 90f);
 
                 TextureRegion edge = unit.type.outlineRegion != null && unit.type.outlineRegion.found() ? unit.type.outlineRegion : bodyRegion;
+                float edgeW = battlecruiserRegionWidth(edge);
+                float edgeH = battlecruiserRegionHeight(edge);
                 Draw.color(0.58f, 0.8f, 1f, 0.36f);
-                Draw.rect(edge, unit.x, unit.y, unit.rotation - 90f);
+                Draw.rect(edge, unit.x, unit.y, edgeW, edgeH, unit.rotation - 90f);
             }
             Draw.reset();
         }
@@ -4504,6 +4857,79 @@ public class UnitTypes{
 
                 super.draw(unit);
                 drawBattlecruiserOverlay(unit);
+            }
+
+            @Override
+            public void drawOutline(Unit unit){
+                Draw.reset();
+
+                if(Core.atlas.isFound(outlineRegion)){
+                    applyColor(unit);
+                    applyOutlineColor(unit);
+                    Draw.rect(outlineRegion, unit.x, unit.y,
+                    outlineRegion.width * outlineRegion.scl() * battlecruiserTextureXScale,
+                    outlineRegion.height * outlineRegion.scl(),
+                    unit.rotation - 90f);
+                    Draw.reset();
+                }
+            }
+
+            @Override
+            public void drawBody(Unit unit){
+                applyColor(unit);
+
+                if(unit instanceof UnderwaterMovec){
+                    Draw.alpha(1f);
+                    Draw.mixcol(unit.floorOn().mapColor.write(Tmp.c1).mul(0.9f), 1f);
+                }
+
+                Draw.rect(region, unit.x, unit.y,
+                region.width * region.scl() * battlecruiserTextureXScale,
+                region.height * region.scl(),
+                unit.rotation - 90f);
+
+                Draw.reset();
+            }
+
+            @Override
+            public void drawCell(Unit unit){
+                applyColor(unit);
+
+                Draw.color(cellColor(unit));
+                Draw.rect(cellRegion, unit.x, unit.y,
+                cellRegion.width * cellRegion.scl() * battlecruiserTextureXScale,
+                cellRegion.height * cellRegion.scl(),
+                unit.rotation - 90f);
+                Draw.reset();
+            }
+
+            @Override
+            public void drawShadow(Unit unit){
+                float e = Mathf.clamp(unit.elevation, shadowElevation, 1f) * shadowElevationScl * (1f - unit.drownTime);
+                float x = unit.x + shadowTX * e, y = unit.y + shadowTY * e;
+                mindustry.world.blocks.environment.Floor floor = world.floorWorld(x, y);
+
+                float dest = floor.canShadow ? 1f : 0f;
+                unit.shadowAlpha = unit.shadowAlpha < 0 ? dest : Mathf.approachDelta(unit.shadowAlpha, dest, 0.11f);
+                Draw.color(Pal.shadow, Pal.shadow.a * unit.shadowAlpha);
+
+                Draw.rect(shadowRegion, x, y,
+                shadowRegion.width * shadowRegion.scl() * battlecruiserTextureXScale,
+                shadowRegion.height * shadowRegion.scl(),
+                unit.rotation - 90f);
+                Draw.color();
+            }
+
+            @Override
+            public void drawSoftShadow(Unit unit){
+                Draw.color(0f, 0f, 0f, 0.4f);
+                float rad = 1.6f;
+                float size = Math.max(region.width, region.height) * region.scl() * softShadowScl;
+                Draw.rect(softShadowRegion, unit.x, unit.y,
+                size * rad * battlecruiserTextureXScale,
+                size * rad,
+                unit.rotation - 90f);
+                Draw.color();
             }
 
             @Override

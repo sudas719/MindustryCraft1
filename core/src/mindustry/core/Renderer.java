@@ -43,9 +43,11 @@ public class Renderer implements ApplicationListener{
     public float weatherAlpha;
     /** minZoom = zooming out, maxZoom = zooming in, used by cutscenes */
     public float minZoom = 1.5f, maxZoom = 6f;
+    /** base gameplay zoom range; intentionally wider than cutscene range */
+    private static final float minZoomInGameBase = 0.35f, maxZoomInGameBase = 12f;
 
     /** minZoom = zooming out, maxZoom = zooming in, used by actual gameplay zoom and regulated by settings **/
-    public float minZoomInGame = 0.5f, maxZoomInGame = 6f;
+    public float minZoomInGame = minZoomInGameBase, maxZoomInGame = maxZoomInGameBase;
     public Seq<EnvRenderer> envRenderers = new Seq<>();
     public ObjectMap<String, Runnable> customBackgrounds = new ObjectMap<>();
     public TextureRegion[] bubbles = new TextureRegion[16], splashes = new TextureRegion[12];
@@ -170,8 +172,10 @@ public class Renderer implements ApplicationListener{
         drawStatus = settings.getBool("blockstatus");
         enableEffects = settings.getBool("effects");
         drawDisplays = !settings.getBool("hidedisplays");
-        maxZoomInGame = settings.getFloat("maxzoomingamemultiplier", 1) * maxZoom;
-        minZoomInGame = minZoom / settings.getFloat("minzoomingamemultiplier", 1);
+        float maxZoomMultiplier = Math.max(settings.getFloat("maxzoomingamemultiplier", 1f), 0.01f);
+        float minZoomMultiplier = Math.max(settings.getFloat("minzoomingamemultiplier", 1f), 0.01f);
+        maxZoomInGame = maxZoomInGameBase * maxZoomMultiplier;
+        minZoomInGame = minZoomInGameBase / minZoomMultiplier;
         drawLight = settings.getBool("drawlight", true);
         pixelate = settings.getBool("pixelate");
 

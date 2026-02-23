@@ -22,6 +22,7 @@ public class Shaders{
     public static @Nullable ShieldShader shield;
     public static BuildBeamShader buildBeam;
     public static UnitBuildShader build;
+    public static UnitGhostShader unitGhost;
     public static UnitArmorShader armor;
     public static DarknessShader darkness;
     public static FogShader fog;
@@ -49,6 +50,7 @@ public class Shaders{
         fog = new FogShader();
         buildBeam = new BuildBeamShader();
         build = new UnitBuildShader();
+        unitGhost = new UnitGhostShader();
         armor = new UnitArmorShader();
         darkness = new DarknessShader();
         light = new LightShader();
@@ -557,6 +559,37 @@ public class Shaders{
                 items[8] = power;
             }else{
                 lensData.addAll(x, y, rx, ry, rotation, 1f, life, type, power);
+            }
+        }
+    }
+
+    public static class UnitGhostShader extends LoadShader{
+        public Color color = new Color();
+        public TextureRegion region;
+        public float mode = 0f;
+        public float lineStep = 0.1f;
+        public float lineWidth = 0.06f;
+        public float time = 0f;
+
+        public UnitGhostShader(){
+            super("unitghost", "default");
+        }
+
+        @Override
+        public void apply(){
+            setUniformf("u_color", color);
+            setUniformf("u_mode", mode);
+            setUniformf("u_lineStep", lineStep);
+            setUniformf("u_lineWidth", lineWidth);
+            setUniformf("u_time", time);
+            if(region == null || region.texture == null){
+                setUniformf("u_uv", 0f, 0f);
+                setUniformf("u_uv2", 1f, 1f);
+                setUniformf("u_texsize", 1f, 1f);
+            }else{
+                setUniformf("u_uv", region.u, region.v);
+                setUniformf("u_uv2", region.u2, region.v2);
+                setUniformf("u_texsize", region.texture.width, region.texture.height);
             }
         }
     }
