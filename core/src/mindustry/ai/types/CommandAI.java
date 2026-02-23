@@ -10,7 +10,7 @@ import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
 import mindustry.gen.*;
-import mindustry.type.Item;
+import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
@@ -38,6 +38,8 @@ public class CommandAI extends AIController{
     public int readAttackTarget = -1;
 
     protected boolean stopAtTarget, stopWhenInRange;
+    /** True when current targetPos was issued by force-attack to ground (A + empty ground). */
+    public boolean attackMovePosition;
     protected Vec2 lastTargetPos;
     protected boolean blockingUnit;
     protected float timeSpentBlocked;
@@ -65,6 +67,7 @@ public class CommandAI extends AIController{
     public @Nullable UnitCommand queuedCommand;
     public @Nullable Vec2 queuedCommandPos;
     public @Nullable Teamc queuedCommandTarget;
+    private boolean retainAttackTargetOnMove;
 
     public UnitCommand currentCommand(){
         return command == null ? UnitCommand.moveCommand : command;
@@ -136,8 +139,42 @@ public class CommandAI extends AIController{
         return !hasCommand();
     }
 
+    private boolean withinAttackEdgeRange(@Nullable Teamc target, float range){
+        return target != null && Units.withinTargetRange(target, unit.x, unit.y, range, unit.hitSize / 2f);
+    }
+
+    private void forceAttackTargetInRange(){
+        if(attackTarget == null) return;
+
+        target = attackTarget;
+        for(var mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(!weaponCanHitTarget(weapon, attackTarget)){
+                mount.target = null;
+                mount.rotate = false;
+                mount.shoot = false;
+                continue;
+            }
+            float weaponRange = weapon.range() + unit.hitSize / 2f;
+            if(!Units.withinTargetRange(attackTarget, unit.x, unit.y, weaponRange, unit.hitSize / 2f)) continue;
+
+            mount.target = attackTarget;
+            mount.rotate = true;
+            mount.shoot = true;
+
+            float mountX = unit.x + Angles.trnsx(unit.rotation - 90f, weapon.x, weapon.y);
+            float mountY = unit.y + Angles.trnsy(unit.rotation - 90f, weapon.x, weapon.y);
+            Units.aimPoint(attackTarget, mountX, mountY, attackTarget.getX(), attackTarget.getY(), Tmp.v1);
+            mount.aimX = Tmp.v1.x;
+            mount.aimY = Tmp.v1.y;
+            unit.aimX = Tmp.v1.x;
+            unit.aimY = Tmp.v1.y;
+        }
+    }
+
     public boolean isAttacking(){
-        return target != null && unit.within(target, unit.range() + 10f);
+        return withinAttackEdgeRange(target, unit.range());
     }
 
     @Override
@@ -203,11 +240,15 @@ public class CommandAI extends AIController{
         commandQueue.clear();
         targetPos = null;
         attackTarget = null;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
         followTarget = null;
     }
 
     void tryPickupUnit(Payloadc pay){
-        Unit target = Units.closest(unit.team, unit.x, unit.y, unit.type.hitSize * 2f, u -> u.isAI() && u != unit && u.isGrounded() && pay.canPickup(u) && u.within(unit, u.hitSize + unit.hitSize));
+        float pickupRange = UnitTypes.isMedivac(unit) ? UnitTypes.medivacLoadRange() : unit.type.hitSize * 2f;
+        Unit target = Units.closest(unit.team, unit.x, unit.y, pickupRange, u ->
+            (UnitTypes.isMedivac(unit) || u.isAI()) && u != unit && u.isGrounded() && pay.canPickup(u) && u.within(unit, u.hitSize + unit.hitSize));
         if(target != null){
             Call.pickedUnitPayload(unit, target);
         }
@@ -230,7 +271,16 @@ public class CommandAI extends AIController{
 
             //auto-drop everything
             if(command == UnitCommand.unloadPayloadCommand && pay.hasPayload()){
-                Call.payloadDropped(unit, unit.x, unit.y);
+                boolean allowDrop = !UnitTypes.isMedivac(unit)
+                    || UnitTypes.medivacMovingUnload(unit)
+                    || targetPos == null
+                    || unit.within(targetPos, 10f);
+                if(allowDrop && (!UnitTypes.isMedivac(unit) || payloadPickupCooldown <= 0f)){
+                    Call.payloadDropped(unit, unit.x, unit.y);
+                    if(UnitTypes.isMedivac(unit)){
+                        payloadPickupCooldown = 30f; // 0.5s interval
+                    }
+                }
             }
 
             //try to pick up what's under it
@@ -269,7 +319,11 @@ public class CommandAI extends AIController{
 
         if(attackTarget != null && invalid(attackTarget)){
             attackTarget = null;
-            targetPos = null;
+            if(!retainAttackTargetOnMove){
+                targetPos = null;
+            }
+            attackMovePosition = false;
+            retainAttackTargetOnMove = false;
         }
 
         //move on to the next target
@@ -280,18 +334,20 @@ public class CommandAI extends AIController{
         boolean ramming = hasStance(UnitStance.ram);
 
         if(attackTarget != null){
-            if(targetPos == null){
-                targetPos = new Vec2();
-                lastTargetPos = targetPos;
-            }
-            targetPos.set(attackTarget);
+            if(!retainAttackTargetOnMove){
+                if(targetPos == null){
+                    targetPos = new Vec2();
+                    lastTargetPos = targetPos;
+                }
+                targetPos.set(attackTarget);
 
-            if(unit.isGrounded() && attackTarget instanceof Building && unit.type.pathCostId != ControlPathfinder.costIdLegs && !ramming){
-                Building build = (Building)attackTarget;
-                if(build.tile.solid()){
-                    Tile best = build.findClosestEdge(unit, Tile::solid);
-                    if(best != null){
-                        targetPos.set(best);
+                if(unit.isGrounded() && attackTarget instanceof Building && unit.type.pathCostId != ControlPathfinder.costIdLegs && !ramming){
+                    Building build = (Building)attackTarget;
+                    if(build.tile.solid()){
+                        Tile best = build.findClosestEdge(unit, Tile::solid);
+                        if(best != null){
+                            targetPos.set(best);
+                        }
                     }
                 }
             }
@@ -299,8 +355,15 @@ public class CommandAI extends AIController{
 
         boolean alwaysArrive = false;
 
-        float engageRange = unit.range() - 10f;
-        boolean withinAttackRange = attackTarget != null && unit.within(attackTarget, engageRange) && !ramming;
+        float engageRange = unit.range();
+        boolean withinAttackRange = attackTarget != null && withinAttackEdgeRange(attackTarget, engageRange) && !ramming;
+        if(forcedFriendlyAttackTarget(attackTarget)){
+            //For forced ally attack commands, stop once any valid weapon can actually engage.
+            withinAttackRange = forcedFriendlyAttackInWeaponRange(attackTarget) && !ramming;
+        }
+        if(withinAttackRange){
+            forceAttackTargetInRange();
+        }
 
         if(targetPos != null){
             boolean move = true, isFinalPoint = commandQueue.size == 0;
@@ -409,9 +472,12 @@ public class CommandAI extends AIController{
                 //if the unit is next to the target, stop asking the pathfinder how to get there, it's a waste of CPU
                 //TODO maybe stop moving too?
                 if(withinAttackRange){
-                    move = true;
+                    move = false;
                     noFound[0] = false;
                     vecOut.set(vecMovePos);
+                    if(unit.isGrounded()){
+                        unit.vel.setZero();
+                    }
                 }else{
                     move &= controlPath.getPathPosition(unit, vecMovePos, pathTarget, vecOut, noFound) && (!blockingUnit || timeSpentBlocked > maxBlockTime);
 
@@ -460,20 +526,30 @@ public class CommandAI extends AIController{
             }
 
             //if stopAtTarget is set, stop trying to move to the target once it is reached - used for defending
-            if(attackTarget != null && stopAtTarget && unit.within(attackTarget, engageRange - 1f)){
+            if(attackTarget != null && stopAtTarget && withinAttackEdgeRange(attackTarget, Math.max(0f, engageRange - 1f))){
                 attackTarget = null;
             }
 
-            if(unit.isFlying() && move && !(unit.type.circleTarget && !unit.type.omniMovement) && (attackTarget == null || !unit.within(attackTarget, unit.range()))){
-                unit.lookAt(vecMovePos);
+            if(unit.isFlying()){
+                if(attackTarget != null){
+                    unit.lookAt(attackTarget);
+                }else if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
+                    unit.lookAt(vecMovePos);
+                }else{
+                    faceTarget();
+                }
             }else{
-                faceTarget();
+                if(attackTarget != null){
+                    unit.lookAt(attackTarget);
+                }else{
+                    faceTarget();
+                }
             }
 
             boolean groupedMove = group != null && group.valid && groupIndex < group.units.size;
 
             //reached destination, end pathfinding
-            if(attackTarget == null){
+            if(attackTarget == null || retainAttackTargetOnMove){
                 float finishRange;
                 Position finishPos = vecMovePos;
                 if(command == UnitCommand.enterPayloadCommand){
@@ -492,6 +568,9 @@ public class CommandAI extends AIController{
                 if(finishPos != null && unit.within(finishPos, finishRange)){
                     if(!groupedMove){
                         unit.vel.setZero();
+                    }
+                    if(retainAttackTargetOnMove){
+                        attackTarget = null;
                     }
                     finishPath();
                 }
@@ -594,6 +673,8 @@ public class CommandAI extends AIController{
 
                         targetPos = null;
                         attackTarget = null;
+                        attackMovePosition = false;
+                        retainAttackTargetOnMove = false;
                         commandQueue.clear();
 
                         if(next != null){
@@ -609,6 +690,8 @@ public class CommandAI extends AIController{
 
         Vec2 prev = targetPos;
         targetPos = null;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
 
         if(commandQueue.size > 0){
             Position next = commandQueue.remove(0);
@@ -680,6 +763,8 @@ public class CommandAI extends AIController{
             Tmp.v1.setLength(desired);
             targetPos.set(tx + Tmp.v1.x, ty + Tmp.v1.y);
             attackTarget = null;
+            attackMovePosition = false;
+            retainAttackTargetOnMove = false;
             return;
         }
 
@@ -691,6 +776,8 @@ public class CommandAI extends AIController{
                 followHold = false;
             }else{
                 targetPos = null;
+                attackMovePosition = false;
+                retainAttackTargetOnMove = false;
                 return;
             }
         }
@@ -706,6 +793,8 @@ public class CommandAI extends AIController{
             followHoldY = ty;
             followHoldDist = desired;
             targetPos = null;
+            attackMovePosition = false;
+            retainAttackTargetOnMove = false;
             return;
         }
 
@@ -715,6 +804,8 @@ public class CommandAI extends AIController{
             followHoldY = ty;
             followHoldDist = desired;
             targetPos = null;
+            attackMovePosition = false;
+            retainAttackTargetOnMove = false;
             return;
         }
 
@@ -730,6 +821,8 @@ public class CommandAI extends AIController{
         Tmp.v1.setLength(desired);
         targetPos.set(tx + Tmp.v1.x, ty + Tmp.v1.y);
         attackTarget = null;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
     }
 
     private boolean isFollowBlocked(Teamc target){
@@ -818,15 +911,33 @@ public class CommandAI extends AIController{
     }
 
     public boolean nearAttackTarget(float x, float y, float range){
-        float extra = 0f;
-        if(attackTarget instanceof Sized){
-            extra = ((Sized)attackTarget).hitSize() / 2f;
-        }
-        return attackTarget != null && attackTarget.within(x, y, range + 3f + extra);
+        return attackTarget != null && Units.withinTargetRange(attackTarget, x, y, range + 3f, unit.hitSize / 2f);
     }
 
     private boolean forcedFriendlyAttackTarget(@Nullable Teamc target){
         return target != null && target == attackTarget && unit != null && attackTarget != null && attackTarget.team() == unit.team;
+    }
+
+    private boolean weaponCanHitTarget(Weapon weapon, @Nullable Teamc target){
+        if(target == null) return false;
+        if(target instanceof Unit u){
+            return u.isFlying() ? weapon.bullet.collidesAir : weapon.bullet.collidesGround;
+        }
+        return weapon.bullet.collidesGround;
+    }
+
+    private boolean forcedFriendlyAttackInWeaponRange(@Nullable Teamc target){
+        if(!forcedFriendlyAttackTarget(target)) return false;
+        for(var mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(!weaponCanHitTarget(weapon, target)) continue;
+            float weaponRange = weapon.range() + unit.hitSize / 2f;
+            if(Units.withinTargetRange(target, unit.x, unit.y, weaponRange, unit.hitSize / 2f)){
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -840,7 +951,7 @@ public class CommandAI extends AIController{
     @Override
     public boolean checkTarget(Teamc target, float x, float y, float range){
         if(forcedFriendlyAttackTarget(target)){
-            if(range != Float.MAX_VALUE && !target.within(x, y, range + (target instanceof Sized hb ? hb.hitSize() / 2f : 0f))){
+            if(range != Float.MAX_VALUE && !Units.withinTargetRange(target, x, y, range, unit.hitSize / 2f)){
                 return true;
             }
             return target instanceof Healthc h && !h.isValid();
@@ -866,13 +977,17 @@ public class CommandAI extends AIController{
     public void commandPosition(Vec2 pos){
         if(pos == null) return;
 
-        commandPosition(pos, false);
+        commandPosition(pos, false, false);
         if(commandController != null){
             commandController.commandPosition(pos);
         }
     }
 
     public void commandPosition(Vec2 pos, boolean stopWhenInRange){
+        commandPosition(pos, stopWhenInRange, false);
+    }
+
+    public void commandPosition(Vec2 pos, boolean stopWhenInRange, boolean attackMovePosition){
         if(pos == null) return;
         if(commandLocked()){
             queuedCommandPos = pos.cpy();
@@ -889,8 +1004,13 @@ public class CommandAI extends AIController{
                 targetPos.set(build);
             }
         }
-        attackTarget = null;
+        boolean retainAttack = UnitTypes.isBattlecruiser(unit) && attackTarget != null && !attackMovePosition;
+        if(!retainAttack){
+            attackTarget = null;
+        }
+        retainAttackTargetOnMove = retainAttack;
         this.stopWhenInRange = stopWhenInRange;
+        this.attackMovePosition = attackMovePosition;
     }
 
     @Override
@@ -908,6 +1028,8 @@ public class CommandAI extends AIController{
         }
         followTarget = null;
         attackTarget = moveTo;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
         this.stopAtTarget = stopAtTarget;
     }
 
@@ -924,6 +1046,8 @@ public class CommandAI extends AIController{
         followTarget = target;
         attackTarget = null;
         targetPos = null;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
         commandQueue.clear();
     }
 

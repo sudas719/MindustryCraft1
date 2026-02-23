@@ -21,6 +21,7 @@ import mindustry.world.blocks.defense.turrets.*;
 import mindustry.world.blocks.environment.CrystalMineralWall;
 import mindustry.world.blocks.environment.SteamVent;
 import mindustry.world.blocks.ConstructBlock;
+import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.*;
@@ -43,6 +44,8 @@ public class UnitSelectionGrid extends Table{
     private int lastCoreId = -1;
     private int lastFactoryId = -1;
     private int lastFactoryQueueHash = -1;
+    private int lastMedivacId = -1;
+    private int lastMedivacPayloadHash = -1;
 
     //Interface for units and buildings
     private interface Displayable{
@@ -302,6 +305,8 @@ public class UnitSelectionGrid extends Table{
                     lastCoreQueueHash = queueHash;
                     lastFactoryId = -1;
                     lastFactoryQueueHash = -1;
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
                 }else if(selected instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
                     int queueHash = factoryQueueHash(factory);
                     if(factory.id != lastFactoryId || queueHash != lastFactoryQueueHash){
@@ -312,12 +317,16 @@ public class UnitSelectionGrid extends Table{
                     lastCoreId = -1;
                     lastCoreBuildPage = false;
                     lastCoreQueueHash = -1;
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
                 }else{
                     lastCoreId = -1;
                     lastCoreBuildPage = false;
                     lastCoreQueueHash = -1;
                     lastFactoryId = -1;
                     lastFactoryQueueHash = -1;
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
                 }
             }else{
                 lastCoreId = -1;
@@ -325,6 +334,24 @@ public class UnitSelectionGrid extends Table{
                 lastCoreQueueHash = -1;
                 lastFactoryId = -1;
                 lastFactoryQueueHash = -1;
+
+                if(control.input.selectedUnits.size == 1 && control.input.commandBuildings.isEmpty()){
+                    Unit unit = control.input.selectedUnits.first();
+                    if(unit != null && unit.isValid() && UnitTypes.isMedivac(unit)){
+                        int payloadHash = medivacPayloadHash(unit);
+                        if(unit.id != lastMedivacId || payloadHash != lastMedivacPayloadHash){
+                            forceRebuild = true;
+                        }
+                        lastMedivacId = unit.id;
+                        lastMedivacPayloadHash = payloadHash;
+                    }else{
+                        lastMedivacId = -1;
+                        lastMedivacPayloadHash = -1;
+                    }
+                }else{
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
+                }
             }
 
             if(showResource){
@@ -487,7 +514,12 @@ public class UnitSelectionGrid extends Table{
 
             //Left half: Unit icon and HP
             panel.table(leftHalf -> {
-                leftHalf.image(unit.type.uiIcon).size(80f).row();
+                Stack unitIconStack = new Stack();
+                unitIconStack.add(portraitBorderElement());
+                Table iconWrap = new Table();
+                iconWrap.image(unit.type.uiIcon).size(76f);
+                unitIconStack.add(iconWrap);
+                leftHalf.add(unitIconStack).size(80f).row();
                 //HP display updates in real-time
                 leftHalf.label(() -> Strings.autoFixed(unit.health, 2) + "/" + Strings.autoFixed(unit.maxHealth, 2))
                     .color(Color.white).style(Styles.outlineLabel).padTop(4f);
@@ -502,11 +534,42 @@ public class UnitSelectionGrid extends Table{
                     Bar lifeBar = new Bar(() -> "", () -> Color.gray, () -> PulsarDrops.remainingFraction(unit));
                     leftHalf.add(lifeBar).width(80f).height(4f).padTop(4f);
                 }
+                if(unit.hasEffect(StatusEffects.ravenAntiArmor)){
+                    leftHalf.row();
+                    Bar armorBreakBar = new Bar(() -> "", () -> Color.valueOf("7a1d22"),
+                    () -> Mathf.clamp(unit.getDuration(StatusEffects.ravenAntiArmor) / UnitTypes.ravenAntiArmorDuration()));
+                    leftHalf.add(armorBreakBar).width(80f).height(4f).padTop(3f);
+                }
+                if(unit.hasEffect(StatusEffects.ravenMatrixLock)){
+                    leftHalf.row();
+                    Bar matrixBar = new Bar(() -> "", () -> Color.valueOf("1e1e1e"),
+                    () -> Mathf.clamp(unit.getDuration(StatusEffects.ravenMatrixLock) / UnitTypes.ravenMatrixDuration()));
+                    leftHalf.add(matrixBar).width(80f).height(4f).padTop(3f);
+                }
+                if(UnitTypes.battlecruiserYamatoCharging(unit)){
+                    leftHalf.row();
+                    Bar yamatoCharge = new Bar(() -> "", () -> Color.valueOf("66e7ff"), () -> UnitTypes.battlecruiserYamatoChargeProgress(unit));
+                    leftHalf.add(yamatoCharge).width(80f).height(4f).padTop(3f);
+                }
+                if(UnitTypes.isRavenTurret(unit)){
+                    leftHalf.row();
+                    Bar turretLife = new Bar(() -> "", () -> Color.gray, () -> UnitTypes.ravenTurretLifeProgress(unit));
+                    leftHalf.add(turretLife).width(80f).height(4f).padTop(3f);
+                }
             }).width(120f).padRight(16f);
 
             //Right half: Unit info (centered)
+            boolean medivacCargoOnly = UnitTypes.isMedivac(unit) && unit instanceof Payloadc pay && !pay.payloads().isEmpty();
             panel.table(rightHalf -> {
                 rightHalf.defaults().center();
+                if(medivacCargoOnly){
+                    buildMedivacCargoPanel(rightHalf, unit);
+                    return;
+                }
+
+                if(UnitTypes.isRaven(unit)){
+                    rightHalf.add("[gold]侦测单位[]").style(Styles.outlineLabel).row();
+                }
 
                 //Unit name
                 rightHalf.add(unit.type.localizedName).color(Color.white).style(Styles.outlineLabel).row();
@@ -519,8 +582,6 @@ public class UnitSelectionGrid extends Table{
                     iconsRow.defaults().size(28f).pad(4f);
                     String armorLabel = Core.bundle.get("ui.armor", "Armor");
                     String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
-                    String typeLabel = Core.bundle.get("ui.type", "Type");
-                    String valueLabel = Core.bundle.get("ui.value", "Value");
                     String speedLabel = Core.bundle.get("ui.speed", "Speed");
                     String damageLabel = Core.bundle.get("ui.damage", "Damage");
                     String rangeLabel = Core.bundle.get("ui.range", "Range");
@@ -532,14 +593,25 @@ public class UnitSelectionGrid extends Table{
 
                     //Armor icon
                     iconsRow.table(armorIcon -> {
-                        armorIcon.image(Icon.defense).color(Color.orange);
+                        Stack iconStack = new Stack();
+                        iconStack.add(portraitBorderElement());
+                        Image armorImage = new Image(Icon.defense);
+                        armorImage.setColor(Color.orange);
+                        armorImage.setScaling(Scaling.fit);
+                        Table iconInner = new Table();
+                        iconInner.add(armorImage).size(20f);
+                        iconStack.add(iconInner);
+                        armorIcon.add(iconStack).size(28f);
                         armorIcon.addListener(new Tooltip(t -> {
                             t.background(Styles.black6);
                             t.add(armorLabel).color(Color.yellow).row();
                             t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-                            t.add(typeLabel + ": " + armorTypeName(unit.type.armorType)).left().row();
-                            t.add(valueLabel + ": " + (int)unit.type.armor).left().row();
-                            t.add(speedLabel + ": " + String.format("%.1f", unit.type.speed) + " tiles/s").left().row();
+                            t.add(armorLabel + ": " + fixed2(unit.type.armor)).left().row();
+                            if(UnitTypes.isMedivac(unit) && UnitTypes.medivacAfterburnerActive(unit)){
+                                t.add(speedLabel + ": " + fixed2(UnitTypes.medivacBaseSpeed()) + "[#6fff6f](+" + fixed2(UnitTypes.medivacAfterburnerBonusSpeed()) + ")[] tiles/s").left().row();
+                            }else{
+                                t.add(speedLabel + ": " + fixed2(unit.type.speed) + " tiles/s").left().row();
+                            }
                         }));
                     });
 
@@ -558,38 +630,89 @@ public class UnitSelectionGrid extends Table{
 
                         final boolean canAttackAir = hasAntiAir;
                         final boolean canAttackGround = hasAntiGround;
+                        final boolean showSiegeClock = UnitTypes.isSiegeTank(unit);
 
                         iconsRow.table(weaponIcon -> {
-                            //Use appropriate icon
-                            weaponIcon.image(canAttackAir && canAttackGround ? Icon.units : Icon.defense);
+                            Stack iconStack = new Stack();
+                            iconStack.add(portraitBorderElement());
+
+                            Image weaponImage = new Image(canAttackAir && canAttackGround ? Icon.units : Icon.defense);
+                            weaponImage.setScaling(Scaling.fit);
+                            Table iconInner = new Table();
+                            iconInner.add(weaponImage).size(20f);
+                            iconStack.add(iconInner);
+
+                            if(showSiegeClock){
+                                iconStack.add(new Element(){
+                                    @Override
+                                    public void draw(){
+                                        if(!UnitTypes.preceptIsSieged(unit)) return;
+
+                                        float cooldown = UnitTypes.preceptSiegeCooldown(unit);
+                                        float flash = UnitTypes.preceptSiegeFlash(unit);
+                                        float total = UnitTypes.preceptSiegeShotCooldownDuration();
+                                        float cx = x + width / 2f;
+                                        float cy = y + height / 2f;
+
+                                        if(cooldown > 0.001f && total > 0.001f){
+                                            float fastAngle = -(Time.time / total) * 360f;
+                                            float slowAngle = -((1f - Mathf.clamp(cooldown / total)) * 360f);
+                                            float fastLen = width * 0.20f;
+                                            float slowLen = width * 0.14f;
+
+                                            Draw.color(Color.valueOf("b6bcc5"));
+                                            Lines.stroke(1.25f);
+                                            Lines.line(cx, cy, cx + Angles.trnsx(fastAngle, fastLen), cy + Angles.trnsy(fastAngle, fastLen));
+                                            Lines.line(cx, cy, cx + Angles.trnsx(slowAngle, slowLen), cy + Angles.trnsy(slowAngle, slowLen));
+                                        }
+
+                                        if(flash > 0.001f){
+                                            float alpha = Mathf.clamp(flash / UnitTypes.preceptSiegeFlashDuration());
+                                            Draw.color(Color.white, alpha * 0.75f);
+                                            Fill.circle(cx, cy, width * 0.22f + (1f - alpha) * 3f);
+                                        }
+
+                                        Draw.reset();
+                                    }
+                                });
+                            }
+
+                            weaponIcon.add(iconStack).size(28f);
                             weaponIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
                                 t.add(weaponLabel).color(Color.yellow).row();
                                 t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
 
-                                //Find first weapon for stats
-                                for(var weapon : unit.type.weapons){
-                                    if(weapon.bullet != null){
-                                        float damage = weapon.bullet.damage;
-                                        if(weapon.bullet.splashDamage > damage) damage = weapon.bullet.splashDamage;
-
-                                        t.add(damageLabel + ": " + (int)damage).left().row();
-                                        t.add(rangeLabel + ": " + (int)(weapon.range() / 8f) + " tiles").left().row();
-
-                                        if(weapon.reload > 0){
-                                            t.add(speedLabel + ": " + String.format("%.1f", weapon.reload / 60f) + "s").left().row();
-                                        }
-
-                                        if(weapon.bullet.fragBullets > 1){
-                                            t.add(multiAttackLabel + ": " + weapon.bullet.fragBullets + "x").left().row();
-                                        }
-
-                                        String target = canAttackAir && canAttackGround ? targetGroundAir :
-                                                       canAttackAir ? targetAir : targetGround;
-                                        t.add(targetLabel + ": " + target).left().row();
-                                        break;
-                                    }
+                                Weapon shownWeapon = null;
+                                if(UnitTypes.isSiegeTank(unit) && UnitTypes.preceptIsSieged(unit)){
+                                    shownWeapon = unit.type.weapons.find(w -> "precept-siege-weapon".equals(w.name));
+                                }else{
+                                    shownWeapon = unit.type.weapons.find(w -> !"precept-siege-weapon".equals(w.name));
                                 }
+
+                                if(shownWeapon == null){
+                                    shownWeapon = unit.type.weapons.find(w -> w.bullet != null);
+                                }
+                                if(shownWeapon == null || shownWeapon.bullet == null) return;
+
+                                float damage = displayedWeaponDamage(unit, shownWeapon);
+                                float range = displayedWeaponRange(unit, shownWeapon);
+
+                                t.add(damageLabel + ": " + fixed2(damage)).left().row();
+                                t.add(rangeLabel + ": " + fixed2(range / 8f) + " tiles").left().row();
+
+                                if(shownWeapon.reload > 0){
+                                    t.add(speedLabel + ": " + fixed2(shownWeapon.reload / 60f) + "s").left().row();
+                                }
+
+                                int multiAttack = displayedMultiAttack(shownWeapon);
+                                if(multiAttack > 1){
+                                    t.add(multiAttackLabel + ": " + multiAttack + "x").left().row();
+                                }
+
+                                String target = canAttackAir && canAttackGround ? targetGroundAir :
+                                               canAttackAir ? targetAir : targetGround;
+                                t.add(targetLabel + ": " + target).left().row();
                             }));
                         });
                     }
@@ -597,15 +720,75 @@ public class UnitSelectionGrid extends Table{
 
                 //Bottom row: armor type and unit class
                 rightHalf.table(bottomRow -> {
-                    String armorName = armorTypeName(unit.type.armorType);
-                    String className = unitClassName(unit.type.unitClass);
-                    if(unit.type.energyCapacity > 0f && unit.type.unitClass != UnitClass.psionic){
-                        className += " " + unitClassName(UnitClass.psionic);
+                    String armorName = armorTypeName(displayedArmorType(unit.type));
+                    String className = displayedUnitClassNames(unit.type);
+                    if(UnitTypes.isRavenTurret(unit)){
+                        bottomRow.add(armorName + " " + className + " 建筑 召唤").color(Color.white);
+                    }else{
+                        bottomRow.add(armorName + " " + className).color(Color.white);
                     }
-                    bottomRow.add(armorName + " " + className).color(Color.white);
                 }).padTop(8f);
+
+                if(UnitTypes.isMedivac(unit)){
+                    rightHalf.row();
+                    buildMedivacCargoPanel(rightHalf, unit);
+                }
             }).grow().center();
         }).growX().height(singlePanelHeight());
+    }
+
+    private void buildMedivacCargoPanel(Table rightHalf, Unit unit){
+        if(!(unit instanceof Payloadc payload) || payload.payloads().isEmpty()) return;
+
+        int totalSlots = 8;
+        int[] slotToPayload = new int[totalSlots];
+        for(int i = 0; i < totalSlots; i++) slotToPayload[i] = -1;
+        IntMap<UnitType> payloadTypes = new IntMap<>();
+
+        for(int payloadIndex = 0; payloadIndex < payload.payloads().size; payloadIndex++){
+            Payload p = payload.payloads().get(payloadIndex);
+            if(!(p instanceof UnitPayload up) || up.unit == null || up.unit.type == null) continue;
+
+            payloadTypes.put(payloadIndex, up.unit.type);
+            int need = Math.max(1, UnitTypes.medivacUnitSlotCost(up.unit.type));
+            for(int slot = 0; slot < totalSlots && need > 0; slot++){
+                if(slotToPayload[slot] == -1){
+                    slotToPayload[slot] = payloadIndex;
+                    need--;
+                }
+            }
+        }
+
+        rightHalf.table(cargo -> {
+            cargo.defaults().size(24f).pad(2f);
+            for(int row = 0; row < 2; row++){
+                for(int col = 0; col < 4; col++){
+                    int slot = row * 4 + col;
+                    int payloadIndex = slotToPayload[slot];
+
+                    cargo.table(cell -> {
+                        Stack stack = new Stack();
+                        stack.add(portraitBorderElement());
+
+                        if(payloadIndex >= 0){
+                            UnitType type = payloadTypes.get(payloadIndex);
+                            if(type != null){
+                                Table iconWrap = new Table();
+                                iconWrap.image(type.uiIcon).size(18f);
+                                stack.add(iconWrap);
+                            }
+                        }
+
+                        cell.add(stack).size(24f);
+                        if(payloadIndex >= 0){
+                            int dropIndex = payloadIndex;
+                            cell.clicked(() -> Call.commandMedivacDropPayload(player, unit.id, dropIndex));
+                        }
+                    });
+                }
+                cargo.row();
+            }
+        }).padTop(8f);
     }
 
     private void buildBuildingInfoPanel(Building building){
@@ -626,7 +809,12 @@ public class UnitSelectionGrid extends Table{
             //Left half: Building icon
             panel.table(leftHalf -> {
                 leftHalf.defaults().center();
-                leftHalf.image(display.uiIcon).size(80f).row();
+                Stack buildIconStack = new Stack();
+                buildIconStack.add(portraitBorderElement());
+                Table iconWrap = new Table();
+                iconWrap.image(display.uiIcon).size(76f);
+                buildIconStack.add(iconWrap);
+                leftHalf.add(buildIconStack).size(80f).row();
                 leftHalf.label(() -> {
                     if(incomplete){
                         return Mathf.round(building.health) + "/" + Mathf.round(maxHealth);
@@ -674,7 +862,6 @@ public class UnitSelectionGrid extends Table{
                         iconsRow.defaults().size(28f).pad(4f);
                         String armorLabel = Core.bundle.get("ui.armor", "Armor");
                         String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
-                        String valueLabel = Core.bundle.get("ui.value", "Value");
                         String speedLabel = Core.bundle.get("ui.speed", "Speed");
                         String damageLabel = Core.bundle.get("ui.damage", "Damage");
                         String rangeLabel = Core.bundle.get("ui.range", "Range");
@@ -685,20 +872,35 @@ public class UnitSelectionGrid extends Table{
                         String targetGroundAir = Core.bundle.get("ui.target.groundair", "Ground & Air");
                         //Armor icon
                         iconsRow.table(armorIcon -> {
-                            armorIcon.image(Icon.defense).color(Color.orange);
+                            Stack iconStack = new Stack();
+                            iconStack.add(portraitBorderElement());
+                            Image armorImage = new Image(Icon.defense);
+                            armorImage.setColor(Color.orange);
+                            armorImage.setScaling(Scaling.fit);
+                            Table iconInner = new Table();
+                            iconInner.add(armorImage).size(20f);
+                            iconStack.add(iconInner);
+                            armorIcon.add(iconStack).size(28f);
                             armorIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
                                 t.add(armorLabel).color(Color.yellow).row();
                                 t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-                                t.add(valueLabel + ": " + (int)display.armor).left().row();
-                                t.add(healthLabel + ": " + (int)maxHealth).left().row();
+                                t.add(armorLabel + ": " + fixed2(display.armor)).left().row();
+                                t.add(healthLabel + ": " + fixed2(maxHealth)).left().row();
                             }));
                         });
 
                         //Weapon icon (only if this block can attack)
                         if(building.block.attacks){
                             iconsRow.table(weaponIcon -> {
-                                weaponIcon.image(Icon.units);
+                                Stack iconStack = new Stack();
+                                iconStack.add(portraitBorderElement());
+                                Image weaponImage = new Image(Icon.units);
+                                weaponImage.setScaling(Scaling.fit);
+                                Table iconInner = new Table();
+                                iconInner.add(weaponImage).size(20f);
+                                iconStack.add(iconInner);
+                                weaponIcon.add(iconStack).size(28f);
                                 weaponIcon.addListener(new Tooltip(t -> {
                                     t.background(Styles.black6);
                                     t.add(weaponLabel).color(Color.yellow).row();
@@ -735,13 +937,13 @@ public class UnitSelectionGrid extends Table{
                                     }
 
                                     if(damage != null){
-                                        t.add(damageLabel + ": " + (int)(float)damage).left().row();
+                                        t.add(damageLabel + ": " + fixed2(damage)).left().row();
                                     }
                                     if(range >= 0f){
-                                        t.add(rangeLabel + ": " + (int)(range / 8f) + " tiles").left().row();
+                                        t.add(rangeLabel + ": " + fixed2(range / 8f) + " tiles").left().row();
                                     }
                                     if(reload > 0f){
-                                        t.add(speedLabel + ": " + String.format("%.1f", reload / 60f) + "s").left().row();
+                                        t.add(speedLabel + ": " + fixed2(reload / 60f) + "s").left().row();
                                     }
                                     if(target != null){
                                         t.add(targetLabel + ": " + target).left().row();
@@ -877,28 +1079,40 @@ public class UnitSelectionGrid extends Table{
 
     private Table buildQueueSlot(UnitType type, float size){
         Table slot = new Table(Styles.black6);
+        Stack stack = new Stack();
+        stack.add(portraitBorderElement());
         if(type != null){
             Image icon = new Image(type.uiIcon);
-            slot.add(icon).size(size - 6f);
+            icon.setScaling(Scaling.fit);
+            Table iconWrap = new Table();
+            iconWrap.add(icon).size(size - 8f);
+            stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
                 t.add(unitDisplayName(type)).style(Styles.outlineLabel).color(Color.white);
             }));
         }
+        slot.add(stack).size(size);
         slot.setSize(size, size);
         return slot;
     }
 
     private Table buildQueueSlot(Block block, float size){
         Table slot = new Table(Styles.black6);
+        Stack stack = new Stack();
+        stack.add(portraitBorderElement());
         if(block != null){
             Image icon = new Image(block.uiIcon);
-            slot.add(icon).size(size - 6f);
+            icon.setScaling(Scaling.fit);
+            Table iconWrap = new Table();
+            iconWrap.add(icon).size(size - 8f);
+            stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
                 t.add(block.localizedName).style(Styles.outlineLabel).color(Color.white);
             }));
         }
+        slot.add(stack).size(size);
         slot.setSize(size, size);
         return slot;
     }
@@ -912,8 +1126,13 @@ public class UnitSelectionGrid extends Table{
         rightHalf.table(panel -> {
             Table box = new Table(Styles.black6);
             Image icon = new Image(cons.current.uiIcon);
-
-            box.add(icon).size(boxSize);
+            icon.setScaling(Scaling.fit);
+            Stack iconStack = new Stack();
+            iconStack.add(portraitBorderElement());
+            Table iconWrap = new Table();
+            iconWrap.add(icon).size(boxSize - 4f);
+            iconStack.add(iconWrap);
+            box.add(iconStack).size(boxSize);
             box.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
                 t.label(() -> {
@@ -947,8 +1166,47 @@ public class UnitSelectionGrid extends Table{
         return type.localizedName;
     }
 
+    private int medivacPayloadHash(Unit unit){
+        if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc payload)){
+            return -1;
+        }
+
+        int hash = payload.payloads().size;
+        for(int i = 0; i < payload.payloads().size; i++){
+            Payload p = payload.payloads().get(i);
+            if(p instanceof UnitPayload up && up.unit != null && up.unit.type != null){
+                hash = 31 * hash + up.unit.id;
+                hash = 31 * hash + up.unit.type.id;
+            }else{
+                hash = 31 * hash + i * 17;
+            }
+        }
+        return hash;
+    }
+
     private String formatTimePair(float current, float total){
         return formatTimeValue(current) + "/" + formatTimeValue(total);
+    }
+
+    private String fixed2(float value){
+        return Strings.autoFixed(value, 2);
+    }
+
+    private float displayedWeaponDamage(Unit unit, Weapon weapon){
+        if(weapon == null || weapon.bullet == null) return 0f;
+        if(UnitTypes.isHurricane(unit)) return 18f;
+        return Math.max(weapon.bullet.damage, weapon.bullet.splashDamage);
+    }
+
+    private float displayedWeaponRange(Unit unit, Weapon weapon){
+        if(weapon == null || weapon.bullet == null) return 0f;
+        if(UnitTypes.isHurricane(unit)) return UnitTypes.hurricaneBaseRange();
+        return weapon.range();
+    }
+
+    private int displayedMultiAttack(Weapon weapon){
+        if(weapon == null || weapon.shoot == null) return 1;
+        return Math.max(1, weapon.shoot.shots);
     }
 
     private String formatTimeValue(float value){
@@ -1084,6 +1342,29 @@ public class UnitSelectionGrid extends Table{
     private String unitClassName(UnitClass type){
         String key = "unitclass." + type.name();
         return Core.bundle.get(key, type.displayName);
+    }
+
+    private ArmorType displayedArmorType(UnitType type){
+        return type.armorType;
+    }
+
+    private String displayedUnitClassNames(UnitType type){
+        if(type == UnitTypes.mega){
+            return unitClassName(UnitClass.mechanical);
+        }
+
+        StringBuilder classes = new StringBuilder();
+        for(UnitClass unitClass : UnitClass.values()){
+            if(type.unitClasses.contains(unitClass)){
+                if(classes.length() > 0) classes.append(" ");
+                classes.append(unitClassName(unitClass));
+            }
+        }
+
+        if(classes.length() == 0){
+            return unitClassName(UnitClass.mechanical);
+        }
+        return classes.toString();
     }
 
     private ArmorType armorTypeFor(Block block){

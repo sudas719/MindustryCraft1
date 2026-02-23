@@ -27,6 +27,8 @@ public class StatusEffect extends UnlockableContent{
     public float buildSpeedMultiplier = 1f;
     /** Unit drag multiplier. */
     public float dragMultiplier = 1f;
+    /** Flat armor modifier applied to unit base armor while active. */
+    public float armorOffset = 0f;
     /** Damage dealt upon transition to an affinity. */
     public float transitionDamage = 0f;
     /** Unit weapon(s) disabled. */

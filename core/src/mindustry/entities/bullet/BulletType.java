@@ -729,7 +729,7 @@ public class BulletType extends Content implements Cloneable{
             Teamc target;
             //home in on allies if possible
             if(heals()){
-                target = Units.closestTarget(null, realAimX, realAimY, homingRange,
+                target = Units.closestTarget(null, realAimX, realAimY, homingRange, b.hitSize() / 2f,
                 e -> e.checkTarget(collidesAir, collidesGround) && e.team != b.team && !b.hasCollided(e.id),
                 t -> collidesGround && (t.team != b.team || t.damaged()) && !b.hasCollided(t.id)
                 );
@@ -737,7 +737,7 @@ public class BulletType extends Content implements Cloneable{
                 if(b.aimTile != null && b.aimTile.build != null && b.aimTile.build.team != b.team && collidesGround && !b.hasCollided(b.aimTile.build.id)){
                     target = b.aimTile.build;
                 }else{
-                    target = Units.closestTarget(b.team, realAimX, realAimY, homingRange,
+                    target = Units.closestTarget(b.team, realAimX, realAimY, homingRange, b.hitSize() / 2f,
                         e -> e != null && e.checkTarget(collidesAir, collidesGround) && !b.hasCollided(e.id),
                         t -> t != null && collidesGround && !b.hasCollided(t.id));
                 }

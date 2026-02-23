@@ -73,8 +73,7 @@ public class Shaders{
         unlitWhite = new LoadShader("planet", "unlitwhite");
         screenspace = new LoadShader("screenspace", "screenspace");
 
-        //disabled for now...
-        //shockwave = new ShockwaveShader();
+        shockwave = new ShockwaveShader();
     }
 
     public static class AtmosphereShader extends LoadShader{
@@ -375,10 +374,16 @@ public class Shaders{
     public static class ShockwaveShader extends LoadShader{
         static final int max = 64;
         static final int size = 5;
+        static final int lensMax = 32;
+        static final int lensSize = 9;
 
         //x y radius life[1-0] lifetime
         protected FloatSeq data = new FloatSeq();
+        //x y rx ry angleDeg life[1-0] lifetime type(0 ellipse,1 sphere) strength
+        protected FloatSeq lensData = new FloatSeq();
         protected FloatSeq uniforms = new FloatSeq();
+        protected FloatSeq lensUniforms = new FloatSeq();
+        protected FloatSeq lensMetaUniforms = new FloatSeq();
         protected boolean hadAny = false;
         protected FrameBuffer buffer = new FrameBuffer();
 
@@ -391,6 +396,7 @@ public class Shaders{
                 if(state.isPaused()) return;
                 if(state.isMenu()){
                     data.size = 0;
+                    lensData.size = 0;
                     return;
                 }
 
@@ -409,10 +415,24 @@ public class Shaders{
                         i -= size;
                     }
                 }
+
+                var lensItems = lensData.items;
+                for(int i = 0; i < lensData.size; i += lensSize){
+                    lensItems[i + 5] -= Time.delta / lensItems[i + 6];
+
+                    if(lensItems[i + 5] <= 0f){
+                        if(lensData.size > lensSize){
+                            System.arraycopy(lensItems, lensData.size - lensSize, lensItems, i, lensSize);
+                        }
+
+                        lensData.size -= lensSize;
+                        i -= lensSize;
+                    }
+                }
             });
 
             Events.run(Trigger.preDraw, () -> {
-                hadAny = data.size > 0;
+                hadAny = (data.size > 0 || lensData.size > 0) && renderer != null && renderer.enableEffects;
 
                 if(hadAny){
                     buffer.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
@@ -433,12 +453,17 @@ public class Shaders{
         @Override
         public void apply(){
             int count = data.size / size;
+            int lensCount = lensData.size / lensSize;
 
             setUniformi("u_shockwave_count", count);
-            if(count > 0){
+            setUniformi("u_lens_count", lensCount);
+
+            if(count > 0 || lensCount > 0){
                 setUniformf("u_resolution", Core.camera.width, Core.camera.height);
                 setUniformf("u_campos", Core.camera.position.x - Core.camera.width/2f, Core.camera.position.y - Core.camera.height/2f);
+            }
 
+            if(count > 0){
                 uniforms.clear();
 
                 var items = data.items;
@@ -454,6 +479,29 @@ public class Shaders{
                 }
 
                 setUniform4fv("u_shockwaves", uniforms.items, 0, uniforms.size);
+            }
+
+            if(lensCount > 0){
+                lensUniforms.clear();
+                lensMetaUniforms.clear();
+
+                var items = lensData.items;
+                for(int i = 0; i < lensCount; i++){
+                    int offset = i * lensSize;
+                    lensUniforms.add(
+                    items[offset], items[offset + 1], items[offset + 2], items[offset + 3]
+                    );
+
+                    lensMetaUniforms.add(
+                    (float)Math.toRadians(items[offset + 4]),
+                    1f - items[offset + 5],
+                    items[offset + 7],
+                    items[offset + 8]
+                    );
+                }
+
+                setUniform4fv("u_lenses", lensUniforms.items, 0, lensUniforms.size);
+                setUniform4fv("u_lens_meta", lensMetaUniforms.items, 0, lensMetaUniforms.size);
             }
         }
 
@@ -472,6 +520,43 @@ public class Shaders{
                 items[4] = lifetime;
             }else{
                 data.addAll(x, y, radius, 1f, lifetime);
+            }
+        }
+
+        public void addLensEllipse(float x, float y, float rx, float ry, float rotation, float lifetime){
+            addLensEllipse(x, y, rx, ry, rotation, lifetime, 1f);
+        }
+
+        public void addLensEllipse(float x, float y, float rx, float ry, float rotation, float lifetime, float strength){
+            addLens(x, y, Math.max(rx, 0.001f), Math.max(ry, 0.001f), rotation, lifetime, 0f, strength);
+        }
+
+        public void addLensSphere(float x, float y, float radius, float lifetime){
+            addLensSphere(x, y, radius, lifetime, 1f);
+        }
+
+        public void addLensSphere(float x, float y, float radius, float lifetime, float strength){
+            float r = Math.max(radius, 0.001f);
+            addLens(x, y, r, r, 0f, lifetime, 1f, strength);
+        }
+
+        private void addLens(float x, float y, float rx, float ry, float rotation, float lifetime, float type, float strength){
+            float life = Math.max(lifetime, 1f);
+            float power = Math.max(strength, 0f);
+
+            if(lensData.size / lensSize >= lensMax){
+                var items = lensData.items;
+                items[0] = x;
+                items[1] = y;
+                items[2] = rx;
+                items[3] = ry;
+                items[4] = rotation;
+                items[5] = 1f;
+                items[6] = life;
+                items[7] = type;
+                items[8] = power;
+            }else{
+                lensData.addAll(x, y, rx, ry, rotation, 1f, life, type, power);
             }
         }
     }

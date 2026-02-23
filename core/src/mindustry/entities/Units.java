@@ -2,6 +2,7 @@ package mindustry.entities;
 
 import arc.*;
 import arc.func.*;
+import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
@@ -139,18 +140,50 @@ public class Units{
         return target != null && (target instanceof Buildingc ? ground : (target instanceof Unit u && u.checkTarget(air, ground)));
     }
 
+    /** @return hitbox radius of this target, or 0 when no sized hitbox exists. */
+    public static float hitRadius(@Nullable Posc target){
+        return target instanceof Sized sized ? sized.hitSize() / 2f : 0f;
+    }
+
+    /** @return whether target is within edge distance range from a source point + source radius. */
+    public static boolean withinTargetRange(@Nullable Posc target, float x, float y, float range, float sourceRadius){
+        return target != null && target.within(x, y, range + sourceRadius + hitRadius(target));
+    }
+
+    /** @return edge-to-edge distance from source point + source radius to target hitbox. */
+    public static float edgeDst(@Nullable Posc target, float x, float y, float sourceRadius){
+        return target == null ? Float.MAX_VALUE : Mathf.dst(x, y, target.x(), target.y()) - sourceRadius - hitRadius(target);
+    }
+
+    /** @return an aim point on/inside target hitbox from a source point. */
+    public static Vec2 aimPoint(@Nullable Posc target, float fromX, float fromY, float targetX, float targetY, Vec2 out){
+        float radius = hitRadius(target);
+        if(radius <= 0.001f) return out.set(targetX, targetY);
+
+        out.set(targetX - fromX, targetY - fromY);
+        float len = out.len();
+        if(len <= 0.001f) return out.set(targetX, targetY);
+
+        return out.setLength(Math.max(0f, len - radius)).add(fromX, fromY);
+    }
+
     /**
      * Validates a target.
      * @param target The target to validate
      * @param team The team of the thing doing tha targeting
      * @param x The X position of the thing doing the targeting
      * @param y The Y position of the thing doing the targeting
-     * @param range The maximum distance from the target X/Y the targeter can be for it to be valid
+     * @param range The maximum edge-to-edge distance from the target hitbox to the source hitbox
      * @return whether the target is invalid
      */
     public static boolean invalidateTarget(Posc target, Team team, float x, float y, float range){
+        return invalidateTarget(target, team, x, y, range, 0f);
+    }
+
+    /** See {@link #invalidateTarget(Posc, Team, float, float, float)} */
+    public static boolean invalidateTarget(Posc target, Team team, float x, float y, float range, float sourceRadius){
         return target == null ||
-            (range != Float.MAX_VALUE && !target.within(x, y, range + (target instanceof Sized hb ? hb.hitSize()/2f : 0f))) ||
+            (range != Float.MAX_VALUE && !withinTargetRange(target, x, y, range, sourceRadius)) ||
             (target instanceof Teamc t && t.team() == team) ||
             (target instanceof Healthc h && !h.isValid()) ||
             (target instanceof Unit u && !u.targetable(team));
@@ -163,7 +196,7 @@ public class Units{
 
     /** See {@link #invalidateTarget(Posc, Team, float, float, float)} */
     public static boolean invalidateTarget(Teamc target, Unit targeter, float range){
-        return invalidateTarget(target, targeter.team(), targeter.x(), targeter.y(), range);
+        return invalidateTarget(target, targeter.team(), targeter.x(), targeter.y(), range, targeter.hitSize / 2f);
     }
 
     /** Returns whether there are any entities on this tile. */
@@ -255,53 +288,78 @@ public class Units{
 
     /** Returns the closest target enemy. First, units are checked, then tile entities. */
     public static Teamc closestTarget(Team team, float x, float y, float range){
-        return closestTarget(team, x, y, range, Unit::isValid);
+        return closestTarget(team, x, y, range, 0f, Unit::isValid);
+    }
+
+    /** Returns the closest target enemy. First, units are checked, then tile entities. */
+    public static Teamc closestTarget(Team team, float x, float y, float range, float sourceRadius){
+        return closestTarget(team, x, y, range, sourceRadius, Unit::isValid);
     }
 
     /** Returns the closest target enemy. First, units are checked, then tile entities. */
     public static Teamc closestTarget(Team team, float x, float y, float range, Boolf<Unit> unitPred){
-        return closestTarget(team, x, y, range, unitPred, t -> true);
+        return closestTarget(team, x, y, range, 0f, unitPred);
+    }
+
+    /** Returns the closest target enemy. First, units are checked, then tile entities. */
+    public static Teamc closestTarget(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> unitPred){
+        return closestTarget(team, x, y, range, sourceRadius, unitPred, t -> true);
     }
 
     /** Returns the closest target enemy. First, units are checked, then tile entities. */
     public static Teamc closestTarget(Team team, float x, float y, float range, Boolf<Unit> unitPred, Boolf<Building> tilePred){
+        return closestTarget(team, x, y, range, 0f, unitPred, tilePred);
+    }
+
+    /** Returns the closest target enemy. First, units are checked, then tile entities. */
+    public static Teamc closestTarget(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> unitPred, Boolf<Building> tilePred){
         if(team == Team.derelict) return null;
 
-        Unit unit = closestEnemy(team, x, y, range, unitPred);
+        Unit unit = closestEnemy(team, x, y, range, sourceRadius, unitPred);
         if(unit != null){
             return unit;
         }else{
-            return findEnemyTile(team, x, y, range, tilePred);
+            return findEnemyTile(team, x, y, range + sourceRadius, tilePred);
         }
     }
 
     /** Returns the closest target enemy. First, units are checked, then buildings. */
     public static Teamc bestTarget(Team team, float x, float y, float range, Boolf<Unit> unitPred, Boolf<Building> tilePred, Sortf sort){
+        return bestTarget(team, x, y, range, 0f, unitPred, tilePred, sort);
+    }
+
+    /** Returns the closest target enemy. First, units are checked, then buildings. */
+    public static Teamc bestTarget(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> unitPred, Boolf<Building> tilePred, Sortf sort){
         if(team == Team.derelict) return null;
 
-        Unit unit = bestEnemy(team, x, y, range, unitPred, sort);
+        Unit unit = bestEnemy(team, x, y, range, sourceRadius, unitPred, sort);
         if(unit != null){
             return unit;
         }else{
-            return findEnemyTile(team, x, y, range, tilePred);
+            return findEnemyTile(team, x, y, range + sourceRadius, tilePred);
         }
     }
 
     /** Returns the closest enemy of this team. Filter by predicate. */
     public static Unit closestEnemy(Team team, float x, float y, float range, Boolf<Unit> predicate){
+        return closestEnemy(team, x, y, range, 0f, predicate);
+    }
+
+    /** Returns the closest enemy of this team. Filter by predicate. */
+    public static Unit closestEnemy(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> predicate){
         if(team == Team.derelict) return null;
 
         result = null;
         cdist = 0f;
         cpriority = -99999f;
 
-        nearbyEnemies(team, x - range, y - range, range*2f, range*2f, e -> {
+        nearbyEnemies(team, x, y, range + sourceRadius, e -> {
             if(e.dead() || !predicate.get(e) || e.team == Team.derelict || !e.targetable(team) || e.inFogTo(team)) return;
 
-            float dst2 = e.dst2(x, y) - (e.hitSize * e.hitSize);
-            if(dst2 < range*range && (result == null || dst2 < cdist || e.type.targetPriority > cpriority) && e.type.targetPriority >= cpriority){
+            float dst = edgeDst(e, x, y, sourceRadius);
+            if(dst <= range && (result == null || dst < cdist || e.type.targetPriority > cpriority) && e.type.targetPriority >= cpriority){
                 result = e;
-                cdist = dst2;
+                cdist = dst;
                 cpriority = e.type.targetPriority;
             }
         });
@@ -311,14 +369,19 @@ public class Units{
 
     /** Returns the closest enemy of this team using a custom comparison function. Filter by predicate. */
     public static Unit bestEnemy(Team team, float x, float y, float range, Boolf<Unit> predicate, Sortf sort){
+        return bestEnemy(team, x, y, range, 0f, predicate, sort);
+    }
+
+    /** Returns the closest enemy of this team using a custom comparison function. Filter by predicate. */
+    public static Unit bestEnemy(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> predicate, Sortf sort){
         if(team == Team.derelict) return null;
 
         result = null;
         cdist = 0f;
         cpriority = -99999f;
 
-        nearbyEnemies(team, x - range, y - range, range*2f, range*2f, e -> {
-            if(e.dead() || !predicate.get(e) || e.team == Team.derelict || !e.within(x, y, range + e.hitSize/2f) || !e.targetable(team) || e.inFogTo(team)) return;
+        nearbyEnemies(team, x, y, range + sourceRadius, e -> {
+            if(e.dead() || !predicate.get(e) || e.team == Team.derelict || !withinTargetRange(e, x, y, range, sourceRadius) || !e.targetable(team) || e.inFogTo(team)) return;
 
             float cost = sort.cost(e, x, y);
             if((result == null || cost < cdist || e.type.targetPriority > cpriority) && e.type.targetPriority >= cpriority){

@@ -43,8 +43,10 @@ import static mindustry.Vars.*;
 
 public class UnitType extends UnlockableContent implements Senseable{
     public static final float shadowTX = -12, shadowTY = -13;
+    private static final float globalTurnSpeedMultiplier = 3f;
     private static final Vec2 legOffset = new Vec2();
     private static final Seq<UnitStance> tmpStances = new Seq<>();
+    private boolean turnSpeedScaled = false;
 
     /** Environmental flags that are *all* required for this unit to function. 0 = any environment */
     public int envRequired = 0;
@@ -88,8 +90,10 @@ public class UnitType extends UnlockableContent implements Senseable{
 
     /** RTS armor type classification */
     public ArmorType armorType = ArmorType.none;
-    /** RTS unit class classification */
-    public UnitClass unitClass = UnitClass.mechanical;
+    /** RTS unit class classifications (multi-value). */
+    public EnumSet<UnitClass> unitClasses = EnumSet.of(UnitClass.mechanical);
+    /** Legacy single-value unit class, merged into {@link #unitClasses} during init. */
+    @Deprecated public @Nullable UnitClass unitClass;
     /** RTS population cost for this unit. */
     public int population = 1;
     /** Energy capacity for psionic units. 0 disables energy. */
@@ -269,6 +273,12 @@ public class UnitType extends UnlockableContent implements Senseable{
     targetUnderBlocks = true,
     /** if true, this unit will always shoot while moving regardless of slowdown */
     alwaysShootWhenMoving = false,
+    /** if true, AI movement is halted while this unit is firing. */
+    stopMovingWhenShooting = false,
+    /** if true, attack weapons require body facing before firing. */
+    requireBodyAimToShoot = false,
+    /** if true, right-click/A-click enemy targets are treated as follow commands when this unit cannot attack. */
+    followEnemyWhenUnarmed = false,
 
     /** whether this unit has a hover tooltip */
     hoverable = true,
@@ -294,6 +304,10 @@ public class UnitType extends UnlockableContent implements Senseable{
     drawSoftShadow = true,
     /** if false, the unit is not drawn on the minimap. */
     drawMinimap = true;
+    /** body-facing tolerance in degrees for firing checks when requireBodyAimToShoot is enabled. */
+    public float bodyAimCone = 6f;
+    /** Range in world units at which this unit reveals stealthed widow mines. 0 to disable. */
+    public float stealthDetectionRange = 0f;
 
     /** The default AI controller to assign on creation. */
     public Prov<? extends UnitController> aiController = () -> !flying ? new GroundAI() : new FlyingAI();
@@ -922,6 +936,24 @@ public class UnitType extends UnlockableContent implements Senseable{
     @Override
     public void init(){
         super.init();
+
+        if(!turnSpeedScaled){
+            rotateSpeed *= globalTurnSpeedMultiplier;
+            baseRotateSpeed *= globalTurnSpeedMultiplier;
+            turnSpeedScaled = true;
+        }
+
+        if(unitClasses == null || unitClasses.size == 0){
+            unitClasses = EnumSet.of(UnitClass.mechanical);
+        }
+
+        if(unitClass != null){
+            unitClasses = unitClasses.with(unitClass);
+        }
+
+        if(energyCapacity > 0f){
+            unitClasses = unitClasses.with(UnitClass.psionic);
+        }
 
         Unit example = constructor.get();
 

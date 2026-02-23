@@ -360,11 +360,16 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         if(ai.command == null || ai.command.switchToMove){
                             ai.command(UnitCommand.moveCommand);
                         }
+                        //Forced attack commands must override non-moving stances/commands (e.g. hold).
+                        if(forceAttackTarget && teamTarget != null){
+                            ai.command(UnitCommand.moveCommand);
+                        }
 
                     if(teamTarget != null){
-                        if(teamTarget.team() == player.team() && !forceAttackTarget){
+                        boolean forcedAllyAttack = forceAttackTarget && teamTarget.team() == player.team();
+                        if(teamTarget.team() == player.team() && !forcedAllyAttack){
                             ai.commandFollow(teamTarget);
-                        }else if(!((teamTarget instanceof Unit && !unit.canTarget((Unit)teamTarget)) || (teamTarget instanceof Building && !unit.type.targetGround))){
+                        }else if(forcedAllyAttack || !((teamTarget instanceof Unit && !unit.canTarget((Unit)teamTarget)) || (teamTarget instanceof Building && !unit.type.targetGround))){
                             anyCommandedTarget = true;
                             if(queueCommand){
                                 ai.commandQueue(teamTarget);
@@ -372,13 +377,19 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                                 ai.commandQueue.clear();
                                 ai.commandTarget(teamTarget);
                             }
+                        }else if(unit.type.followEnemyWhenUnarmed){
+                            ai.commandFollow(teamTarget);
                         }
                     }else if(safePosTarget != null){
                         if(queueCommand){
                             ai.commandQueue(safePosTarget);
                         }else{
                             ai.commandQueue.clear();
-                            ai.commandPosition(safePosTarget);
+                            if(forceAttackTarget){
+                                ai.commandPosition(safePosTarget, false, true);
+                            }else{
+                                ai.commandPosition(safePosTarget);
+                            }
                         }
                     }
 
@@ -427,7 +438,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         if(unitIds.length > 0 && player == Vars.player && !state.isPaused()){
             if(anyCommandedTarget){
-                Fx.attackCommand.at(teamTarget);
+                // Attack-command marker effect disabled by mod behavior.
             }
         }
     }
@@ -489,6 +500,311 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 }
                 unit.lastCommanded = player.coloredName();
             }
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandWidowMine(Player player, int[] unitIds, boolean burrow){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isWidow(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+
+            if(burrow){
+                UnitTypes.commandWidowBurrow(unit);
+            }else{
+                UnitTypes.commandWidowUnburrow(unit);
+            }
+
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandHurricaneLock(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isHurricane(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandHurricaneLock(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandPreceptSiege(Player player, int[] unitIds, boolean siege){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isSiegeTank(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandPreceptSiege(unit, siege);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandScepterAirMode(Player player, int[] unitIds, boolean impactMode){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isThor(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandScepterAirMode(unit, impactMode);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandLiberatorMode(Player player, int[] unitIds, boolean defenseMode, @Nullable Vec2 zoneTarget){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(zoneTarget);
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isLiberator(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            if(defenseMode){
+                if(safeTarget == null) continue;
+                UnitTypes.commandLiberatorDefense(unit, safeTarget);
+            }else{
+                UnitTypes.commandLiberatorFighter(unit);
+            }
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandMedivacAfterburner(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandMedivacAfterburner(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandMedivacMovingUnload(Player player, int[] unitIds, boolean enabled){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.setMedivacMovingUnload(unit, enabled);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandMedivacDropPayload(Player player, int unitId, int payloadIndex){
+        if(player == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = new int[]{unitId};
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Unit unit = Groups.unit.getByID(unitId);
+        if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc pay)) return;
+        if(UnitTypes.ravenMatrixDisabled(unit)) return;
+        if(payloadIndex < 0 || payloadIndex >= pay.payloads().size) return;
+
+        int last = pay.payloads().size - 1;
+        if(payloadIndex != last){
+            pay.payloads().swap(payloadIndex, last);
+        }
+        Call.payloadDropped(unit, unit.x, unit.y);
+        unit.lastCommanded = player.coloredName();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandBansheeCloak(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isBanshee(unit)) continue;
+            UnitTypes.commandBansheeCloak(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandBattlecruiserYamato(Player player, int[] unitIds, int targetId, int buildPos){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Teamc target = null;
+        if(targetId >= 0){
+            Unit u = Groups.unit.getByID(targetId);
+            if(u != null && u.isValid()){
+                target = u;
+            }
+        }else if(buildPos >= 0){
+            Building b = world.build(buildPos);
+            if(b != null && b.isValid()){
+                target = b;
+            }
+        }
+        if(target == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isBattlecruiser(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandBattlecruiserYamato(unit, target);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandBattlecruiserWarp(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isBattlecruiser(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandBattlecruiserWarp(unit, safeTarget);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandAvertDeployTurret(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandRavenDeployTurret(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandAvertAntiArmor(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandRavenAntiArmor(unit, safeTarget);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandAvertMatrix(Player player, int[] unitIds, int targetId){
+        if(player == null || unitIds == null || targetId < 0) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Unit target = Groups.unit.getByID(targetId);
+        if(target == null || !target.isValid()) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandRavenMatrix(unit, target);
+            unit.lastCommanded = player.coloredName();
         }
     }
 
@@ -1337,6 +1653,33 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     }
                 }
 
+                //Medivac right-click on ally unit: use load command instead of follow.
+                if(teamTarget instanceof Unit allyTarget && allyTarget.team() == player.team()){
+                    IntSeq medivacIds = new IntSeq();
+                    boolean onlyMedivacSelected = !selectedUnits.isEmpty();
+                    for(Unit unit : selectedUnits){
+                        if(!UnitTypes.isMedivac(unit)){
+                            onlyMedivacSelected = false;
+                            break;
+                        }
+                    }
+
+                    if(onlyMedivacSelected){
+                        for(Unit unit : selectedUnits){
+                            if(unit == null || !unit.isValid() || !UnitTypes.medivacCanPickup(unit, allyTarget)) continue;
+                            medivacIds.add(unit.id);
+                        }
+                    }
+
+                    if(medivacIds.size > 0){
+                        int[] ids = medivacIds.toArray();
+                        Call.setUnitCommand(player, ids, UnitCommand.loadUnitsCommand);
+                        Call.commandMedivacMovingUnload(player, ids, false);
+                        Call.commandUnits(player, ids, null, allyTarget, target, queue, true, false);
+                        return;
+                    }
+                }
+
                 int[] ids = new int[selectedUnits.size];
                 for(int i = 0; i < ids.length; i++){
                     ids[i] = selectedUnits.get(i).id;
@@ -1408,12 +1751,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(commandMode){
             for(Unit unit : selectedUnits){
                 if(unit.controller() instanceof CommandAI){
-                    CommandAI ai = (CommandAI)unit.controller();
-                    var cmd =  ai.currentCommand();
-
-                    if(ai.attackTarget != null && cmd.drawTarget){
-                        Drawf.target(ai.attackTarget.getX(), ai.attackTarget.getY(), 6f, Pal.remove);
-                    }
+                    //Intentionally left blank: remove red attack target lock box.
                 }
             }
         }
@@ -1482,7 +1820,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
     }
 
-    private void drawWaypointLine(float x1, float y1, float x2, float y2, Color color, boolean moving){
+    private void drawWaypointLine(float x1, float y1, float x2, float y2, Color color, boolean moving, boolean fadeOut){
         float dst = Mathf.dst(x1, y1, x2, y2);
         if(dst < 1f) return;
 
@@ -1494,11 +1832,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             offset = (Time.time * speed) % spacing;
         }
 
-        Draw.color(color);
         for(float d = offset; d < dst; d += spacing){
             float t = d / dst;
             float px = Mathf.lerp(x1, x2, t);
             float py = Mathf.lerp(y1, y2, t);
+            float alpha = fadeOut ? Mathf.clamp(1f - t) : 1f;
+            Draw.color(color.r, color.g, color.b, color.a * alpha);
             Fill.circle(px, py, 0.9f);
         }
         Draw.reset();
@@ -1509,9 +1848,13 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         TextureRegion waypoint = Core.atlas.find("wayPoint");
         if(!waypoint.found()) waypoint = Core.atlas.find("wayPoints/wayPoint");
+        TextureRegion waypointRed = Core.atlas.find("wayPoint-red");
+        if(!waypointRed.found()) waypointRed = Core.atlas.find("wayPoints/wayPoint-red");
 
         TextureRegion waypointBackground = Core.atlas.find("wayPoint-background");
         if(!waypointBackground.found()) waypointBackground = Core.atlas.find("wayPoints/wayPoint-background");
+        TextureRegion waypointBackgroundRed = Core.atlas.find("wayPoint-background-red");
+        if(!waypointBackgroundRed.found()) waypointBackgroundRed = Core.atlas.find("wayPoints/wayPoint-background-red");
 
         float waypointWidth = tilesize;
         float waypointHeight = tilesize;
@@ -1534,7 +1877,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             bgAlpha = 1f - Interp.pow2Out.apply(bgProgress);
         }
 
-        for(Unit unit : Groups.unit){
+        for(Unit unit : selectedUnits){
             if(unit == null || !unit.isValid()) continue;
             if(unit.team != player.team()) continue;
             if(unit.inFogTo(player.team())) continue;
@@ -1544,8 +1887,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             CommandAI ai = (CommandAI)unit.controller();
             UnitCommand cmd = ai.currentCommand();
             if(cmd == UnitCommand.harvestCommand) continue;
-
             Position current = ai.targetPos;
+            if(ai.followTarget instanceof Teamc){
+                current = ai.followTarget;
+            }else if(ai.attackTarget instanceof Building){
+                current = ai.attackTarget;
+            }
             int queueOffset = 0;
             if(current == null && ai.commandQueue.size > 0){
                 current = ai.commandQueue.first();
@@ -1553,50 +1900,64 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             }
             if(current == null) continue;
 
-            int queuedCount = ai.commandQueue.size - queueOffset;
-            int totalPoints = 1 + queuedCount;
-            boolean drawBetween = totalPoints > 1;
-
-            if(totalPoints > 1){
-                drawWaypointLine(unit.x, unit.y, current.getX(), current.getY(), Color.green, true);
-            }
-
-            if(drawBetween){
-                Position prev = current;
-                for(int i = queueOffset; i < ai.commandQueue.size; i++){
-                    Position next = ai.commandQueue.get(i);
-                    if(!(next instanceof Vec2)) continue;
-                    drawWaypointLine(prev.getX(), prev.getY(), next.getX(), next.getY(), Color.green, false);
-                    prev = next;
+            Seq<Position> points = new Seq<>();
+            BoolSeq attackPoints = new BoolSeq();
+            points.add(current);
+            boolean currentAttack = ai.attackTarget != null || (ai.targetPos != null && ai.attackMovePosition);
+            if(current instanceof Teamc teamc){
+                if(ai.followTarget != teamc){
+                    currentAttack |= ai.attackTarget == teamc || teamc.team() != unit.team;
                 }
             }
-
-            if(waypointBackground.found()){
-                if(drawBgPulse){
-                    Draw.color(1f, 1f, 1f, bgAlpha);
-                    Draw.rect(waypointBackground, current.getX(), current.getY(), waypointBackgroundWidth * bgScale, waypointBackgroundHeight * bgScale);
-                }
-            }else{
-                if(drawBgPulse){
-                    Draw.color(1f, 1f, 1f, bgAlpha);
-                    Drawf.square(current.getX(), current.getY(), (tilesize * 0.5f) * bgScale, Pal.accent.write(Tmp.c1).a(bgAlpha));
-                }
-            }
-
-            Draw.color();
-            if(waypoint.found()){
-                Draw.rect(waypoint, current.getX(), current.getY(), waypointWidth * pulseScale, waypointHeight * pulseScale);
-            }else{
-                Drawf.square(current.getX(), current.getY(), (tilesize * 0.5f) * pulseScale, Pal.accent);
-            }
+            attackPoints.add(currentAttack);
 
             for(int i = queueOffset; i < ai.commandQueue.size; i++){
                 Position next = ai.commandQueue.get(i);
-                if(!(next instanceof Vec2)) continue;
-                if(waypoint.found()){
-                    Draw.rect(waypoint, next.getX(), next.getY(), waypointWidth, waypointHeight);
+                if(next == null) continue;
+                points.add(next);
+                boolean queuedAttack = false;
+                if(next instanceof Teamc teamc){
+                    queuedAttack = ai.attackTarget == teamc || teamc.team() != unit.team;
+                }
+                attackPoints.add(queuedAttack);
+            }
+
+            if(points.size > 1){
+                drawWaypointLine(unit.x, unit.y, points.first().getX(), points.first().getY(),
+                    attackPoints.get(0) ? Pal.remove : Color.green, true, false);
+            }
+
+            for(int i = 1; i < points.size; i++){
+                Position prev = points.get(i - 1);
+                Position next = points.get(i);
+                boolean fadeLastSegment = points.size >= 2 && i == points.size - 1;
+                drawWaypointLine(prev.getX(), prev.getY(), next.getX(), next.getY(),
+                    attackPoints.get(i) ? Pal.remove : Color.green, true, fadeLastSegment);
+            }
+
+            for(int i = 0; i < points.size; i++){
+                Position point = points.get(i);
+                boolean attackPoint = attackPoints.get(i);
+                TextureRegion pointRegion = attackPoint && waypointRed.found() ? waypointRed : waypoint;
+                TextureRegion pointBackgroundRegion = attackPoint && waypointBackgroundRed.found() ? waypointBackgroundRed : waypointBackground;
+
+                if(pointBackgroundRegion.found()){
+                    if(drawBgPulse){
+                        Draw.color(1f, 1f, 1f, bgAlpha);
+                        Draw.rect(pointBackgroundRegion, point.getX(), point.getY(), waypointBackgroundWidth * bgScale, waypointBackgroundHeight * bgScale);
+                    }
                 }else{
-                    Drawf.square(next.getX(), next.getY(), tilesize * 0.5f, Pal.accent);
+                    if(drawBgPulse){
+                        Drawf.square(point.getX(), point.getY(), (tilesize * 0.5f) * bgScale,
+                            (attackPoint ? Pal.remove : Pal.accent).write(Tmp.c1).a(bgAlpha));
+                    }
+                }
+
+                Draw.color();
+                if(pointRegion.found()){
+                    Draw.rect(pointRegion, point.getX(), point.getY(), waypointWidth * pulseScale, waypointHeight * pulseScale);
+                }else{
+                    Drawf.square(point.getX(), point.getY(), (tilesize * 0.5f) * pulseScale, attackPoint ? Pal.remove : Pal.accent);
                 }
             }
         }
@@ -1661,8 +2022,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                             if(next instanceof Vec2){
                                 Vec2 vec = (Vec2)next;
                                 Drawf.square(vec.x, vec.y, 3.5f, color.write(Tmp.c1).a(alpha));
-                            }else{
-                                Drawf.target(next.getX(), next.getY(), 6f, Pal.remove);
                             }
                         }
                     }

@@ -187,6 +187,7 @@ abstract class StatusComp implements Posc{
         armorOverride = -1f;
         speedMultiplier = damageMultiplier = healthMultiplier = reloadMultiplier = buildSpeedMultiplier = dragMultiplier = 1f;
         disarmed = false;
+        float armorOffset = 0f;
 
         if(statuses.isEmpty()) return;
 
@@ -225,11 +226,20 @@ abstract class StatusComp implements Posc{
                     reloadMultiplier *= entry.effect.reloadMultiplier;
                     buildSpeedMultiplier *= entry.effect.buildSpeedMultiplier;
                     dragMultiplier *= entry.effect.dragMultiplier;
+                    armorOffset += entry.effect.armorOffset;
                 }
 
                 disarmed |= entry.effect.disarm;
 
                 entry.effect.update(self(), entry);
+            }
+        }
+
+        if(armorOffset != 0f){
+            if(armorOverride >= 0f){
+                armorOverride = Math.max(0f, armorOverride + armorOffset);
+            }else{
+                armorOverride = Math.max(0f, type.armor + armorOffset);
             }
         }
     }

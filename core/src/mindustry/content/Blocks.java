@@ -3356,8 +3356,9 @@ public class Blocks{
 
                 private void updateTurret(){
                     float range = 6f * tilesize;
-                    if(Units.invalidateTarget(turretTarget, team, x, y, range)){
-                        turretTarget = Units.closestTarget(team, x, y, range, u -> !u.isFlying(), b -> true);
+                    float sourceRadius = hitSize() / 2f;
+                    if(Units.invalidateTarget(turretTarget, team, x, y, range, sourceRadius)){
+                        turretTarget = Units.closestTarget(team, x, y, range, sourceRadius, u -> !u.isFlying(), b -> true);
                     }
 
                     if(turretTarget == null) return;
@@ -6661,7 +6662,7 @@ public class Blocks{
             sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.locus, 60f * 21f, with(Items.graphite, 100)));
             plans.add(new UnitPlan(UnitTypes.crawler, 60f * 21f, with(Items.graphite, 75, Items.highEnergyGas, 25)));
-            plans.add(new UnitPlan(UnitTypes.anthicus, 60f * 32f, with(Items.graphite, 150, Items.highEnergyGas, 100)));
+            plans.add(new UnitPlan(UnitTypes.hurricane, 60f * 32f, with(Items.graphite, 150, Items.highEnergyGas, 100)));
             plans.add(new UnitPlan(UnitTypes.precept, 60f * 32f, with(Items.graphite, 150, Items.highEnergyGas, 125)));
             plans.add(new UnitPlan(UnitTypes.mace, 60f * 21f, with(Items.graphite, 100)));
             plans.add(new UnitPlan(UnitTypes.scepter, 60f * 43f, with(Items.graphite, 300, Items.highEnergyGas, 200)));
@@ -6691,7 +6692,7 @@ public class Blocks{
             sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.flare, 60f * 30f, with(Items.graphite, 125, Items.highEnergyGas, 75)));
             plans.add(new UnitPlan(UnitTypes.mega, 60f * 30f, with(Items.graphite, 100, Items.highEnergyGas, 100)));
-            plans.add(new UnitPlan(UnitTypes.obviate, 60f * 43f, with(Items.graphite, 150, Items.highEnergyGas, 125)));
+            plans.add(new UnitPlan(UnitTypes.liberator, 60f * 43f, with(Items.graphite, 150, Items.highEnergyGas, 125)));
             plans.add(new UnitPlan(UnitTypes.avert, 60f * 34f, with(Items.graphite, 100, Items.highEnergyGas, 150)));
             plans.add(new UnitPlan(UnitTypes.horizon, 60f * 43f, with(Items.graphite, 150, Items.highEnergyGas, 100)));
             plans.add(new UnitPlan(UnitTypes.antumbra, 60f * 64f, with(Items.graphite, 400, Items.highEnergyGas, 300)));

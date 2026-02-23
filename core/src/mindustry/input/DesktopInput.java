@@ -3,6 +3,7 @@ package mindustry.input;
 import arc.*;
 import arc.Graphics.*;
 import arc.Graphics.Cursor.*;
+import arc.func.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.input.*;
@@ -87,9 +88,19 @@ public class DesktopInput extends InputHandler{
     private mindustry.ui.UnitAbilityPanel.CommandMode queuedCommandMode = mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
     /** Guards against ghost clicks immediately after refocus/large frame hitch. */
     private float commandFocusGuardTime = 0f;
+    /** Timestamp of the latest left-click consumed by ability targeting. */
+    private long abilityTargetConsumeMillis = -1L;
 
     private float buildPlanMouseOffsetX, buildPlanMouseOffsetY;
     private boolean changedCursor, pressedCommandRect;
+
+    private boolean abilityTargetingActive(){
+        return ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
+    }
+
+    private boolean suppressSelectionTap(){
+        return abilityTargetConsumeMillis > 0L && Time.timeSinceMillis(abilityTargetConsumeMillis) <= 200L;
+    }
 
     boolean showHint(){
         return ui.hudfrag.shown && Core.settings.getBool("hints") && selectPlans.isEmpty() && !player.dead() &&
@@ -170,6 +181,15 @@ public class DesktopInput extends InputHandler{
             }else if(Core.input.keyDown(Binding.rebuildSelect)){
                 drawRebuildSelection(schemX, schemY, cursorX, cursorY);
             }
+        }
+
+        if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.LIBERATOR_ZONE){
+            float wx = clampCommandX(Core.input.mouseWorldX());
+            float wy = clampCommandY(Core.input.mouseWorldY());
+            Draw.z(Layer.effect);
+            Lines.stroke(1.5f, Pal.remove);
+            Lines.circle(wx, wy, UnitTypes.liberatorZoneRadius());
+            Draw.reset();
         }
 
         super.drawTop();
@@ -745,7 +765,7 @@ public class DesktopInput extends InputHandler{
             renderer.scaleCamera(Core.input.axisTap(Binding.zoom));
         }
 
-        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse()){
+        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse() && !abilityTargetingActive() && !suppressSelectionTap()){
             Tile selected = world.tileWorld(input.mouseWorldX(), input.mouseWorldY());
             if(selected != null){
                 Call.tileTap(player, selected);
@@ -827,7 +847,7 @@ public class DesktopInput extends InputHandler{
     }
 
     void pollInputNoPlayer(){
-        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse()){
+        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse() && !abilityTargetingActive() && !suppressSelectionTap()){
             tappedOne = false;
 
             Tile selected = tileAt(Core.input.mouseX(), Core.input.mouseY());
@@ -964,7 +984,7 @@ public class DesktopInput extends InputHandler{
             }
         }
 
-        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse()){
+        if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse() && !abilityTargetingActive() && !suppressSelectionTap()){
             if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
                 //don't change selection while choosing a command target
                 selectMillis = Time.millis();
@@ -1203,6 +1223,14 @@ public class DesktopInput extends InputHandler{
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.EXTRA_SUPPLY
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.SCAN
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.LAND
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.LIBERATOR_ZONE
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_HEAL
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_LOAD
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_UNLOAD
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_YAMATO
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_WARP
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_ANTI_ARMOR
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MOVE
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.ATTACK
@@ -1222,6 +1250,9 @@ public class DesktopInput extends InputHandler{
     @Override
     public boolean tap(float x, float y, int count, KeyCode button){
         if(scene.hasMouse() || !commandMode) return false;
+        if(button == KeyCode.mouseLeft && (abilityTargetingActive() || suppressSelectionTap())){
+            return true;
+        }
 
         //Command mode is now handled in touchDown, not tap
         //This prevents double execution
@@ -1294,6 +1325,62 @@ public class DesktopInput extends InputHandler{
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.LAND){
             if(executeLandCommand(worldX, worldY)){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.LIBERATOR_ZONE){
+            if(executeLiberatorZoneCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_HEAL){
+            if(executeMedivacHealCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_LOAD){
+            if(executeMedivacLoadCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_UNLOAD){
+            if(executeMedivacUnloadCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_YAMATO){
+            if(executeBattlecruiserYamatoCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_WARP){
+            if(executeBattlecruiserWarpCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_ANTI_ARMOR){
+            if(executeRavenAntiArmorCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX){
+            if(executeRavenMatrixCommand(worldX, worldY) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
@@ -1547,6 +1634,141 @@ public class DesktopInput extends InputHandler{
         return any;
     }
 
+    private int[] selectedMedivacIds(Boolf<Unit> filter){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            ids.add(unit.id);
+        }
+        return ids.toArray();
+    }
+
+    private int[] selectedLiberatorIds(Boolf<Unit> filter){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            ids.add(unit.id);
+        }
+        return ids.toArray();
+    }
+
+    private int[] selectedRavenIds(Boolf<Unit> filter){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            ids.add(unit.id);
+        }
+        return ids.toArray();
+    }
+
+    private int[] selectedBattlecruiserIds(Boolf<Unit> filter){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            ids.add(unit.id);
+        }
+        return ids.toArray();
+    }
+
+    private boolean executeLiberatorZoneCommand(float worldX, float worldY){
+        int[] ids = selectedLiberatorIds(UnitTypes::liberatorCanEnterDefense);
+        if(ids.length == 0) return false;
+        Call.commandLiberatorMode(player, ids, true, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeMedivacHealCommand(float worldX, float worldY){
+        Unit target = selectedAnyUnit(worldX, worldY);
+        if(!UnitTypes.medivacCanHealTarget(target, player.team())) return false;
+
+        int[] ids = selectedMedivacIds(u -> true);
+        if(ids.length == 0) return false;
+
+        Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
+        Call.commandMedivacMovingUnload(player, ids, false);
+        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), false, true, false);
+        return true;
+    }
+
+    private boolean executeMedivacLoadCommand(float worldX, float worldY){
+        Unit target = selectedAnyUnit(worldX, worldY);
+        if(target == null || target.team != player.team()) return false;
+
+        int[] ids = selectedMedivacIds(u -> UnitTypes.medivacCanPickup(u, target));
+        if(ids.length == 0) return false;
+
+        Call.setUnitCommand(player, ids, UnitCommand.loadUnitsCommand);
+        Call.commandMedivacMovingUnload(player, ids, false);
+        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), false, true, false);
+        return true;
+    }
+
+    private boolean executeMedivacUnloadCommand(float worldX, float worldY){
+        int[] ids = selectedMedivacIds(u -> u instanceof Payloadc pay && !pay.payloads().isEmpty());
+        if(ids.length == 0) return false;
+
+        Call.setUnitCommand(player, ids, UnitCommand.unloadPayloadCommand);
+
+        Unit clicked = selectedAnyUnit(worldX, worldY);
+        boolean selfTarget = clicked != null && clicked.team == player.team() && selectedUnits.contains(clicked) && UnitTypes.isMedivac(clicked);
+        if(selfTarget){
+            Call.commandMedivacMovingUnload(player, ids, true);
+            return true;
+        }
+
+        Call.commandMedivacMovingUnload(player, ids, false);
+        Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), false, true, false);
+        return true;
+    }
+
+    private boolean executeRavenAntiArmorCommand(float worldX, float worldY){
+        int[] ids = selectedRavenIds(UnitTypes::ravenCanUseAntiArmor);
+        if(ids.length == 0) return false;
+        Call.commandAvertAntiArmor(player, ids, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeBattlecruiserYamatoCommand(float worldX, float worldY){
+        if(!UnitTypes.battlecruiserHasYamatoTech(player.team())) return false;
+
+        Building build = world.buildWorld(worldX, worldY);
+        Teamc target = (build != null && build.within(worldX, worldY, build.hitSize() / 2f)) ? build : null;
+        if(target == null){
+            target = selectedAnyUnit(worldX, worldY);
+        }
+        if(target == null) return false;
+
+        int[] ids = selectedBattlecruiserIds(UnitTypes::battlecruiserCanUseYamato);
+        if(ids.length == 0) return false;
+
+        int targetId = target instanceof Unit u ? u.id : -1;
+        int buildPos = target instanceof Building b ? b.pos() : -1;
+        Call.commandBattlecruiserYamato(player, ids, targetId, buildPos);
+        return true;
+    }
+
+    private boolean executeBattlecruiserWarpCommand(float worldX, float worldY){
+        int[] ids = selectedBattlecruiserIds(UnitTypes::battlecruiserCanUseWarp);
+        if(ids.length == 0) return false;
+        Call.commandBattlecruiserWarp(player, ids, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeRavenMatrixCommand(float worldX, float worldY){
+        Unit target = selectedAnyUnit(worldX, worldY);
+        if(target == null || !target.isValid()) return false;
+
+        int[] ids = selectedRavenIds(u -> UnitTypes.ravenCanUseMatrix(u) && UnitTypes.ravenMatrixValidTarget(target, u.team));
+        if(ids.length == 0) return false;
+
+        Call.commandAvertMatrix(player, ids, target.id);
+        return true;
+    }
+
     private @Nullable Tile findSpawnTileNearCore(CoreBlock.CoreBuild core, Tile resource){
         if(resource == null || core == null) return null;
         int dx = core.tile.x - resource.x;
@@ -1719,10 +1941,27 @@ public class DesktopInput extends InputHandler{
                     attack = selectedAnyUnit(worldX, worldY);
                 }
 
+                boolean followOnlySelection = selectedUnits.size > 0;
+                for(Unit unit : selectedUnits){
+                    if(unit == null || !unit.isValid() || !unit.type.followEnemyWhenUnarmed){
+                        followOnlySelection = false;
+                        break;
+                    }
+                }
+
+                if(followOnlySelection){
+                    if(attack != null){
+                        Call.commandUnits(player, ids, attack instanceof Building b ? b : null, attack instanceof Unit u ? u : null, new Vec2(worldX, worldY), queue, true, false);
+                    }else{
+                        Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
+                    }
+                    break;
+                }
+
                 if(attack != null){
                     Call.commandUnits(player, ids, attack instanceof Building b ? b : null, attack instanceof Unit u ? u : null, new Vec2(worldX, worldY), queue, true, true);
                 }else{
-                    Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
+                    Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, true);
                 }
                 break;
         }
@@ -1742,6 +1981,7 @@ public class DesktopInput extends InputHandler{
         if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
             if(button == KeyCode.mouseLeft){
                 //Execute command immediately on mouse press
+                abilityTargetConsumeMillis = Time.millis();
                 executeActiveCommand(x, y);
                 return true;
             }

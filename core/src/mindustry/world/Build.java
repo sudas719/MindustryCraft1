@@ -239,7 +239,16 @@ public class Build{
 
     /** @return whether a tile can be placed at this location by this team. */
     public static boolean checkNoUnitOverlap(Block type, int x, int y){
-        return (!type.solid && !type.solidifes) || !Units.anyEntities(x * tilesize + type.offset - type.size * tilesize / 2f, y * tilesize + type.offset - type.size * tilesize / 2f, type.size * tilesize, type.size * tilesize);
+        float wx = x * tilesize + type.offset - type.size * tilesize / 2f;
+        float wy = y * tilesize + type.offset - type.size * tilesize / 2f;
+        float size = type.size * tilesize;
+
+        //Buried widow mines always block placement in their footprint.
+        if(Units.anyEntities(wx, wy, size, size, UnitTypes::widowIsBuried)) return false;
+        //Sieged precept tanks always block placement in their footprint.
+        if(Units.anyEntities(wx, wy, size, size, UnitTypes::preceptIsSieged)) return false;
+
+        return (!type.solid && !type.solidifes) || !Units.anyEntities(wx, wy, size, size);
     }
 
     /** @return whether a tile can be placed at this location by this team. Ignores units at this location. */

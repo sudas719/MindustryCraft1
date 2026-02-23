@@ -77,6 +77,10 @@ abstract class PayloadComp implements Posc, Rotc, Hitboxc, Unitc{
     }
 
     boolean canPickup(Unit unit){
+        if(type == UnitTypes.mega && self() instanceof Unit){
+            Unit carrier = (Unit)self();
+            return UnitTypes.medivacCanPickup(carrier, unit, payloads);
+        }
         return type.pickupUnits && payloadUsed() + unit.hitSize * unit.hitSize <= type.payloadCapacity + 0.001f && unit.team == team() && unit.isAI() && unit.type.allowedInPayloads;
     }
 

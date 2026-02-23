@@ -434,20 +434,7 @@ public class Turret extends ReloadTurret{
 
         public void targetPosition(Posc pos){
             if(!hasAmmo() || pos == null) return;
-            BulletType bullet = peekAmmo();
-
-            var offset = Tmp.v1.setZero();
-
-            //when delay is accurate, assume unit has moved by chargeTime already
-            if(accurateDelay && !moveWhileCharging && pos instanceof Hitboxc h){
-                offset.set(h.deltaX(), h.deltaY()).scl(shoot.firstShotDelay / Time.delta);
-            }
-
-            if(predictTarget && bullet.speed >= 0.01f){
-                targetPos.set(Predict.intercept(this, pos, offset.x, offset.y, bullet.speed));
-            }else{
-                targetPos.set(pos);
-            }
+            targetPos.set(pos);
 
             if(targetPos.isZero()){
                 targetPos.set(pos);
@@ -560,7 +547,7 @@ public class Turret extends ReloadTurret{
                         targetPosition(target);
 
                         if(Float.isNaN(rotation)) rotation = 0;
-                        canShoot = within(target, range() + (target instanceof Sized hb ? hb.hitSize()/1.9f : 0f));
+                        canShoot = Units.withinTargetRange(target, x, y, range(), hitSize() / 2f);
                     }
 
                     if(!isControlled()){
@@ -616,11 +603,11 @@ public class Turret extends ReloadTurret{
 
         protected Posc findEnemy(float range){
             if(targetAir && !targetGround){
-                return Units.bestEnemy(team, x, y, range, e -> !e.dead() && !e.isGrounded() && unitFilter.get(e), unitSort);
+                return Units.bestEnemy(team, x, y, range, hitSize() / 2f, e -> !e.dead() && !e.isGrounded() && unitFilter.get(e), unitSort);
             }else{
                 var ammo = peekAmmo();
                 boolean buildings = targetGround && targetBlocks && (ammo == null || ammo.targetBlocks), missiles = ammo == null || ammo.targetMissiles;
-                return Units.bestTarget(team, x, y, range,
+                return Units.bestTarget(team, x, y, range, hitSize() / 2f,
                     e -> !e.dead() && unitFilter.get(e) && (e.isGrounded() || targetAir) && (!e.isGrounded() || targetGround) && (missiles || !(e instanceof TimedKillc)),
                     b -> buildings && buildingFilter.get(b), unitSort);
             }

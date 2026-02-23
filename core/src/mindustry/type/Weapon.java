@@ -27,6 +27,9 @@ import mindustry.world.meta.*;
 import static mindustry.Vars.*;
 
 public class Weapon implements Cloneable{
+    private static final float globalTurretTurnSpeedMultiplier = 3f;
+    private boolean turretTurnSpeedScaled = false;
+
     /** displayed weapon region */
     public String name;
     /** bullet shot */
@@ -318,28 +321,23 @@ public class Weapon implements Cloneable{
         if(!controllable && autoTarget){
             float weaponRange = bullet.range + unit.hitSize / 2f;
             if((mount.retarget -= Time.delta) <= 0f){
-                mount.target = findTarget(unit, mountX, mountY, weaponRange, bullet.collidesAir, bullet.collidesGround);
+                mount.target = findTarget(unit, unit.x, unit.y, weaponRange, bullet.collidesAir, bullet.collidesGround);
                 mount.retarget = mount.target == null ? targetInterval : targetSwitchInterval;
             }
 
-            if(mount.target != null && checkTarget(unit, mount.target, mountX, mountY, weaponRange)){
+            if(mount.target != null && checkTarget(unit, mount.target, unit.x, unit.y, weaponRange)){
                 mount.target = null;
             }
 
             boolean shoot = false;
 
-            if(mount.target != null){
-                shoot = mount.target.within(mountX, mountY, weaponRange + Math.abs(shootY) + (mount.target instanceof Sized s ? s.hitSize()/2f : 0f)) && can;
+                if(mount.target != null){
+                    shoot = Units.withinTargetRange(mount.target, unit.x, unit.y, weaponRange + Math.abs(shootY), unit.hitSize / 2f) && can;
 
-                if(predictTarget){
-                    Vec2 to = Predict.intercept(unit, mount.target, bullet);
-                    mount.aimX = to.x;
-                    mount.aimY = to.y;
-                }else{
-                    mount.aimX = mount.target.x();
-                    mount.aimY = mount.target.y();
+                    Units.aimPoint(mount.target, mountX, mountY, mount.target.x(), mount.target.y(), Tmp.v1);
+                    mount.aimX = Tmp.v1.x;
+                    mount.aimY = Tmp.v1.y;
                 }
-            }
 
             mount.shoot = mount.rotate = shoot;
 
@@ -452,11 +450,11 @@ public class Weapon implements Cloneable{
     }
 
     protected Teamc findTarget(Unit unit, float x, float y, float range, boolean air, boolean ground){
-        return Units.closestTarget(unit.team, x, y, range + Math.abs(shootY), u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
+        return Units.closestTarget(unit.team, unit.x, unit.y, range + Math.abs(shootY), unit.hitSize / 2f, u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
     }
 
     protected boolean checkTarget(Unit unit, Teamc target, float x, float y, float range){
-        return Units.invalidateTarget(target, unit.team, x, y, range + Math.abs(shootY));
+        return Units.invalidateTarget(target, unit.team, unit.x, unit.y, range + Math.abs(shootY), unit.hitSize / 2f);
     }
 
     protected float bulletRotation(Unit unit, WeaponMount mount, float bulletX, float bulletY){
@@ -565,6 +563,11 @@ public class Weapon implements Cloneable{
 
     @CallSuper
     public void init(){
+        if(!turretTurnSpeedScaled){
+            rotateSpeed *= globalTurretTurnSpeedMultiplier;
+            turretTurnSpeedScaled = true;
+        }
+
         if(alwaysContinuous){
             continuous = true;
         }

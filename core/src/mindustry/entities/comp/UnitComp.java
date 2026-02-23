@@ -272,6 +272,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public boolean isSyncHidden(Player player){
+        if(UnitTypes.widowHiddenFrom(self(), player.team())) return true;
         //shooting reveals position so bullets can be seen
         return !isShooting() && inFogTo(player.team());
     }
@@ -285,6 +286,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public boolean inFogTo(Team viewer){
+        if(UnitTypes.widowHiddenFrom(self(), viewer)) return true;
         if(this.team == viewer || !state.rules.fog) return false;
 
         if(hitSize <= 16f){
@@ -481,6 +483,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public boolean collides(Hitboxc other){
+        if(other instanceof Bullet bullet && UnitTypes.widowHiddenFrom(self(), bullet.team)){
+            return false;
+        }
         if(other instanceof Unit){
             Unit unit = (Unit)other;
             if(isBuilding() && unit.isBuilding()){
@@ -634,6 +639,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public boolean targetable(Team targeter){
+        if(UnitTypes.widowHiddenFrom(self(), targeter)) return false;
         return type.targetable(self(), targeter);
     }
 
@@ -868,7 +874,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         updateDrowning();
 
-        if(type.energyCapacity > 0f){
+        if(type.energyCapacity > 0f && !UnitTypes.bansheeCloaked(self())){
             energy = Mathf.clamp(energy + type.energyRegen * Time.delta / 60f, 0f, type.energyCapacity);
         }
 

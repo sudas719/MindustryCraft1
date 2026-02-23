@@ -112,7 +112,7 @@ public class AIController implements UnitController{
     public void faceTarget(){
         if(unit.type.omniMovement || unit instanceof Mechc){
             if(!Units.invalidateTarget(target, unit, unit.range()) && unit.type.faceTarget && unit.type.hasWeapons()){
-                unit.lookAt(Predict.intercept(unit, target, unit.type.weapons.first().bullet));
+                unit.lookAt(target);
             }else if(unit.moving()){
                 unit.lookAt(unit.vel().angle());
             }
@@ -183,7 +183,7 @@ public class AIController implements UnitController{
 
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
-            float wrange = weapon.range();
+            float wrange = weapon.range() + unit.hitSize / 2f;
 
             //let uncontrollable weapons do their own thing
             if(!weapon.controllable || weapon.noAttack) continue;
@@ -197,13 +197,13 @@ public class AIController implements UnitController{
                 mountY = unit.y + Angles.trnsy(rotation, weapon.x, weapon.y);
 
             if(unit.type.singleTarget){
-                mount.target = target;
+                mount.target = weaponCanHitTarget(weapon, target) ? target : null;
             }else{
                 if(ret){
-                    mount.target = findTarget(mountX, mountY, wrange, weapon.bullet.collidesAir, weapon.bullet.collidesGround);
+                    mount.target = findTarget(unit.x, unit.y, wrange, weapon.bullet.collidesAir, weapon.bullet.collidesGround);
                 }
 
-                if(checkTarget(mount.target, mountX, mountY, wrange)){
+                if(checkTarget(mount.target, unit.x, unit.y, wrange)){
                     mount.target = null;
                 }
             }
@@ -211,7 +211,7 @@ public class AIController implements UnitController{
             boolean shoot = false;
 
             if(mount.target != null){
-                shoot = mount.target.within(mountX, mountY, wrange + (mount.target instanceof Sized s ? s.hitSize()/2f : 0f)) && shouldShoot();
+                shoot = Units.withinTargetRange(mount.target, unit.x, unit.y, wrange, unit.hitSize / 2f) && shouldShoot();
 
                 if(unit.type.autoDropBombs && !shoot){
                     if(bomberTarget == null || !bomberTarget.isAdded() || !bomberTarget.within(unit, unit.hitSize/2f + ((Sized)bomberTarget).hitSize()/2f)){
@@ -220,9 +220,9 @@ public class AIController implements UnitController{
                     shoot = bomberTarget != null;
                 }
 
-                Vec2 to = Predict.intercept(unit, mount.target, weapon.bullet);
-                mount.aimX = to.x;
-                mount.aimY = to.y;
+                Units.aimPoint(mount.target, mountX, mountY, mount.target.x(), mount.target.y(), Tmp.v1);
+                mount.aimX = Tmp.v1.x;
+                mount.aimY = Tmp.v1.y;
             }
 
             mount.shoot = mount.rotate = shoot;
@@ -246,8 +246,16 @@ public class AIController implements UnitController{
         }
     }
 
+    private boolean weaponCanHitTarget(Weapon weapon, @Nullable Teamc target){
+        if(target == null) return false;
+        if(target instanceof Unit u){
+            return u.isFlying() ? weapon.bullet.collidesAir : weapon.bullet.collidesGround;
+        }
+        return weapon.bullet.collidesGround;
+    }
+
     public boolean checkTarget(Teamc target, float x, float y, float range){
-        return Units.invalidateTarget(target, unit.team, x, y, range);
+        return Units.invalidateTarget(target, unit.team, x, y, range, unit.hitSize / 2f);
     }
 
     /** @return whether the unit should actually fire bullets (as opposed to just targeting something) */
@@ -270,7 +278,7 @@ public class AIController implements UnitController{
     }
 
     public Teamc target(float x, float y, float range, boolean air, boolean ground){
-        return Units.closestTarget(unit.team, x, y, range, u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
+        return Units.closestTarget(unit.team, x, y, range, unit.hitSize / 2f, u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
     }
 
     public boolean retarget(){

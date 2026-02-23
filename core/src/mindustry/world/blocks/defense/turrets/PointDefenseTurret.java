@@ -62,7 +62,8 @@ public class PointDefenseTurret extends ReloadTurret{
 
             //retarget
             if(timer(timerTarget, retargetTime)){
-                target = Groups.bullet.intersect(x - range, y - range, range*2, range*2).min(b -> b.team != team && b.type().hittable, b -> b.dst2(this));
+                float searchRange = range + hitSize() / 2f;
+                target = Groups.bullet.intersect(x - searchRange, y - searchRange, searchRange * 2f, searchRange * 2f).min(b -> b.team != team && b.type().hittable, b -> b.dst2(this));
             }
 
             //pooled bullets
@@ -75,7 +76,7 @@ public class PointDefenseTurret extends ReloadTurret{
             }
 
             //look at target
-            if(target != null && target.within(this, range) && target.team != team && target.type() != null && target.type().hittable){
+            if(target != null && Units.withinTargetRange(target, x, y, range, hitSize() / 2f) && target.team != team && target.type() != null && target.type().hittable){
                 float dest = angleTo(target);
                 rotation = Angles.moveToward(rotation, dest, rotateSpeed * edelta());
                 reloadCounter += edelta();

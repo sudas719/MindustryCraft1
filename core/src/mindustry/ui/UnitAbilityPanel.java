@@ -14,7 +14,10 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.Lines;
+import mindustry.ai.*;
+import mindustry.ai.types.*;
 import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
@@ -56,7 +59,15 @@ public class UnitAbilityPanel extends Table{
         DROP_PULSAR,
         EXTRA_SUPPLY,
         SCAN,
-        LAND
+        LAND,
+        LIBERATOR_ZONE,
+        MEDIVAC_HEAL,
+        MEDIVAC_LOAD,
+        MEDIVAC_UNLOAD,
+        BATTLECRUISER_YAMATO,
+        BATTLECRUISER_WARP,
+        RAVEN_ANTI_ARMOR,
+        RAVEN_MATRIX
     }
 
     private enum NovaPanel{
@@ -70,6 +81,14 @@ public class UnitAbilityPanel extends Table{
         BUILD
     }
 
+    private enum AutoCastSkill{
+        hurricaneLock,
+        medivacHeal
+    }
+
+    private static final int autoCastHurricaneLock = 1;
+    private static final int autoCastMedivacHeal = 1 << 1;
+
     public CommandMode activeCommand = CommandMode.NONE;
     private NovaPanel novaPanel = NovaPanel.MAIN;
     private CorePanel corePanel = CorePanel.MAIN;
@@ -79,6 +98,8 @@ public class UnitAbilityPanel extends Table{
     private Table commandModePanel;
     private float forcedMinWidth = -1f;
     private float forcedMinHeight = -1f;
+    private final IntIntMap autoCastFlags = new IntIntMap();
+    private float nextAutoCastUpdate = 0f;
 
     //Command definitions
     private static class RTSCommand{
@@ -127,6 +148,8 @@ public class UnitAbilityPanel extends Table{
         commandModePanel = new Table();
 
         update(() -> {
+            updateAutoCast();
+
             if(control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0){
                 boolean allowKeys = !Core.scene.hasKeyboard();
                 boolean coreSelected = isOnlyCoreSelected();
@@ -145,21 +168,51 @@ public class UnitAbilityPanel extends Table{
                         allowRtsKeys = false;
                     }
                     if(allowRtsKeys){
-                        if(Core.input.keyTap(Binding.rtsCommandMove)){
-                            enterCommandMode(CommandMode.MOVE);
-                        }else if(Core.input.keyTap(Binding.rtsCommandStop)){
-                            executeStopCommand();
-                        }else if(Core.input.keyTap(Binding.rtsCommandHold)){
-                            executeHoldCommand();
-                        }else if(Core.input.keyTap(Binding.rtsCommandPatrol)){
-                            enterCommandMode(CommandMode.PATROL);
-                        }else if(Core.input.keyTap(Binding.rtsCommandAttack)){
-                            enterCommandMode(CommandMode.ATTACK);
+                        boolean preceptTransition = isOnlySiegeTankSelected() && anyPreceptTransitioning();
+                        boolean preceptSiegedLayout = isOnlySiegeTankSelected() && allSelectedPreceptSieged();
+                        if(preceptTransition){
+                            //No RTS action during mode transition.
+                        }else if(preceptSiegedLayout){
+                            if(Core.input.keyTap(Binding.rtsCommandStop)){
+                                executeStopCommand();
+                            }else if(Core.input.keyTap(Binding.rtsCommandAttack)){
+                                enterCommandMode(CommandMode.ATTACK);
+                            }
+                        }else{
+                            if(Core.input.keyTap(Binding.rtsCommandMove)){
+                                enterCommandMode(CommandMode.MOVE);
+                            }else if(Core.input.keyTap(Binding.rtsCommandStop)){
+                                executeStopCommand();
+                            }else if(Core.input.keyTap(Binding.rtsCommandHold)){
+                                executeHoldCommand();
+                            }else if(Core.input.keyTap(Binding.rtsCommandPatrol)){
+                                enterCommandMode(CommandMode.PATROL);
+                            }else if(Core.input.keyTap(Binding.rtsCommandAttack)){
+                                enterCommandMode(CommandMode.ATTACK);
+                            }
                         }
                     }
 
                     if(isOnlyNovaSelected()){
                         handleNovaHotkeys();
+                    }else if(isOnlyWidowSelected()){
+                        handleWidowHotkeys();
+                    }else if(isOnlySiegeTankSelected()){
+                        handlePreceptHotkeys();
+                    }else if(isOnlyHurricaneSelected()){
+                        handleHurricaneHotkeys();
+                    }else if(isOnlyScepterSelected()){
+                        handleScepterHotkeys();
+                    }else if(isOnlyLiberatorSelected()){
+                        handleLiberatorHotkeys();
+                    }else if(isOnlyMedivacSelected()){
+                        handleMedivacHotkeys();
+                    }else if(isOnlyBattlecruiserSelected()){
+                        handleBattlecruiserHotkeys();
+                    }else if(isOnlyBansheeSelected()){
+                        handleBansheeHotkeys();
+                    }else if(isOnlyRavenSelected()){
+                        handleRavenHotkeys();
                     }else if(isOnlyCoreFlyerSelected()){
                         handleCoreFlyerHotkeys();
                     }else if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size > 0){
@@ -215,7 +268,15 @@ public class UnitAbilityPanel extends Table{
         if(activeCommand != CommandMode.NONE && activeCommand != CommandMode.HARVEST && activeCommand != CommandMode.BUILD_PLACE
         && activeCommand != CommandMode.RALLY && activeCommand != CommandMode.DROP_PULSAR
         && activeCommand != CommandMode.EXTRA_SUPPLY && activeCommand != CommandMode.SCAN
-        && activeCommand != CommandMode.LAND){
+        && activeCommand != CommandMode.LAND
+        && activeCommand != CommandMode.LIBERATOR_ZONE
+        && activeCommand != CommandMode.MEDIVAC_HEAL
+        && activeCommand != CommandMode.MEDIVAC_LOAD
+        && activeCommand != CommandMode.MEDIVAC_UNLOAD
+        && activeCommand != CommandMode.BATTLECRUISER_YAMATO
+        && activeCommand != CommandMode.BATTLECRUISER_WARP
+        && activeCommand != CommandMode.RAVEN_ANTI_ARMOR
+        && activeCommand != CommandMode.RAVEN_MATRIX){
             buildCommandModePanel();
         }else{
             buildMainPanel();
@@ -223,8 +284,38 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildMainPanel(){
-        if(isOnlyCoreFlyerSelected()){
+        if(isOnlyMedivacSelected()){
+            buildMedivacPanel();
+        }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_YAMATO){
+            buildCoreTargetPanel("大和炮", "左键选择敌方目标");
+        }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_WARP){
+            buildCoreTargetPanel("战术折跃", "左键选择折跃地点");
+        }else if(isOnlyBattlecruiserSelected()){
+            buildBattlecruiserPanel();
+        }else if(isOnlyBansheeSelected()){
+            buildBansheePanel();
+        }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_ANTI_ARMOR){
+            buildCoreTargetPanel("反护甲飞弹", "左键选择施法区域");
+        }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_MATRIX){
+            buildCoreTargetPanel("干扰矩阵", "左键选择机械/灵能目标");
+        }else if(isOnlyRavenSelected()){
+            buildRavenPanel();
+        }else if(isOnlyRavenTurretSelected()){
+            buildRavenTurretPanel();
+        }else if(isOnlyLiberatorSelected() && activeCommand == CommandMode.LIBERATOR_ZONE){
+            buildCoreTargetPanel("防卫模式", "左键选择防卫区域");
+        }else if(isOnlyLiberatorSelected()){
+            buildLiberatorPanel();
+        }else if(isOnlyCoreFlyerSelected()){
             buildCoreFlyerPanel();
+        }else if(isOnlyWidowSelected()){
+            buildWidowPanel();
+        }else if(isOnlySiegeTankSelected()){
+            buildPreceptPanel();
+        }else if(isOnlyHurricaneSelected()){
+            buildHurricanePanel();
+        }else if(isOnlyScepterSelected()){
+            buildScepterPanel();
         }else if(isOnlyNovaSelected() && activeCommand == CommandMode.BUILD_PLACE){
             buildNovaPlacementPanel();
         }else if(isOnlyNovaSelected()){
@@ -311,6 +402,398 @@ public class UnitAbilityPanel extends Table{
         for(int i = 0; i < COLS; i++){
             add().size(abilityButtonSize).pad(2f);
         }
+    }
+
+    private void buildWidowPanel(){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+
+        //Row 1: M/S/H/P/A
+        if(anyWidowShowCommandRow1()){
+            for(int i = 0; i < commands.length; i++){
+                final RTSCommand cmd = commands[i];
+                addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                    if(cmd.mode == CommandMode.STOP){
+                        executeStopCommand();
+                    }else if(cmd.mode == CommandMode.HOLD){
+                        executeHoldCommand();
+                    }else{
+                        enterCommandMode(cmd.mode);
+                    }
+                });
+            }
+        }else{
+            fillRow(grid, 1, 0);
+        }
+        grid.row();
+
+        //Row 2: unused
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        //Row 3: col2/col3 for burrow/unburrow
+        addEmpty(grid);
+
+        if(anyWidowCanBurrow()){
+            Button burrowButton = addIconButton(grid, "e", Icon.downOpen, this::anyWidowCanBurrow, () -> issueWidowBurrowCommand(true));
+            BuildInfo burrowInfo = makeWidowActionInfo("e", "Widow Burrow", Color.cyan, this::selectedWidowBurrowProgress, this::anyWidowBurrowing);
+            burrowButton.update(() -> {
+                if(burrowButton.isOver()){
+                    hoverBuildInfo = burrowInfo;
+                }else if(hoverBuildInfo == burrowInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyWidowCanUnburrow()){
+            Button unburrowButton = addIconButton(grid, "d", Icon.upOpen, this::anyWidowCanUnburrow, () -> issueWidowBurrowCommand(false));
+            BuildInfo reloadInfo = makeWidowActionInfo("d", "Widow Reload", Color.gray, this::selectedWidowReloadProgress, this::anyWidowReloading);
+            unburrowButton.update(() -> {
+                if(unburrowButton.isOver()){
+                    hoverBuildInfo = reloadInfo;
+                }else if(hoverBuildInfo == reloadInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        addEmpty(grid);
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildHurricanePanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addHurricaneLockButton(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildScepterPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        if(anyScepterCanSwitchToImpact()){
+            addIconButton(grid, "e", Icon.upOpen, this::anyScepterCanSwitchToImpact, () -> issueScepterAirModeCommand(true));
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyScepterCanSwitchToBurst()){
+            addIconButton(grid, "d", Icon.downOpen, this::anyScepterCanSwitchToBurst, () -> issueScepterAirModeCommand(false));
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildMedivacPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addAutoCastIconButton(grid, "e", Icon.add, () -> true,
+        () -> enterCommandMode(CommandMode.MEDIVAC_HEAL),
+        this::selectedMedivacHealAutoCastEnabled, this::toggleSelectedMedivacHealAutoCast);
+        addIconButton(grid, "b", Icon.upOpen, () -> true, this::issueMedivacAfterburnerCommand);
+
+        if(anyMedivacCanLoadMore()){
+            addIconButton(grid, "l", Icon.upload, this::anyMedivacCanLoadMore, () -> enterCommandMode(CommandMode.MEDIVAC_LOAD));
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyMedivacHasPayload()){
+            addIconButton(grid, "d", Icon.download, this::anyMedivacHasPayload, () -> enterCommandMode(CommandMode.MEDIVAC_UNLOAD));
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        add(grid);
+    }
+
+    private void buildRavenPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, this::issueRavenDeployTurretCommand);
+        addIconButton(grid, "r", Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR));
+        addIconButton(grid, "c", Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX));
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildBansheePanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addIconButton(grid, "c", Icon.eyeSmall, this::anyBansheeCanToggleCloak, this::issueBansheeCloakCommand);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildBattlecruiserPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addIconButton(grid, "y", Icon.warning, this::anyBattlecruiserCanUseYamato, () -> enterCommandMode(CommandMode.BATTLECRUISER_YAMATO));
+        addIconButton(grid, "t", Icon.effect, this::anyBattlecruiserCanUseWarp, () -> enterCommandMode(CommandMode.BATTLECRUISER_WARP));
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildRavenTurretPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        addEmpty(grid);
+        addIconButton(grid, "s", Icon.cancel, () -> true, this::executeStopCommand);
+        addEmpty(grid);
+        addEmpty(grid);
+        addIconButton(grid, "a", Icon.warning, () -> true, () -> enterCommandMode(CommandMode.ATTACK));
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        fillRow(grid, 2, 0);
+
+        add(grid);
+    }
+
+    private void buildLiberatorPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        boolean defenseLayout = allSelectedLiberatorDefending();
+        boolean transitioning = anyLiberatorTransitioning();
+
+        if(transitioning){
+            fillRow(grid, 0, 0);
+        }else if(defenseLayout){
+            addEmpty(grid);
+            addIconButton(grid, "s", Icon.cancel, () -> true, this::executeStopCommand);
+            addEmpty(grid);
+            addEmpty(grid);
+            addIconButton(grid, "a", Icon.warning, () -> true, () -> enterCommandMode(CommandMode.ATTACK));
+        }else{
+            for(int i = 0; i < commands.length; i++){
+                final RTSCommand cmd = commands[i];
+                addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                    if(cmd.mode == CommandMode.STOP){
+                        executeStopCommand();
+                    }else if(cmd.mode == CommandMode.HOLD){
+                        executeHoldCommand();
+                    }else{
+                        enterCommandMode(cmd.mode);
+                    }
+                });
+            }
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        if(anyLiberatorCanEnterDefense()){
+            addIconButton(grid, "e", Icon.downOpen, this::anyLiberatorCanEnterDefense, () -> enterCommandMode(CommandMode.LIBERATOR_ZONE));
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyLiberatorCanExitDefense()){
+            addIconButton(grid, "d", Icon.upOpen, this::anyLiberatorCanExitDefense, this::issueLiberatorFighterCommand);
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildPreceptPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        if(anyPreceptTransitioning()){
+            fillRow(grid, 0, 0);
+        }else if(allSelectedPreceptSieged()){
+            addEmpty(grid);
+            addIconButton(grid, "s", Icon.cancel, () -> true, this::executeStopCommand);
+            addEmpty(grid);
+            addEmpty(grid);
+            addIconButton(grid, "a", Icon.warning, () -> true, () -> enterCommandMode(CommandMode.ATTACK));
+        }else{
+            for(int i = 0; i < commands.length; i++){
+                final RTSCommand cmd = commands[i];
+                addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                    if(cmd.mode == CommandMode.STOP){
+                        executeStopCommand();
+                    }else if(cmd.mode == CommandMode.HOLD){
+                        executeHoldCommand();
+                    }else{
+                        enterCommandMode(cmd.mode);
+                    }
+                });
+            }
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        if(anyPreceptCanSiege()){
+            addIconButton(grid, "e", Icon.downOpen, this::anyPreceptCanSiege, () -> issuePreceptSiegeCommand(true));
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyPreceptCanTankMode()){
+            addIconButton(grid, "d", Icon.upOpen, this::anyPreceptCanTankMode, () -> issuePreceptSiegeCommand(false));
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
     }
 
     private void buildNovaPanel(){
@@ -510,7 +993,7 @@ public class UnitAbilityPanel extends Table{
         if(block == Blocks.tankFabricator){
             int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
             int crawlerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.crawler);
-            int anthicusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.anthicus);
+            int hurricaneIndex = block.plans.indexOf(p -> p.unit == UnitTypes.hurricane);
             int preceptIndex = block.plans.indexOf(p -> p.unit == UnitTypes.precept);
             int maceIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mace);
             int scepterIndex = block.plans.indexOf(p -> p.unit == UnitTypes.scepter);
@@ -526,8 +1009,8 @@ public class UnitAbilityPanel extends Table{
             }else{
                 addEmpty(grid);
             }
-            if(anthicusIndex != -1){
-                addUnitButton(grid, "n", block.plans.get(anthicusIndex), () -> factory.canQueuePlan(anthicusIndex), () -> factory.configure(anthicusIndex));
+            if(hurricaneIndex != -1){
+                addUnitButton(grid, "n", block.plans.get(hurricaneIndex), () -> factory.canQueuePlan(hurricaneIndex), () -> factory.configure(hurricaneIndex));
             }else{
                 addEmpty(grid);
             }
@@ -557,7 +1040,7 @@ public class UnitAbilityPanel extends Table{
         }else if(block == Blocks.shipFabricator){
             int flareIndex = block.plans.indexOf(p -> p.unit == UnitTypes.flare);
             int megaIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mega);
-            int obviateIndex = block.plans.indexOf(p -> p.unit == UnitTypes.obviate);
+            int liberatorIndex = block.plans.indexOf(p -> p.unit == UnitTypes.liberator);
             int avertIndex = block.plans.indexOf(p -> p.unit == UnitTypes.avert);
             int horizonIndex = block.plans.indexOf(p -> p.unit == UnitTypes.horizon);
             int antumbraIndex = block.plans.indexOf(p -> p.unit == UnitTypes.antumbra);
@@ -573,8 +1056,8 @@ public class UnitAbilityPanel extends Table{
             }else{
                 addEmpty(grid);
             }
-            if(obviateIndex != -1){
-                addUnitButton(grid, "n", block.plans.get(obviateIndex), () -> factory.canQueuePlan(obviateIndex), () -> factory.configure(obviateIndex));
+            if(liberatorIndex != -1){
+                addUnitButton(grid, "n", block.plans.get(liberatorIndex), () -> factory.canQueuePlan(liberatorIndex), () -> factory.configure(liberatorIndex));
             }else{
                 addEmpty(grid);
             }
@@ -929,6 +1412,10 @@ public class UnitAbilityPanel extends Table{
     }
 
     private Element borderElement(){
+        return borderElement(null);
+    }
+
+    private Element borderElement(@Nullable Boolp autoEnabled){
         return new Element(){
             @Override
             public void draw(){
@@ -938,21 +1425,56 @@ public class UnitAbilityPanel extends Table{
                 float innerInset = 4.5f;
                 Lines.rect(x + inset, y + inset, width - inset * 2f, height - inset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+
+                if(autoEnabled != null && autoEnabled.get()){
+                    float outerX = x + inset;
+                    float outerY = y + inset;
+                    float outerW = width - inset * 2f;
+                    float outerH = height - inset * 2f;
+                    float perimeter = Math.max(1f, (outerW + outerH) * 2f);
+                    float distance = (Time.time * 1.8f) % perimeter;
+
+                    Draw.color(Color.valueOf("ffd84a"));
+                    drawPerimeterDot(outerX, outerY, outerW, outerH, distance, 2.4f);
+                    drawPerimeterDot(outerX, outerY, outerW, outerH, (distance + perimeter * 0.5f) % perimeter, 2.4f);
+                }
+
                 Draw.reset();
             }
         };
     }
 
     private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action){
+        return addIconButton(grid, key, icon, enabled, action, null, null);
+    }
+
+    private Button addAutoCastIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Boolp autoEnabled, Runnable toggleAuto){
+        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto);
+    }
+
+    private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, @Nullable Boolp autoEnabled, @Nullable Runnable toggleAuto){
         Boolp allowed = enabled == null ? () -> true : enabled;
         Button button = new Button(Styles.clearNoneTogglei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
         button.update(() -> button.setDisabled(!allowed.get()));
+        if(toggleAuto != null){
+            button.addListener(new InputListener(){
+                @Override
+                public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button){
+                    if(button == KeyCode.mouseRight){
+                        toggleAuto.run();
+                        event.stop();
+                        return true;
+                    }
+                    return false;
+                }
+            });
+        }
 
         Stack stack = new Stack();
-        stack.add(borderElement());
+        stack.add(borderElement(autoEnabled));
 
         Image image = new Image(icon);
         image.setScaling(Scaling.fit);
@@ -971,6 +1493,112 @@ public class UnitAbilityPanel extends Table{
             keyTable.add(keyLabel).pad(3f);
             stack.add(keyTable);
         }
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        return button;
+    }
+
+    private void drawPerimeterDot(float x, float y, float width, float height, float distance, float radius){
+        float perimeter = Math.max(1f, (width + height) * 2f);
+        float d = distance % perimeter;
+        float px, py;
+
+        if(d <= width){
+            px = x + d;
+            py = y + height;
+        }else if(d <= width + height){
+            px = x + width;
+            py = y + height - (d - width);
+        }else if(d <= width + height + width){
+            px = x + width - (d - width - height);
+            py = y;
+        }else{
+            px = x;
+            py = y + (d - width - height - width);
+        }
+
+        Fill.circle(px, py, radius);
+    }
+
+    private Button addHurricaneLockButton(Table grid){
+        Boolp enabled = this::anyHurricaneCanLock;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(enabled.get()){
+                issueHurricaneLockCommand();
+            }
+        });
+        button.update(() -> button.setDisabled(!enabled.get()));
+        button.addListener(new InputListener(){
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button){
+                if(button == KeyCode.mouseRight){
+                    toggleSelectedHurricaneAutoCast();
+                    event.stop();
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        Stack stack = new Stack();
+        stack.add(borderElement(this::selectedHurricaneAutoCastEnabled));
+
+        Image image = new Image(Icon.warning);
+        image.setScaling(Scaling.fit);
+        image.update(() -> {
+            if(anyHurricaneLockActive()){
+                image.setColor(Color.valueOf("7a7a7a"));
+            }else if(selectedHurricaneLockCooldown() > 0.001f){
+                image.setColor(Color.valueOf("3f3f3f"));
+            }else{
+                image.setColor(Color.white);
+            }
+        });
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        Table keyTable = new Table();
+        keyTable.top().left();
+        Label keyLabel = new Label("c");
+        keyLabel.setFontScale(abilityKeyScale);
+        keyLabel.update(() -> keyLabel.setColor(enabled.get() ? Color.white : Color.gray));
+        keyTable.add(keyLabel).pad(3f);
+        stack.add(keyTable);
+
+        stack.add(new Element(){
+            @Override
+            public void draw(){
+                float cooldown = selectedHurricaneLockCooldown();
+                float flash = selectedHurricaneLockFlash();
+                float cx = x + width / 2f;
+                float cy = y + height / 2f;
+
+                if(cooldown > 0.001f){
+                    float total = UnitTypes.hurricaneLockCooldownDuration();
+                    float fastAngle = -(Time.time / (4f * 60f)) * 360f;
+                    float slowAngle = -((1f - Mathf.clamp(cooldown / total)) * 360f);
+                    float fastLen = width * 0.20f;
+                    float slowLen = width * 0.14f;
+
+                    Draw.color(Color.valueOf("b6bcc5"));
+                    Lines.stroke(1.25f);
+                    Lines.line(cx, cy, cx + Angles.trnsx(fastAngle, fastLen), cy + Angles.trnsy(fastAngle, fastLen));
+                    Lines.line(cx, cy, cx + Angles.trnsx(slowAngle, slowLen), cy + Angles.trnsy(slowAngle, slowLen));
+                }
+
+                if(flash > 0.001f){
+                    float alpha = Mathf.clamp(flash / UnitTypes.hurricaneLockFlashDuration());
+                    Draw.color(Color.white, alpha * 0.75f);
+                    Fill.circle(cx, cy, width * 0.22f + (1f - alpha) * 3f);
+                }
+
+                Draw.reset();
+            }
+        });
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
@@ -1186,6 +1814,499 @@ public class UnitAbilityPanel extends Table{
         return info;
     }
 
+    private BuildInfo makeWidowActionInfo(String key, String name, Color color, Floatp progress, Boolp visible){
+        BuildInfo info = new BuildInfo();
+        info.unit = UnitTypes.crawler;
+        info.key = key;
+        info.name = name;
+        info.crystalCost = 0;
+        info.gasCost = 0;
+        info.timeSeconds = 0;
+        info.progress = progress;
+        info.progressVisible = visible;
+        info.progressColor = color;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.crawler.uiIcon);
+        return info;
+    }
+
+    private int autoCastBit(AutoCastSkill skill){
+        return switch(skill){
+            case hurricaneLock -> autoCastHurricaneLock;
+            case medivacHeal -> autoCastMedivacHeal;
+        };
+    }
+
+    private boolean isAutoCastEnabled(Unit unit, AutoCastSkill skill){
+        int defaultFlags = 0;
+        if(UnitTypes.isHurricane(unit)) defaultFlags |= autoCastHurricaneLock;
+        if(UnitTypes.isMedivac(unit)) defaultFlags |= autoCastMedivacHeal;
+        int flags = autoCastFlags.get(unit.id, defaultFlags);
+        return (flags & autoCastBit(skill)) != 0;
+    }
+
+    private void setAutoCastEnabled(Unit unit, AutoCastSkill skill, boolean enabled){
+        int defaultFlags = 0;
+        if(UnitTypes.isHurricane(unit)) defaultFlags |= autoCastHurricaneLock;
+        if(UnitTypes.isMedivac(unit)) defaultFlags |= autoCastMedivacHeal;
+        int flags = autoCastFlags.get(unit.id, defaultFlags);
+        int bit = autoCastBit(skill);
+        int next = enabled ? (flags | bit) : (flags & ~bit);
+        if(next == defaultFlags){
+            autoCastFlags.remove(unit.id, 0);
+        }else{
+            autoCastFlags.put(unit.id, next);
+        }
+    }
+
+    private boolean selectedMedivacHealAutoCastEnabled(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            if(isAutoCastEnabled(unit, AutoCastSkill.medivacHeal)) return true;
+        }
+        return false;
+    }
+
+    private void toggleSelectedMedivacHealAutoCast(){
+        boolean hasAny = false;
+        boolean allEnabled = true;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            hasAny = true;
+            if(!isAutoCastEnabled(unit, AutoCastSkill.medivacHeal)){
+                allEnabled = false;
+            }
+        }
+        if(!hasAny) return;
+
+        boolean nextEnabled = !allEnabled;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            setAutoCastEnabled(unit, AutoCastSkill.medivacHeal, nextEnabled);
+        }
+    }
+
+    private boolean selectedHurricaneAutoCastEnabled(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            if(isAutoCastEnabled(unit, AutoCastSkill.hurricaneLock)) return true;
+        }
+        return false;
+    }
+
+    private void toggleSelectedHurricaneAutoCast(){
+        boolean hasAny = false;
+        boolean allEnabled = true;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            hasAny = true;
+            if(!isAutoCastEnabled(unit, AutoCastSkill.hurricaneLock)){
+                allEnabled = false;
+            }
+        }
+        if(!hasAny) return;
+
+        boolean nextEnabled = !allEnabled;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            setAutoCastEnabled(unit, AutoCastSkill.hurricaneLock, nextEnabled);
+        }
+    }
+
+    private boolean anyHurricaneCanLock(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            if(UnitTypes.hurricaneCanLock(unit) && UnitTypes.hurricaneHasTarget(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyHurricaneLockActive(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            if(UnitTypes.hurricaneLockActive(unit)) return true;
+        }
+        return false;
+    }
+
+    private float selectedHurricaneLockCooldown(){
+        float result = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            result = Math.max(result, UnitTypes.hurricaneLockCooldown(unit));
+        }
+        return result;
+    }
+
+    private float selectedHurricaneLockFlash(){
+        float result = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            result = Math.max(result, UnitTypes.hurricaneLockFlash(unit));
+        }
+        return result;
+    }
+
+    private void issueHurricaneLockCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+            if(!UnitTypes.hurricaneCanLock(unit) || !UnitTypes.hurricaneHasTarget(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandHurricaneLock(player, ids.toArray());
+        }
+    }
+
+    private void updateAutoCast(){
+        if(player == null || player.team() == null || player.team().data() == null) return;
+        if(Time.time < nextAutoCastUpdate) return;
+        nextAutoCastUpdate = Time.time + 10f;
+
+        IntSeq hurricaneIds = new IntSeq();
+        for(Unit unit : player.team().data().units){
+            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
+
+            int flags = autoCastFlags.get(unit.id, autoCastHurricaneLock);
+            if((flags & autoCastHurricaneLock) == 0) continue;
+            if(!UnitTypes.hurricaneCanLock(unit) || !UnitTypes.hurricaneHasTarget(unit)) continue;
+            hurricaneIds.add(unit.id);
+        }
+
+        if(hurricaneIds.size > 0){
+            Call.commandHurricaneLock(player, hurricaneIds.toArray());
+        }
+
+        for(Unit unit : player.team().data().units){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+
+            int flags = autoCastFlags.get(unit.id, autoCastMedivacHeal);
+            if((flags & autoCastMedivacHeal) == 0) continue;
+            if(unit.energy <= 0.001f) continue;
+
+            if(unit.controller() instanceof CommandAI ai){
+                if(ai.command == UnitCommand.loadUnitsCommand || ai.command == UnitCommand.unloadPayloadCommand){
+                    continue;
+                }
+            }
+
+            Unit target = UnitTypes.medivacFindHealTarget(unit);
+            if(target == null) continue;
+
+            if(unit.controller() instanceof CommandAI ai && ai.followTarget == target){
+                continue;
+            }
+
+            Call.setUnitCommand(player, new int[]{unit.id}, UnitCommand.moveCommand);
+            Call.commandMedivacMovingUnload(player, new int[]{unit.id}, false);
+            Call.commandUnits(player, new int[]{unit.id}, null, target, new Vec2(target.x, target.y), false, true, false);
+        }
+    }
+
+    private boolean allSelectedPreceptSieged(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) return false;
+            if(!UnitTypes.preceptIsSieged(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean anyPreceptTransitioning(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
+            if(UnitTypes.preceptIsSieging(unit) || UnitTypes.preceptIsUnsieging(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyPreceptCanSiege(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
+            if(UnitTypes.preceptCanEnterSiege(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyPreceptCanTankMode(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
+            if(UnitTypes.preceptCanExitSiege(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issuePreceptSiegeCommand(boolean siege){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
+            if(siege){
+                if(!UnitTypes.preceptCanEnterSiege(unit)) continue;
+            }else{
+                if(!UnitTypes.preceptCanExitSiege(unit)) continue;
+            }
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandPreceptSiege(player, ids.toArray(), siege);
+        }
+    }
+
+    private boolean anyScepterCanSwitchToImpact(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
+            if(UnitTypes.scepterCanSwitchToImpact(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyScepterCanSwitchToBurst(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
+            if(UnitTypes.scepterCanSwitchToBurst(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueScepterAirModeCommand(boolean impactMode){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
+            if(impactMode){
+                if(!UnitTypes.scepterCanSwitchToImpact(unit)) continue;
+            }else{
+                if(!UnitTypes.scepterCanSwitchToBurst(unit)) continue;
+            }
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandScepterAirMode(player, ids.toArray(), impactMode);
+        }
+    }
+
+    private boolean allSelectedLiberatorDefending(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) return false;
+            if(!UnitTypes.liberatorIsDefending(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean anyLiberatorTransitioning(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
+            if(UnitTypes.liberatorIsDeploying(unit) || UnitTypes.liberatorIsUndeploying(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyLiberatorCanEnterDefense(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
+            if(UnitTypes.liberatorCanEnterDefense(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyLiberatorCanExitDefense(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
+            if(UnitTypes.liberatorCanExitDefense(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueLiberatorFighterCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
+            if(!UnitTypes.liberatorCanExitDefense(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandLiberatorMode(player, ids.toArray(), false, null);
+        }
+    }
+
+    private boolean anyWidowCanBurrow(){
+        for(Unit unit : control.input.selectedUnits){
+            if(!UnitTypes.isWidow(unit)) continue;
+            if(!UnitTypes.widowIsBuried(unit) && !UnitTypes.widowIsBurrowing(unit) && !UnitTypes.widowIsUnburrowing(unit)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyWidowShowCommandRow1(){
+        for(Unit unit : control.input.selectedUnits){
+            if(!UnitTypes.isWidow(unit)) continue;
+            if(!UnitTypes.widowIsBuried(unit) && !UnitTypes.widowIsBurrowing(unit) && !UnitTypes.widowIsUnburrowing(unit)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyWidowCanUnburrow(){
+        for(Unit unit : control.input.selectedUnits){
+            if(!UnitTypes.isWidow(unit)) continue;
+            if((UnitTypes.widowIsBuried(unit) || UnitTypes.widowIsBurrowing(unit)) && !UnitTypes.widowIsUnburrowing(unit)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyWidowBurrowing(){
+        for(Unit unit : control.input.selectedUnits){
+            if(UnitTypes.widowIsBurrowing(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyWidowReloading(){
+        for(Unit unit : control.input.selectedUnits){
+            if(UnitTypes.widowIsReloading(unit)) return true;
+        }
+        return false;
+    }
+
+    private float selectedWidowBurrowProgress(){
+        float progress = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            progress = Math.max(progress, UnitTypes.widowBurrowProgress(unit));
+        }
+        return progress;
+    }
+
+    private float selectedWidowReloadProgress(){
+        float progress = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            progress = Math.max(progress, UnitTypes.widowReloadProgress(unit));
+        }
+        return progress;
+    }
+
+    private void issueWidowBurrowCommand(boolean burrow){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isWidow(unit)) continue;
+            if(burrow){
+                if(UnitTypes.widowIsBuried(unit) || UnitTypes.widowIsBurrowing(unit) || UnitTypes.widowIsUnburrowing(unit)) continue;
+            }else{
+                if((!UnitTypes.widowIsBuried(unit) && !UnitTypes.widowIsBurrowing(unit)) || UnitTypes.widowIsUnburrowing(unit)) continue;
+            }
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandWidowMine(player, ids.toArray(), burrow);
+        }
+    }
+
+    private boolean anyMedivacHasPayload(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc pay)) continue;
+            if(!pay.payloads().isEmpty()) return true;
+        }
+        return false;
+    }
+
+    private boolean anyMedivacCanLoadMore(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            if(UnitTypes.medivacPayloadSlotsFree(unit) > 0) return true;
+        }
+        return false;
+    }
+
+    private void issueMedivacAfterburnerCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandMedivacAfterburner(player, ids.toArray());
+        }
+    }
+
+    private boolean anyRavenCanDeployTurret(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenCanDeployTurret(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyBansheeCanToggleCloak(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) continue;
+            if(UnitTypes.bansheeCanToggleCloak(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyBattlecruiserCanUseYamato(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
+            if(UnitTypes.battlecruiserCanUseYamato(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyBattlecruiserCanUseWarp(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
+            if(UnitTypes.battlecruiserCanUseWarp(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueBansheeCloakCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) continue;
+            if(!UnitTypes.bansheeCanToggleCloak(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandBansheeCloak(player, ids.toArray());
+        }
+    }
+
+    private boolean anyRavenCanUseAntiArmor(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenCanUseAntiArmor(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyRavenCanUseMatrix(){
+        if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
+            return false;
+        }
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
+            if(UnitTypes.ravenCanUseMatrix(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueRavenDeployTurretCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
+            if(!UnitTypes.ravenCanDeployTurret(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandAvertDeployTurret(player, ids.toArray());
+        }
+    }
+
     private int getCost(Block block, Item item){
         if(block == null || item == null) return 0;
         int total = 0;
@@ -1315,6 +2436,86 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyWidowSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isWidow(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyHurricaneSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.hurricane) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyScepterSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyMedivacSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyBattlecruiserSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyBansheeSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyRavenSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyRavenTurretSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isRavenTurret(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyLiberatorSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlySiegeTankSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.precept) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyCoreFlyerSelected(){
         if(control.input.selectedUnits.isEmpty()) return false;
         for(Unit unit : control.input.selectedUnits){
@@ -1425,6 +2626,120 @@ public class UnitAbilityPanel extends Table{
                     startPlacement(Blocks.surgeCrucible);
                 }
                 break;
+        }
+    }
+
+    private void handleWidowHotkeys(){
+        if(Core.input.keyTap(KeyCode.e)){
+            issueWidowBurrowCommand(true);
+        }else if(Core.input.keyTap(KeyCode.d)){
+            issueWidowBurrowCommand(false);
+        }
+    }
+
+    private void handlePreceptHotkeys(){
+        if(Core.input.keyTap(KeyCode.e)){
+            issuePreceptSiegeCommand(true);
+        }else if(Core.input.keyTap(KeyCode.d)){
+            issuePreceptSiegeCommand(false);
+        }
+    }
+
+    private void handleHurricaneHotkeys(){
+        if(Core.input.keyTap(KeyCode.c)){
+            issueHurricaneLockCommand();
+        }
+    }
+
+    private void handleScepterHotkeys(){
+        if(Core.input.keyTap(KeyCode.e)){
+            issueScepterAirModeCommand(true);
+        }else if(Core.input.keyTap(KeyCode.d)){
+            issueScepterAirModeCommand(false);
+        }
+    }
+
+    private void handleLiberatorHotkeys(){
+        if(activeCommand == CommandMode.LIBERATOR_ZONE){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.e) && anyLiberatorCanEnterDefense()){
+            enterCommandMode(CommandMode.LIBERATOR_ZONE);
+        }else if(Core.input.keyTap(KeyCode.d) && anyLiberatorCanExitDefense()){
+            issueLiberatorFighterCommand();
+        }
+    }
+
+    private void handleMedivacHotkeys(){
+        if(activeCommand == CommandMode.MEDIVAC_HEAL || activeCommand == CommandMode.MEDIVAC_LOAD || activeCommand == CommandMode.MEDIVAC_UNLOAD){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.e)){
+            enterCommandMode(CommandMode.MEDIVAC_HEAL);
+        }else if(Core.input.keyTap(KeyCode.b)){
+            issueMedivacAfterburnerCommand();
+        }else if(Core.input.keyTap(KeyCode.l) && anyMedivacCanLoadMore()){
+            enterCommandMode(CommandMode.MEDIVAC_LOAD);
+        }else if(Core.input.keyTap(KeyCode.d) && anyMedivacHasPayload()){
+            enterCommandMode(CommandMode.MEDIVAC_UNLOAD);
+        }
+    }
+
+    private void handleBattlecruiserHotkeys(){
+        if(activeCommand == CommandMode.BATTLECRUISER_YAMATO || activeCommand == CommandMode.BATTLECRUISER_WARP){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.y)){
+            if(anyBattlecruiserCanUseYamato()){
+                enterCommandMode(CommandMode.BATTLECRUISER_YAMATO);
+            }else if(!UnitTypes.battlecruiserHasYamatoTech(player.team())){
+                ui.hudfrag.setHudText("Requires Fusion Core");
+            }
+        }else if(Core.input.keyTap(KeyCode.t) && anyBattlecruiserCanUseWarp()){
+            enterCommandMode(CommandMode.BATTLECRUISER_WARP);
+        }
+    }
+
+    private void handleBansheeHotkeys(){
+        if(Core.input.keyTap(KeyCode.c)){
+            if(anyBansheeCanToggleCloak()){
+                issueBansheeCloakCommand();
+            }else if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
+                ui.hudfrag.setHudText("Requires Ship Tech Lab");
+            }
+        }
+    }
+
+    private void handleRavenHotkeys(){
+        if(activeCommand == CommandMode.RAVEN_ANTI_ARMOR || activeCommand == CommandMode.RAVEN_MATRIX){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.t) && anyRavenCanDeployTurret()){
+            issueRavenDeployTurretCommand();
+        }else if(Core.input.keyTap(KeyCode.r) && anyRavenCanUseAntiArmor()){
+            enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR);
+        }else if(Core.input.keyTap(KeyCode.c)){
+            if(anyRavenCanUseMatrix()){
+                enterCommandMode(CommandMode.RAVEN_MATRIX);
+            }else if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
+                ui.hudfrag.setHudText("Requires Ship Tech Lab");
+            }
         }
     }
 
@@ -1550,7 +2865,7 @@ public class UnitAbilityPanel extends Table{
             }else if(block == Blocks.tankFabricator){
                 int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
                 int crawlerIndex = block.plans.indexOf(p -> p.unit == UnitTypes.crawler);
-                int anthicusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.anthicus);
+                int hurricaneIndex = block.plans.indexOf(p -> p.unit == UnitTypes.hurricane);
                 int preceptIndex = block.plans.indexOf(p -> p.unit == UnitTypes.precept);
                 int maceIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mace);
                 int scepterIndex = block.plans.indexOf(p -> p.unit == UnitTypes.scepter);
@@ -1559,8 +2874,8 @@ public class UnitAbilityPanel extends Table{
                     factory.configure(locusIndex);
                 }else if(Core.input.keyTap(KeyCode.d) && crawlerIndex != -1 && factory.canQueuePlan(crawlerIndex)){
                     factory.configure(crawlerIndex);
-                }else if(Core.input.keyTap(KeyCode.n) && anthicusIndex != -1 && factory.canQueuePlan(anthicusIndex)){
-                    factory.configure(anthicusIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && hurricaneIndex != -1 && factory.canQueuePlan(hurricaneIndex)){
+                    factory.configure(hurricaneIndex);
                 }else if(Core.input.keyTap(KeyCode.s) && preceptIndex != -1 && factory.canQueuePlan(preceptIndex)){
                     factory.configure(preceptIndex);
                 }else if(Core.input.keyTap(KeyCode.r) && maceIndex != -1 && factory.canQueuePlan(maceIndex)){
@@ -1573,7 +2888,7 @@ public class UnitAbilityPanel extends Table{
             }else if(block == Blocks.shipFabricator){
                 int flareIndex = block.plans.indexOf(p -> p.unit == UnitTypes.flare);
                 int megaIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mega);
-                int obviateIndex = block.plans.indexOf(p -> p.unit == UnitTypes.obviate);
+                int liberatorIndex = block.plans.indexOf(p -> p.unit == UnitTypes.liberator);
                 int avertIndex = block.plans.indexOf(p -> p.unit == UnitTypes.avert);
                 int horizonIndex = block.plans.indexOf(p -> p.unit == UnitTypes.horizon);
                 int antumbraIndex = block.plans.indexOf(p -> p.unit == UnitTypes.antumbra);
@@ -1582,8 +2897,8 @@ public class UnitAbilityPanel extends Table{
                     factory.configure(flareIndex);
                 }else if(Core.input.keyTap(KeyCode.d) && megaIndex != -1 && factory.canQueuePlan(megaIndex)){
                     factory.configure(megaIndex);
-                }else if(Core.input.keyTap(KeyCode.n) && obviateIndex != -1 && factory.canQueuePlan(obviateIndex)){
-                    factory.configure(obviateIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && liberatorIndex != -1 && factory.canQueuePlan(liberatorIndex)){
+                    factory.configure(liberatorIndex);
                 }else if(Core.input.keyTap(KeyCode.r) && avertIndex != -1 && factory.canQueuePlan(avertIndex)){
                     factory.configure(avertIndex);
                 }else if(Core.input.keyTap(KeyCode.e) && horizonIndex != -1 && factory.canQueuePlan(horizonIndex)){
@@ -1898,6 +3213,8 @@ public class UnitAbilityPanel extends Table{
             ids[i] = control.input.selectedUnits.get(i).id;
         }
         if(ids.length > 0){
+            Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
+            Call.commandMedivacMovingUnload(player, ids, false);
             //Send stop command (move to current position)
             for(Unit unit : control.input.selectedUnits){
                 if(unit.isValid()){
@@ -1910,6 +3227,14 @@ public class UnitAbilityPanel extends Table{
 
     private void executeHoldCommand(){
         //Hold command executes immediately - units hold position
+        int[] ids = new int[control.input.selectedUnits.size];
+        for(int i = 0; i < ids.length; i++){
+            ids[i] = control.input.selectedUnits.get(i).id;
+        }
+        if(ids.length > 0){
+            Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
+            Call.commandMedivacMovingUnload(player, ids, false);
+        }
         for(Unit unit : control.input.selectedUnits){
             if(unit.isValid()){
                 //Send hold command (move to current position, will be interpreted as hold)

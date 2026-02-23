@@ -259,7 +259,10 @@ public class ImagePacker{
     }
 
     static void delete(String name){
-        ((GenRegion)Core.atlas.find(name)).path.delete();
+        TextureRegion region = Core.atlas.find(name);
+        if(region instanceof GenRegion gen && gen.path != null){
+            gen.path.delete();
+        }
     }
 
     static void replace(String name, Pixmap image){
@@ -268,7 +271,10 @@ public class ImagePacker{
 
     static void replace(String path, String name, Pixmap image){
         Fi.get(path + ".png").writePng(image);
-        ((GenRegion)Core.atlas.find(name)).path.delete();
+        TextureRegion region = Core.atlas.find(name);
+        if(region instanceof GenRegion gen && gen.path != null){
+            gen.path.delete();
+        }
     }
 
     static void replace(TextureRegion region, Pixmap image){

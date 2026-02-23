@@ -1076,7 +1076,7 @@ public class MobileInput extends InputHandler implements GestureListener{
                 player.shooting = false;
                 if(Core.settings.getBool("autotarget") && !(player.unit() instanceof BlockUnitUnit u && u.tile() instanceof ControlBlock c && !c.shouldAutoTarget())){
                     if(unit.type.canAttack){
-                        target = Units.closestTarget(unit.team, unit.x, unit.y, range, u -> u.checkTarget(type.targetAir, type.targetGround), u -> type.targetGround && type.targetBuildingsMobile);
+                        target = Units.closestTarget(unit.team, unit.x, unit.y, range, unit.hitSize / 2f, u -> u.checkTarget(type.targetAir, type.targetGround), u -> type.targetGround && type.targetBuildingsMobile);
                     }
 
                     if(allowHealing && target == null){
@@ -1091,7 +1091,7 @@ public class MobileInput extends InputHandler implements GestureListener{
                 //this may be a bad idea, aiming for a point far in front could work better, test it out
                 unit.aim(Core.input.mouseWorldX(), Core.input.mouseWorldY());
             }else{
-                Vec2 intercept = player.unit().type.weapons.contains(w -> w.predictTarget) ? Predict.intercept(unit, target, type.weapons.first().bullet) : Tmp.v1.set(target);
+                Vec2 intercept = Tmp.v1.set(target);
 
                 player.mouseX = intercept.x;
                 player.mouseY = intercept.y;
