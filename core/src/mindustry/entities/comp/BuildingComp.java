@@ -1727,7 +1727,8 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
 
         float damage = other.type.buildingDamage(other);
         if(!other.type.pierceArmor){
-            damage = Damage.applyArmor(damage, block.armor * other.type.armorMultiplier);
+            float armor = (block.armor + UnitTypes.steelArmorBuildingArmorBonus(team)) * other.type.armorMultiplier;
+            damage = Damage.applyArmor(damage, armor);
         }
 
         damage(other, other.team, damage);

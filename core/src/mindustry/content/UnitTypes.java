@@ -71,6 +71,7 @@ public class UnitTypes{
     private static final float liberatorFighterRangeTiles = 5f;
     private static final float liberatorDefenseRangeTiles = 10f;
     private static final IntMap<LiberatorData> liberatorData = new IntMap<>();
+    private static final IntMap<VikingData> vikingData = new IntMap<>();
     private static final float scaledTankVisualScale = 0.65f;
     private static final float scaledTankShadowScale = scaledTankVisualScale * 0.85f;
     private static final float medivacAfterburnerDuration = 6f * 60f;
@@ -90,6 +91,9 @@ public class UnitTypes{
     private static final float ravenTurretCost = 50f;
     private static final float ravenAntiArmorCost = 75f;
     private static final float ravenMatrixCost = 75f;
+    private static final float vikingTransformDuration = 2f * 60f;
+    private static final float vikingMechSpeed = 3.15f;
+    private static final float vikingMechRange = 6f * tilesize;
     private static final float battlecruiserWeaponRange = 6f * tilesize;
     private static final float battlecruiserYamatoRange = 11f * tilesize;
     private static final float battlecruiserYamatoChargeTime = 2f * 60f;
@@ -97,7 +101,7 @@ public class UnitTypes{
     private static final float battlecruiserWarpChargeTime = 1f * 60f;
     private static final float battlecruiserWarpTransitTime = 4f * 60f;
     // visual-only departure animation window; does not affect warp invulnerability/timing
-    private static final float battlecruiserWarpDepartureTime = 0.45f * 60f;
+    private static final float battlecruiserWarpDepartureTime = 0.225f * 60f;
     private static final float battlecruiserWarpDepartureBackPhase = 0.46f;
     private static final float battlecruiserWarpCooldown = 71f * 60f;
     private static final float battlecruiserWarpAppearTime = 0.9f * 60f;
@@ -108,6 +112,10 @@ public class UnitTypes{
     private static final float battlecruiserMaterializeFrontDelay = 0f;
     private static final float battlecruiserMaterializeFrontDuration = 0.45f;
     private static final int battlecruiserMaterializeSlices = 30;
+    private static final float fortressBodyKickMaxAngle = 36f;
+    private static final float fortressBodyKickInitialOmega = 136f;
+    private static final float fortressBodyKickAngularAccel = 260f;
+    private static final IntMap<FortressBodyKickData> fortressBodyKickData = new IntMap<>();
     private static final FloatSeq battlecruiserSpotMaskLeft = new FloatSeq();
     private static final FloatSeq battlecruiserSpotMaskRight = new FloatSeq();
     private static float battlecruiserSpotMaxWorldRadius = 2.6f;
@@ -169,9 +177,179 @@ public class UnitTypes{
     });
     private static final float bansheeCloakCost = 25f;
     private static final float bansheeCloakDrain = 1.3f;
+    private static final int infantryWeaponMaxLevel = 3;
+    private static final int[] infantryWeaponCrystalCost = {0, 100, 150, 200};
+    private static final int[] infantryWeaponGasCost = {0, 100, 150, 200};
+    private static final float[] infantryWeaponResearchTime = {0f, 114f * 60f, 136f * 60f, 157f * 60f};
+    private static final int vehicleWeaponMaxLevel = 3;
+    private static final int[] vehicleWeaponCrystalCost = {0, 100, 175, 250};
+    private static final int[] vehicleWeaponGasCost = {0, 100, 175, 250};
+    private static final float[] vehicleWeaponResearchTime = {0f, 114f * 60f, 136f * 60f, 157f * 60f};
+    private static final int shipWeaponMaxLevel = 3;
+    private static final int[] shipWeaponCrystalCost = {0, 100, 175, 250};
+    private static final int[] shipWeaponGasCost = {0, 100, 175, 250};
+    private static final float[] shipWeaponResearchTime = {0f, 114f * 60f, 136f * 60f, 157f * 60f};
+    private static final int vehicleArmorMaxLevel = 3;
+    private static final int[] vehicleArmorCrystalCost = {0, 100, 175, 250};
+    private static final int[] vehicleArmorGasCost = {0, 100, 175, 250};
+    private static final float[] vehicleArmorResearchTime = {0f, 114f * 60f, 136f * 60f, 157f * 60f};
+    private static final int instantTrackingCrystalCost = 100;
+    private static final int instantTrackingGasCost = 100;
+    private static final float instantTrackingResearchTime = 57f * 60f;
+    private static final int steelArmorCrystalCost = 150;
+    private static final int steelArmorGasCost = 150;
+    private static final float steelArmorResearchTime = 100f * 60f;
+    private static final int ghostCamoCrystalCost = 150;
+    private static final int ghostCamoGasCost = 150;
+    private static final float ghostCamoResearchTime = 86f * 60f;
+    private static final int ghostWarheadCrystalCost = 100;
+    private static final int ghostWarheadGasCost = 100;
+    private static final float ghostWarheadBuildTime = 43f * 60f;
+    private static final float ghostTacticalNukeRange = 12f * tilesize;
+    private static final float ghostTacticalNukeDelay = 14f * 60f;
+    private static final float ghostTacticalNukeMissileFallTime = 0.9f * 60f;
+    private static final float ghostTacticalNukeDamageRadius = 3f * tilesize;
+    private static final float ghostTacticalNukeCenterDamage = 300f;
+    private static final float ghostTacticalNukeEdgeDamage = 100f;
+    private static final float ghostTacticalNukeBuildingBonus = 200f;
+    private static final float ghostTacticalNukeMarkerRadius = tilesize;
+    private static final float ghostStableAimRange = 10f * tilesize;
+    private static final float ghostStableAimAimTime = 1.43f * 60f;
+    private static final float ghostStableAimEnergyCost = 50f;
+    private static final float ghostStableAimDamage = 130f;
+    private static final float ghostStableAimPsionicBonus = 40f;
+    private static final float ghostEmpRange = 10f * tilesize;
+    private static final float ghostEmpRadius = 1.5f * tilesize;
+    private static final float ghostEmpEnergyCost = 75f;
+    private static final float ghostEmpShieldDamage = 100f;
+    private static final float ghostEmpPsionicEnergyBurn = 100f;
+    private static final float ghostEmpRevealDuration = 5f * 60f;
+    private static final float ghostEmpProjectileSpeed = 5.2f;
+    private static final float ghostEmpAfterglowDelay = 22f;
+    private static final Effect ghostEmpImpactEffect = new Effect(42f, 260f, e -> {
+        Draw.z(Layer.effect + 0.25f);
+        float fin = e.fin();
+
+        float brightLife = 0.42f;
+        float brightFin = Mathf.clamp(fin / brightLife);
+        float brightAlpha = Mathf.clamp(1f - brightFin);
+        float brightRadius = Mathf.lerp(1.8f, 5.8f, Interp.pow2Out.apply(brightFin));
+
+        float darkLife = 0.78f;
+        float darkFin = Mathf.clamp(fin / darkLife);
+        float darkAlpha = Mathf.clamp(1f - darkFin);
+        float darkRadius = Mathf.lerp(3.4f, 10.6f, Interp.pow2Out.apply(darkFin));
+
+        // central small bright-blue dust/fog sphere (disappears first)
+        Draw.color(0.62f, 0.88f, 1f, 0.26f * brightAlpha);
+        Fill.circle(e.x, e.y, brightRadius * (0.72f + 0.28f * brightAlpha));
+        Fx.rand.setSeed(e.id * 733L + 11L);
+        for(int i = 0; i < 24; i++){
+            float ang = Fx.rand.random(360f);
+            float rr = brightRadius * Mathf.sqrt(Fx.rand.random(1f));
+            float wobble = Mathf.sin(Time.time * (0.28f + Fx.rand.random(0.26f)) + Fx.rand.random(Mathf.PI2)) * 0.45f * fin;
+            float px = e.x + Angles.trnsx(ang, rr + wobble);
+            float py = e.y + Angles.trnsy(ang, rr + wobble);
+            float size = Fx.rand.random(0.32f, 1.05f) * (0.6f + 0.45f * brightAlpha);
+            Draw.color(0.72f, 0.94f, 1f, (0.06f + Fx.rand.random(0.16f)) * brightAlpha);
+            Fill.circle(px, py, size);
+        }
+
+        // larger, darker blue dust/fog sphere
+        Draw.color(0.18f, 0.42f, 0.78f, 0.2f * darkAlpha);
+        Fill.circle(e.x, e.y, darkRadius * (0.8f + 0.2f * darkAlpha));
+        Fx.rand.setSeed(e.id * 991L + 37L);
+        for(int i = 0; i < 42; i++){
+            float ang = Fx.rand.random(360f);
+            float rr = darkRadius * Mathf.sqrt(Fx.rand.random(1f));
+            float wobble = Mathf.sin(Time.time * (0.19f + Fx.rand.random(0.19f)) + Fx.rand.random(Mathf.PI2)) * 0.62f * fin;
+            float px = e.x + Angles.trnsx(ang, rr + wobble);
+            float py = e.y + Angles.trnsy(ang, rr + wobble);
+            float size = Fx.rand.random(0.42f, 1.35f) * (0.62f + 0.42f * darkAlpha);
+            Draw.color(0.24f, 0.58f, 0.96f, (0.045f + Fx.rand.random(0.11f)) * darkAlpha);
+            Fill.circle(px, py, size);
+        }
+
+        // dark blue ring expands and fades
+        float ringFin = Interp.pow2Out.apply(fin);
+        Draw.color(0.15f, 0.3f, 0.58f, 0.48f * (1f - fin));
+        Lines.stroke((1.95f - 1.25f * fin) * (0.82f + 0.18f * darkAlpha));
+        Lines.circle(e.x, e.y, 2.4f + ringFin * 17.5f);
+
+        // large electric arcs: active from start until dark sphere nearly gone
+        float arcFade = Mathf.clamp((darkLife - fin) / darkLife);
+        if(arcFade > 0.001f){
+            float spin = Time.time * 3.2f;
+            Draw.color(0.5f, 0.84f, 1f, (0.18f + 0.32f * Mathf.absin(Time.time + e.id * 0.07f, 1.9f, 1f)) * arcFade);
+            Lines.stroke((0.85f + 0.55f * Mathf.absin(Time.time + e.id * 0.13f, 2.3f, 1f)) * arcFade);
+            int arcs = 6;
+            for(int i = 0; i < arcs; i++){
+                float angle = spin + i * (360f / arcs) + Mathf.sin(Time.time * (1.6f + i * 0.16f) + i * 11f) * 13f;
+                float arcDeg = 36f + Mathf.absin(Time.time + i * 6f, 2.6f, 26f);
+                float radius = darkRadius * (0.68f + 0.2f * Mathf.sin(Time.time * 0.87f + i * 1.7f));
+                Lines.arc(e.x, e.y, Math.max(1.8f, radius), arcDeg / 360f, angle);
+            }
+        }
+
+        Drawf.light(e.x, e.y, 18f + darkRadius * 1.8f, Color.valueOf("66bfff"), 0.2f * darkAlpha);
+        Draw.reset();
+    });
+    private static final Effect ghostEmpAfterglowEffect = new Effect(34f, 180f, e -> {
+        Draw.z(Layer.effect + 0.21f);
+        float fin = e.fin();
+        float fout = e.fout();
+
+        // small, slower arc flicker after the sphere vanishes
+        float flicker = Mathf.absin(Time.time + e.id * 0.19f, 7.5f, 1f);
+        if(flicker > 0.32f){
+            Draw.color(0.38f, 0.78f, 1f, 0.24f * fout * flicker);
+            Lines.stroke((0.35f + 0.42f * flicker) * fout);
+            float spin = Time.time * 1.05f;
+            for(int i = 0; i < 3; i++){
+                float angle = spin + i * 120f + Mathf.sin(Time.time * (0.62f + i * 0.13f) + i * 9f) * 11f;
+                float arcDeg = 22f + Mathf.absin(Time.time + i * 9f, 8f, 19f);
+                float radius = 2.2f + i * 1.45f + Mathf.absin(Time.time + i * 5f, 6f, 0.9f);
+                Lines.arc(e.x, e.y, radius, arcDeg / 360f, angle);
+            }
+        }
+
+        // faint ghost-blue floating particles that slowly disappear
+        Fx.rand.setSeed(e.id * 1733L + 71L);
+        for(int i = 0; i < 14; i++){
+            float ang = Fx.rand.random(360f);
+            float base = Fx.rand.random(0.8f, 4.6f);
+            float speed = Fx.rand.random(0.06f, 0.28f);
+            float drift = base + fin * (2f + 11f * speed);
+            float wobble = Mathf.sin(Time.time * (0.45f + Fx.rand.random(0.35f)) + Fx.rand.random(Mathf.PI2)) * 0.85f * fin;
+            float px = e.x + Angles.trnsx(ang, drift + wobble);
+            float py = e.y + Angles.trnsy(ang, drift) + fin * 1.8f;
+            float size = Fx.rand.random(0.2f, 0.68f) * (0.62f + 0.38f * fout);
+            Draw.color(0.38f, 0.82f, 1f, (0.04f + Fx.rand.random(0.1f)) * fout);
+            Fill.circle(px, py, size);
+        }
+
+        Drawf.light(e.x, e.y, 10f + 6f * fout, Color.valueOf("59b9ff"), 0.13f * fout);
+        Draw.reset();
+    });
     private static final IntMap<RavenData> ravenData = new IntMap<>();
     private static final IntMap<BattlecruiserData> battlecruiserData = new IntMap<>();
+    private static final IntMap<InfantryWeaponData> infantryWeaponData = new IntMap<>();
+    private static final IntMap<VehicleWeaponData> vehicleWeaponData = new IntMap<>();
+    private static final IntMap<ShipWeaponData> shipWeaponData = new IntMap<>();
+    private static final IntMap<VehicleArmorData> vehicleArmorData = new IntMap<>();
+    private static final IntMap<InfantryArmorData> infantryArmorData = new IntMap<>();
+    private static final IntMap<InstantTrackingData> instantTrackingData = new IntMap<>();
+    private static final IntMap<SteelArmorData> steelArmorData = new IntMap<>();
+    private static final IntMap<GhostCamoData> ghostCamoData = new IntMap<>();
+    private static final IntMap<GhostWarheadSiloData> ghostWarheadSiloData = new IntMap<>();
+    private static final IntMap<GhostTacticalNukeData> ghostTacticalNukeData = new IntMap<>();
+    private static final IntMap<GhostStableAimData> ghostStableAimData = new IntMap<>();
+    private static final IntMap<GhostEmpData> ghostEmpData = new IntMap<>();
+    private static boolean infantryUpgradeHooksInitialized = false;
+    private static boolean vikingHooksInitialized = false;
     private static BulletType battlecruiserYamatoBullet;
+    private static BulletType ghostStableAimBullet;
+    private static BulletType ghostEmpBullet;
 
     public static class CoreFlyerData{
         public final Vec2 target = new Vec2();
@@ -216,6 +394,13 @@ public class UnitTypes{
         public float transitionTime = 0f;
     }
 
+    public static class VikingData{
+        public boolean mechMode = false;
+        public boolean transforming = false;
+        public boolean toMech = false;
+        public float transformTime = 0f;
+    }
+
     public static class RavenData{
         public final Vec2 antiArmorTarget = new Vec2();
         public int matrixTargetId = -1;
@@ -243,6 +428,100 @@ public class UnitTypes{
         public boolean warpRippleTriggered = false;
         public float warpDepartureTime = 0f;
         public boolean warpDepartureBurstTriggered = false;
+    }
+
+    public static class InfantryWeaponData{
+        public int level = 0;
+        public int researchingLevel = 0;
+        public float researchTime = 0f;
+    }
+
+    public static class VehicleWeaponData{
+        public int level = 0;
+        public int researchingLevel = 0;
+        public float researchTime = 0f;
+    }
+
+    public static class ShipWeaponData{
+        public int level = 0;
+        public int researchingLevel = 0;
+        public float researchTime = 0f;
+    }
+
+    public static class VehicleArmorData{
+        public int level = 0;
+        public int researchingLevel = 0;
+        public float researchTime = 0f;
+    }
+
+    public static class InfantryArmorData{
+        public int level = 0;
+        public int researchingLevel = 0;
+        public float researchTime = 0f;
+    }
+
+    public static class InstantTrackingData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class SteelArmorData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class GhostCamoData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class GhostWarheadSiloData{
+        public int buildPos = -1;
+        public boolean producing = false;
+        public boolean armed = false;
+        public float buildTime = 0f;
+    }
+
+    public static class GhostTacticalNukeData{
+        public final Vec2 target = new Vec2();
+        public int teamId = -1;
+        public int reservedSiloPos = -1;
+        public float delayTime = 0f;
+        public float missileTime = 0f;
+        public boolean active = false;
+        public boolean missileFalling = false;
+    }
+
+    public static class GhostStableAimData{
+        public int targetId = -1;
+        public boolean active = false;
+        public boolean aiming = false;
+        public float aimTime = 0f;
+        public float startHealth = 0f;
+        public float startHitTime = 0f;
+    }
+
+    public static class GhostEmpData{
+        public final Vec2 target = new Vec2();
+        public boolean active = false;
+    }
+
+    public static class FortressShellData{
+        public Teamc target;
+        public float originX, originY;
+        public float lastInRangeX = Float.NaN, lastInRangeY = Float.NaN;
+    }
+
+    public static class FortressBodyKickData{
+        public float offset;
+        public float omega;
+        public float sign;
+        public boolean active;
+        public float frozenMount0 = Float.NaN;
+        public float frozenMount1 = Float.NaN;
     }
 
     private static class BattlecruiserAfterDraw{
@@ -557,12 +836,20 @@ public class UnitTypes{
                 return true;
             }
         }
+        for(Building other : viewer.data().buildings){
+            if(other == null || !other.isValid()) continue;
+            float detectRange = other.block.stealthDetectionRange;
+            if(detectRange > 0f && other.within(unit, detectRange)){
+                return true;
+            }
+        }
         return false;
     }
 
     public static boolean widowHiddenFrom(@Nullable Unit unit, Team viewer){
         if(unit == null) return false;
-        if(!widowIsStealthed(unit) && !bansheeCloaked(unit)) return false;
+        if(unit.hasEffect(StatusEffects.ghostEmpReveal)) return false;
+        if(!widowIsStealthed(unit) && !bansheeCloaked(unit) && !ghostCloaked(unit)) return false;
         if(unit.team == viewer) return false;
         return !widowDetectedBy(unit, viewer);
     }
@@ -581,6 +868,118 @@ public class UnitTypes{
 
     public static boolean isLiberator(@Nullable Unit unit){
         return unit != null && liberator != null && unit.type == liberator;
+    }
+
+    public static boolean isViking(@Nullable Unit unit){
+        return unit != null && flare != null && unit.type == flare;
+    }
+
+    private static void ensureVikingHooks(){
+        if(vikingHooksInitialized) return;
+        vikingHooksInitialized = true;
+        Events.on(WorldLoadEvent.class, e -> vikingData.clear());
+    }
+
+    public static VikingData getVikingData(@Nullable Unit unit){
+        ensureVikingHooks();
+        if(unit == null){
+            return new VikingData();
+        }
+        VikingData data = vikingData.get(unit.id);
+        if(data == null){
+            data = new VikingData();
+            vikingData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static void clearVikingData(@Nullable Unit unit){
+        if(unit == null) return;
+        vikingData.remove(unit.id);
+    }
+
+    public static boolean vikingIsMechMode(@Nullable Unit unit){
+        return isViking(unit) && getVikingData(unit).mechMode;
+    }
+
+    public static boolean vikingIsFighterMode(@Nullable Unit unit){
+        return isViking(unit) && !getVikingData(unit).mechMode;
+    }
+
+    public static boolean vikingIsTransforming(@Nullable Unit unit){
+        return isViking(unit) && getVikingData(unit).transforming;
+    }
+
+    private static boolean vikingHasLandingArea(@Nullable Unit unit){
+        if(!isViking(unit)) return false;
+        Tile center = world.tileWorld(unit.x, unit.y);
+        if(center == null) return false;
+
+        for(int dx = -1; dx <= 1; dx++){
+            for(int dy = -1; dy <= 1; dy++){
+                Tile tile = world.tile(center.x + dx, center.y + dy);
+                if(tile == null) return false;
+                if(tile.solid()) return false;
+                if(tile.floor().isDeep()) return false;
+                if(tile.build != null) return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static boolean vikingCanTransformToMech(@Nullable Unit unit){
+        if(!isViking(unit)) return false;
+        VikingData data = getVikingData(unit);
+        if(data.transforming || data.mechMode) return false;
+        if(ravenMatrixDisabled(unit)) return false;
+        return vikingHasLandingArea(unit);
+    }
+
+    public static boolean vikingCanTransformToFighter(@Nullable Unit unit){
+        if(!isViking(unit)) return false;
+        VikingData data = getVikingData(unit);
+        return data.mechMode && !data.transforming && !ravenMatrixDisabled(unit);
+    }
+
+    public static boolean commandVikingMode(@Nullable Unit unit, boolean mechMode){
+        if(!isViking(unit)) return false;
+        VikingData data = getVikingData(unit);
+
+        if(mechMode){
+            if(!vikingCanTransformToMech(unit)) return false;
+            data.transforming = true;
+            data.toMech = true;
+            data.transformTime = vikingTransformDuration;
+            return true;
+        }
+
+        if(!vikingCanTransformToFighter(unit)) return false;
+        data.mechMode = false;
+        data.transforming = false;
+        data.toMech = false;
+        data.transformTime = 0f;
+        return true;
+    }
+
+    public static void updateViking(@Nullable Unit unit){
+        if(!isViking(unit)) return;
+        VikingData data = getVikingData(unit);
+
+        if(data.transforming){
+            data.transformTime = Math.max(0f, data.transformTime - Time.delta);
+            unit.vel.setZero();
+            if(data.transformTime <= 0.001f){
+                data.transforming = false;
+                if(data.toMech){
+                    data.mechMode = true;
+                }
+            }
+        }
+
+        if(data.mechMode){
+            unit.vel.limit(vikingMechSpeed);
+        }
     }
 
     public static float liberatorZoneRadius(){
@@ -736,18 +1135,10 @@ public class UnitTypes{
             if(dist <= selectRange + 1f){
                 startLiberatorDeploy(unit);
             }else{
-                Tmp.v1.set(unit.x - data.zone.x, unit.y - data.zone.y);
-                if(Tmp.v1.isZero(0.001f)){
-                    Tmp.v1.trns(unit.rotation, selectRange);
-                }else{
-                    Tmp.v1.setLength(selectRange);
-                }
-                data.approach.set(data.zone.x + Tmp.v1.x, data.zone.y + Tmp.v1.y);
-
                 if(unit.controller() instanceof CommandAI ai){
                     ai.command(UnitCommand.moveCommand);
-                    if(ai.targetPos == null || !Mathf.within(ai.targetPos.x, ai.targetPos.y, data.approach.x, data.approach.y, 2f)){
-                        ai.commandPosition(data.approach, false);
+                    if(ai.targetPos == null || !Mathf.within(ai.targetPos.x, ai.targetPos.y, data.zone.x, data.zone.y, 2f)){
+                        ai.commandPosition(data.zone, false);
                     }
                 }
             }
@@ -1121,8 +1512,508 @@ public class UnitTypes{
         }
     }
 
+    private static @Nullable Teamc forcedFriendlyAttackTarget(@Nullable Bullet bullet){
+        if(bullet == null || bullet.owner == null) return null;
+        if(bullet.owner instanceof Unit owner && owner.controller() instanceof CommandAI ai){
+            Teamc forced = ai.attackTarget;
+            if(forced != null && forced.team() == bullet.team){
+                return forced;
+            }
+        }
+        return null;
+    }
+
+    private static boolean canDamageFriendlyOnlyWhenForced(@Nullable Bullet bullet, @Nullable Teamc target){
+        if(bullet == null || target == null) return false;
+        if(target.team() != bullet.team) return true;
+        Teamc forced = forcedFriendlyAttackTarget(bullet);
+        return forced != null && forced == target;
+    }
+
     public static boolean isBanshee(@Nullable Unit unit){
         return unit != null && horizon != null && unit.type == horizon;
+    }
+
+    public static boolean isGhost(@Nullable Unit unit){
+        return unit != null && ghost != null && unit.type == ghost;
+    }
+
+    public static boolean ghostCloaked(@Nullable Unit unit){
+        return isGhost(unit) && unit.hasEffect(StatusEffects.bansheeCloak);
+    }
+
+    public static boolean ghostCanToggleCloak(@Nullable Unit unit){
+        if(!isGhost(unit)) return false;
+        if(ghostCloaked(unit)) return true;
+        return !ravenMatrixDisabled(unit)
+            && unit.energy >= bansheeCloakCost
+            && ghostCamoLevel(unit.team) > 0;
+    }
+
+    public static boolean commandGhostCloak(@Nullable Unit unit){
+        if(!isGhost(unit)) return false;
+        if(ghostCloaked(unit)){
+            unit.unapply(StatusEffects.bansheeCloak);
+            return true;
+        }
+        if(ravenMatrixDisabled(unit) || unit.energy < bansheeCloakCost || ghostCamoLevel(unit.team) <= 0) return false;
+        unit.energy = Math.max(0f, unit.energy - bansheeCloakCost);
+        unit.apply(StatusEffects.bansheeCloak, 1f);
+        return true;
+    }
+
+    public static void updateGhost(@Nullable Unit unit){
+        if(ghostCloaked(unit)){
+            unit.energy = Math.max(0f, unit.energy - bansheeCloakDrain * Time.delta / 60f);
+            if(unit.energy <= 0.001f){
+                unit.unapply(StatusEffects.bansheeCloak);
+            }
+        }
+        updateGhostStableAim(unit);
+        updateGhostEmp(unit);
+    }
+
+    private static @Nullable GhostStableAimData getGhostStableAimData(@Nullable Unit unit, boolean create){
+        if(!isGhost(unit)) return null;
+        GhostStableAimData data = ghostStableAimData.get(unit.id);
+        if(data == null && create){
+            data = new GhostStableAimData();
+            ghostStableAimData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static void clearGhostStableAimData(@Nullable Unit unit){
+        if(unit == null) return;
+        ghostStableAimData.remove(unit.id);
+    }
+
+    public static @Nullable Unit ghostStableAimTarget(@Nullable Unit unit){
+        GhostStableAimData data = getGhostStableAimData(unit, false);
+        if(data == null || !data.active || data.targetId < 0) return null;
+        Unit target = Groups.unit.getByID(data.targetId);
+        return ghostStableAimValidTarget(target) ? target : null;
+    }
+
+    public static boolean ghostStableAimValidTarget(@Nullable Unit target){
+        return target != null
+            && target.isValid()
+            && target.type.unitClasses.contains(UnitClass.biological);
+    }
+
+    public static boolean ghostStableAimPending(@Nullable Unit unit){
+        GhostStableAimData data = getGhostStableAimData(unit, false);
+        return data != null && data.active;
+    }
+
+    public static boolean ghostStableAimAiming(@Nullable Unit unit){
+        GhostStableAimData data = getGhostStableAimData(unit, false);
+        return data != null && data.active && data.aiming;
+    }
+
+    public static boolean ghostCanUseStableAim(@Nullable Unit unit){
+        return isGhost(unit)
+            && !ravenMatrixDisabled(unit)
+            && !ghostStableAimPending(unit)
+            && !ghostTacticalNukePending(unit)
+            && !ghostEmpPending(unit)
+            && unit.energy >= ghostStableAimEnergyCost;
+    }
+
+    public static float ghostStableAimRange(){
+        return ghostStableAimRange;
+    }
+
+    public static boolean commandGhostStableAim(@Nullable Unit unit, @Nullable Unit target){
+        if(!ghostCanUseStableAim(unit) || !ghostStableAimValidTarget(target)) return false;
+        GhostStableAimData data = getGhostStableAimData(unit, true);
+        if(data == null) return false;
+        data.active = true;
+        data.aiming = false;
+        data.targetId = target.id;
+        data.aimTime = 0f;
+        data.startHealth = unit.health;
+        data.startHitTime = unit.hitTime;
+        return true;
+    }
+
+    public static boolean commandGhostCancelStableAim(@Nullable Unit unit){
+        if(!isGhost(unit)) return false;
+        GhostStableAimData data = getGhostStableAimData(unit, false);
+        if(data == null || !data.active) return false;
+        data.active = false;
+        data.aiming = false;
+        data.targetId = -1;
+        data.aimTime = 0f;
+        return true;
+    }
+
+    private static void updateGhostStableAim(@Nullable Unit unit){
+        if(!isGhost(unit)) return;
+        GhostStableAimData data = getGhostStableAimData(unit, false);
+        if(data == null || !data.active) return;
+
+        Unit target = Groups.unit.getByID(data.targetId);
+        if(!ghostStableAimValidTarget(target) || ravenMatrixDisabled(unit)){
+            commandGhostCancelStableAim(unit);
+            return;
+        }
+
+        if(!data.aiming){
+            unit.lookAt(target);
+            if(unit.within(target, ghostStableAimRange)){
+                if(unit.energy < ghostStableAimEnergyCost){
+                    commandGhostCancelStableAim(unit);
+                    return;
+                }
+                unit.energy = Math.max(0f, unit.energy - ghostStableAimEnergyCost);
+                data.aiming = true;
+                data.aimTime = 0f;
+                data.startHealth = unit.health;
+                data.startHitTime = unit.hitTime;
+                unit.vel.setZero();
+                if(unit.controller() instanceof CommandAI ai){
+                    ai.clearCommands();
+                }
+            }else if(unit.controller() instanceof CommandAI ai){
+                ai.command(UnitCommand.moveCommand);
+                ai.commandPosition(Tmp.v2.set(target.x, target.y), false);
+            }
+            return;
+        }
+
+        //Channel state: lock beam + immobilized aiming.
+        for(WeaponMount mount : unit.mounts){
+            mount.shoot = false;
+            mount.target = null;
+        }
+        unit.isShooting = false;
+        unit.vel.setZero();
+        unit.lookAt(target);
+
+        if(unit.health < data.startHealth - 0.001f || unit.hitTime > data.startHitTime + 0.001f){
+            unit.health = Math.max(unit.health, data.startHealth);
+            commandGhostCancelStableAim(unit);
+            return;
+        }
+
+        data.aimTime += Time.delta;
+        if(data.aimTime >= ghostStableAimAimTime){
+            if(ghostStableAimBullet != null){
+                Bullet bullet = ghostStableAimBullet.create(unit, unit.team, unit.x, unit.y, unit.angleTo(target));
+                if(bullet != null){
+                    bullet.data = target;
+                }
+            }
+            commandGhostCancelStableAim(unit);
+        }
+    }
+
+    private static void drawGhostStableAimBeam(@Nullable Unit unit){
+        Unit target = ghostStableAimTarget(unit);
+        if(target == null || !ghostStableAimAiming(unit)) return;
+
+        Draw.z(Layer.effect);
+        Draw.color(Color.valueOf("ff2f2f"));
+        Lines.stroke(0.625f);
+        Lines.line(unit.x, unit.y, target.x, target.y);
+        Draw.reset();
+    }
+
+    private static @Nullable GhostEmpData getGhostEmpData(@Nullable Unit unit, boolean create){
+        if(!isGhost(unit)) return null;
+        GhostEmpData data = ghostEmpData.get(unit.id);
+        if(data == null && create){
+            data = new GhostEmpData();
+            ghostEmpData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static void clearGhostEmpData(@Nullable Unit unit){
+        if(unit == null) return;
+        ghostEmpData.remove(unit.id);
+    }
+
+    public static boolean ghostEmpPending(@Nullable Unit unit){
+        GhostEmpData data = getGhostEmpData(unit, false);
+        return data != null && data.active;
+    }
+
+    public static boolean ghostCanUseEmp(@Nullable Unit unit){
+        return isGhost(unit)
+            && !ravenMatrixDisabled(unit)
+            && !ghostStableAimPending(unit)
+            && !ghostTacticalNukePending(unit)
+            && !ghostEmpPending(unit)
+            && unit.energy >= ghostEmpEnergyCost;
+    }
+
+    public static float ghostEmpRange(){
+        return ghostEmpRange;
+    }
+
+    public static boolean commandGhostEmp(@Nullable Unit unit, @Nullable Vec2 target){
+        if(!ghostCanUseEmp(unit) || target == null) return false;
+        GhostEmpData data = getGhostEmpData(unit, true);
+        if(data == null) return false;
+
+        data.active = true;
+        data.target.set(target);
+        return true;
+    }
+
+    public static boolean commandGhostCancelEmp(@Nullable Unit unit){
+        if(!isGhost(unit)) return false;
+        GhostEmpData data = getGhostEmpData(unit, false);
+        if(data == null || !data.active) return false;
+        data.active = false;
+        return true;
+    }
+
+    private static void updateGhostEmp(@Nullable Unit unit){
+        if(!isGhost(unit)) return;
+        GhostEmpData data = getGhostEmpData(unit, false);
+        if(data == null || !data.active) return;
+
+        if(ravenMatrixDisabled(unit) || ghostStableAimPending(unit) || ghostTacticalNukePending(unit)){
+            commandGhostCancelEmp(unit);
+            return;
+        }
+
+        if(unit.energy < ghostEmpEnergyCost){
+            commandGhostCancelEmp(unit);
+            return;
+        }
+
+        Vec2 target = data.target;
+        unit.lookAt(target);
+
+        if(unit.within(target, ghostEmpRange)){
+            unit.energy = Math.max(0f, unit.energy - ghostEmpEnergyCost);
+            unit.vel.setZero();
+            if(unit.controller() instanceof CommandAI ai){
+                ai.clearCommands();
+            }
+            if(ghostEmpBullet != null){
+                Bullet bullet = ghostEmpBullet.create(unit, unit.team, unit.x, unit.y, unit.angleTo(target));
+                if(bullet != null){
+                    bullet.data = new Vec2(target);
+                }
+            }else{
+                impactGhostEmp(unit, target.x, target.y);
+            }
+            data.active = false;
+        }else if(unit.controller() instanceof CommandAI ai){
+            ai.command(UnitCommand.moveCommand);
+            ai.commandPosition(Tmp.v2.set(target.x, target.y), false);
+        }
+    }
+
+    private static void impactGhostEmp(@Nullable Unit caster, float x, float y){
+        float radius = ghostEmpRadius;
+        Units.nearby((Team)null, x - radius, y - radius, radius * 2f, radius * 2f, other -> {
+            if(other == null || !other.isValid()) return;
+            if(!other.within(x, y, radius + other.hitSize / 2f)) return;
+
+            if(other.shield > 0.001f){
+                other.shield = Math.max(0f, other.shield - ghostEmpShieldDamage);
+            }
+
+            if(other.type.unitClasses.contains(UnitClass.psionic) && other.type.energyCapacity > 0f){
+                other.energy = Math.max(0f, other.energy - ghostEmpPsionicEnergyBurn);
+            }
+
+            if(widowIsStealthed(other) || bansheeCloaked(other) || ghostCloaked(other)){
+                other.apply(StatusEffects.ghostEmpReveal, ghostEmpRevealDuration);
+            }
+        });
+
+        if(Shaders.shockwave != null){
+            float lensRadius = Math.max(ghostEmpRadius * 0.95f, 8.6f);
+            Shaders.shockwave.addLensSphere(x, y, lensRadius, 17f, 0.96f);
+        }
+
+        ghostEmpImpactEffect.at(x, y, 0f, Color.valueOf("8ad9ff"));
+        Time.run(ghostEmpAfterglowDelay, () -> ghostEmpAfterglowEffect.at(x, y, 0f, Color.valueOf("8ad9ff")));
+    }
+
+    private static @Nullable GhostWarheadSiloData getGhostWarheadSiloData(@Nullable Building build, boolean create){
+        if(build == null || build.block != Blocks.launchPad) return null;
+        int pos = build.pos();
+        GhostWarheadSiloData data = ghostWarheadSiloData.get(pos);
+        if(data == null && create){
+            data = new GhostWarheadSiloData();
+            data.buildPos = pos;
+            ghostWarheadSiloData.put(pos, data);
+        }
+        return data;
+    }
+
+    private static @Nullable GhostTacticalNukeData getGhostTacticalNukeData(@Nullable Unit unit, boolean create){
+        if(!isGhost(unit)) return null;
+        GhostTacticalNukeData data = ghostTacticalNukeData.get(unit.id);
+        if(data == null && create){
+            data = new GhostTacticalNukeData();
+            ghostTacticalNukeData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static boolean ghostWarheadHasHeavyFactory(@Nullable Team team){
+        return team != null && team.data().getCount(Blocks.tankFabricator) > 0;
+    }
+
+    private static boolean ghostWarheadCanAfford(@Nullable Team team){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null || core.items == null) return false;
+        return core.items.has(Items.graphite, ghostWarheadCrystalCost)
+            && core.items.has(Items.highEnergyGas, ghostWarheadGasCost);
+    }
+
+    private static void ghostWarheadConsume(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null || core.items == null) return;
+        core.items.remove(Items.graphite, ghostWarheadCrystalCost);
+        core.items.remove(Items.highEnergyGas, ghostWarheadGasCost);
+    }
+
+    public static boolean ghostWarheadProducing(@Nullable Building build){
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, false);
+        return data != null && data.producing;
+    }
+
+    public static boolean ghostWarheadArmed(@Nullable Building build){
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, false);
+        return data != null && data.armed;
+    }
+
+    public static float ghostWarheadProductionProgress(@Nullable Building build){
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, false);
+        if(data == null || !data.producing) return 0f;
+        return Mathf.clamp(data.buildTime / ghostWarheadBuildTime);
+    }
+
+    public static boolean ghostWarheadCanStartProduction(@Nullable Building build){
+        if(build == null || build.block != Blocks.launchPad) return false;
+        if(!ghostWarheadHasHeavyFactory(build.team)) return false;
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, false);
+        if(data != null && (data.armed || data.producing)) return false;
+        return ghostWarheadCanAfford(build.team);
+    }
+
+    public static boolean ghostWarheadStartProduction(@Nullable Building build){
+        if(!ghostWarheadCanStartProduction(build)) return false;
+        ghostWarheadConsume(build.team);
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, true);
+        if(data == null) return false;
+        data.producing = true;
+        data.armed = false;
+        data.buildTime = 0f;
+        return true;
+    }
+
+    private static int reserveGhostWarhead(@Nullable Team team){
+        if(team == null) return -1;
+        for(IntMap.Entry<GhostWarheadSiloData> entry : ghostWarheadSiloData.entries()){
+            GhostWarheadSiloData data = entry.value;
+            if(data == null || !data.armed) continue;
+            Building build = world.build(entry.key);
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad || build.team != team) continue;
+            data.armed = false;
+            return entry.key;
+        }
+        return -1;
+    }
+
+    private static void refundReservedGhostWarhead(int teamId, int siloPos){
+        if(teamId < 0 || siloPos < 0) return;
+        Team team = Team.get(teamId);
+        if(team == null) return;
+        Building build = world.build(siloPos);
+        if(build == null || !build.isValid() || build.block != Blocks.launchPad || build.team != team) return;
+        GhostWarheadSiloData data = getGhostWarheadSiloData(build, true);
+        if(data == null || data.producing || data.armed) return;
+        data.armed = true;
+    }
+
+    public static int ghostWarheadCount(@Nullable Team team){
+        if(team == null) return 0;
+        int count = 0;
+        for(IntMap.Entry<GhostWarheadSiloData> entry : ghostWarheadSiloData.entries()){
+            GhostWarheadSiloData data = entry.value;
+            if(data == null || !data.armed) continue;
+            Building build = world.build(entry.key);
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad || build.team != team) continue;
+            count++;
+        }
+        return count;
+    }
+
+    public static boolean ghostTacticalNukePending(@Nullable Unit unit){
+        GhostTacticalNukeData data = getGhostTacticalNukeData(unit, false);
+        return data != null && data.active;
+    }
+
+    public static boolean ghostCanUseTacticalNuke(@Nullable Unit unit){
+        return isGhost(unit)
+            && !ravenMatrixDisabled(unit)
+            && !ghostTacticalNukePending(unit)
+            && !ghostStableAimPending(unit)
+            && !ghostEmpPending(unit)
+            && ghostWarheadCount(unit.team) > 0;
+    }
+
+    public static boolean ghostCanUseTacticalNuke(@Nullable Unit unit, float targetX, float targetY){
+        return ghostCanUseTacticalNuke(unit)
+            && unit.within(targetX, targetY, ghostTacticalNukeRange);
+    }
+
+    public static float ghostTacticalNukeRange(){
+        return ghostTacticalNukeRange;
+    }
+
+    public static boolean commandGhostTacticalNuke(@Nullable Unit unit, @Nullable Vec2 target){
+        if(unit == null || target == null) return false;
+        if(!ghostCanUseTacticalNuke(unit, target.x, target.y)) return false;
+
+        int reservedSilo = reserveGhostWarhead(unit.team);
+        if(reservedSilo < 0) return false;
+
+        GhostTacticalNukeData data = getGhostTacticalNukeData(unit, true);
+        if(data == null) return false;
+
+        float tx = Mathf.clamp(target.x, 0f, Math.max(world.unitWidth() - tilesize, 0f));
+        float ty = Mathf.clamp(target.y, 0f, Math.max(world.unitHeight() - tilesize, 0f));
+
+        data.active = true;
+        data.missileFalling = false;
+        data.delayTime = ghostTacticalNukeDelay;
+        data.missileTime = 0f;
+        data.target.set(tx, ty);
+        data.teamId = unit.team.id;
+        data.reservedSiloPos = reservedSilo;
+        unit.lookAt(tx, ty);
+        return true;
+    }
+
+    public static boolean commandGhostCancelTacticalNuke(@Nullable Unit unit){
+        if(!isGhost(unit)) return false;
+        GhostTacticalNukeData data = getGhostTacticalNukeData(unit, false);
+        if(data == null || !data.active) return false;
+
+        if(!data.missileFalling){
+            refundReservedGhostWarhead(data.teamId, data.reservedSiloPos);
+        }
+
+        data.active = false;
+        data.missileFalling = false;
+        data.delayTime = 0f;
+        data.missileTime = 0f;
+        data.reservedSiloPos = -1;
+        return true;
     }
 
     public static boolean bansheeCloaked(@Nullable Unit unit){
@@ -1182,6 +2073,24 @@ public class UnitTypes{
         return team != null
             && team.data().getCount(Blocks.surgeCrucible) > 0
             && ravenTeamHasTechAddon(team);
+    }
+
+    public static float battlecruiserYamatoCooldownDuration(){
+        return battlecruiserYamatoCooldown;
+    }
+
+    public static float battlecruiserWarpCooldownDuration(){
+        return battlecruiserWarpCooldown;
+    }
+
+    public static float battlecruiserYamatoCooldown(@Nullable Unit unit){
+        if(!isBattlecruiser(unit)) return 0f;
+        return getBattlecruiserData(unit).yamatoCooldown;
+    }
+
+    public static float battlecruiserWarpCooldown(@Nullable Unit unit){
+        if(!isBattlecruiser(unit)) return 0f;
+        return getBattlecruiserData(unit).warpCooldown;
     }
 
     public static boolean battlecruiserYamatoCharging(@Nullable Unit unit){
@@ -1256,6 +2165,18 @@ public class UnitTypes{
         data.yamatoChargeTime = 0f;
         data.yamatoTargetId = target instanceof Unit u ? u.id : -1;
         data.yamatoBuildPos = target instanceof Building b ? b.pos() : -1;
+        return true;
+    }
+
+    public static boolean commandBattlecruiserCancelYamato(@Nullable Unit unit){
+        if(!isBattlecruiser(unit)) return false;
+        BattlecruiserData data = getBattlecruiserData(unit);
+        if(!data.pendingYamato && !data.yamatoCharging && data.yamatoTargetId < 0 && data.yamatoBuildPos < 0) return false;
+        data.pendingYamato = false;
+        data.yamatoCharging = false;
+        data.yamatoChargeTime = 0f;
+        data.yamatoTargetId = -1;
+        data.yamatoBuildPos = -1;
         return true;
     }
 
@@ -1558,7 +2479,16 @@ public class UnitTypes{
 
         float baseW = battlecruiserRegionWidth(bodyRegion);
         float baseH = battlecruiserRegionHeight(bodyRegion);
-        float along = (lengthScale - 1f) * baseH * 0.5f;
+        float moveForward;
+        if(fin <= split){
+            float t = Interp.pow2Out.apply(back);
+            moveForward = Mathf.lerp(0f, baseH * 0.18f, t);
+        }else{
+            float t = Interp.pow2Out.apply(forward);
+            moveForward = Mathf.lerp(baseH * 0.18f, baseH * 0.36f, t);
+        }
+
+        float along = (lengthScale - 1f) * baseH * 0.5f + moveForward;
         float x = data.warpFrom.x + Angles.trnsx(data.warpRotation, along);
         float y = data.warpFrom.y + Angles.trnsy(data.warpRotation, along);
         float rot = data.warpRotation - 90f;
@@ -2177,6 +3107,1305 @@ public class UnitTypes{
         return false;
     }
 
+    private static void ensureInfantryUpgradeHooks(){
+        if(infantryUpgradeHooksInitialized) return;
+        infantryUpgradeHooksInitialized = true;
+
+        Events.run(Trigger.update, UnitTypes::updateInfantryUpgrades);
+        Events.run(Trigger.uiDrawBegin, UnitTypes::drawGhostTacticalNukeOverlay);
+        Events.on(WorldLoadEvent.class, e -> {
+            infantryWeaponData.clear();
+            vehicleWeaponData.clear();
+            shipWeaponData.clear();
+            vehicleArmorData.clear();
+            infantryArmorData.clear();
+            instantTrackingData.clear();
+            steelArmorData.clear();
+            ghostCamoData.clear();
+            ghostWarheadSiloData.clear();
+            ghostTacticalNukeData.clear();
+            ghostStableAimData.clear();
+            ghostEmpData.clear();
+        });
+    }
+
+    private static @Nullable InfantryWeaponData getInfantryWeaponData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        InfantryWeaponData data = infantryWeaponData.get(team.id);
+        if(data == null && create){
+            data = new InfantryWeaponData();
+            infantryWeaponData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable VehicleWeaponData getVehicleWeaponData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        VehicleWeaponData data = vehicleWeaponData.get(team.id);
+        if(data == null && create){
+            data = new VehicleWeaponData();
+            vehicleWeaponData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable ShipWeaponData getShipWeaponData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        ShipWeaponData data = shipWeaponData.get(team.id);
+        if(data == null && create){
+            data = new ShipWeaponData();
+            shipWeaponData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable VehicleArmorData getVehicleArmorData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        VehicleArmorData data = vehicleArmorData.get(team.id);
+        if(data == null && create){
+            data = new VehicleArmorData();
+            vehicleArmorData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable InfantryArmorData getInfantryArmorData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        InfantryArmorData data = infantryArmorData.get(team.id);
+        if(data == null && create){
+            data = new InfantryArmorData();
+            infantryArmorData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable InstantTrackingData getInstantTrackingData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        InstantTrackingData data = instantTrackingData.get(team.id);
+        if(data == null && create){
+            data = new InstantTrackingData();
+            instantTrackingData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable SteelArmorData getSteelArmorData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        SteelArmorData data = steelArmorData.get(team.id);
+        if(data == null && create){
+            data = new SteelArmorData();
+            steelArmorData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable GhostCamoData getGhostCamoData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        GhostCamoData data = ghostCamoData.get(team.id);
+        if(data == null && create){
+            data = new GhostCamoData();
+            ghostCamoData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static void updateInfantryUpgrades(){
+        if(state == null || !state.isGame()) return;
+        updateInfantryWeaponResearch();
+        updateVehicleWeaponResearch();
+        updateShipWeaponResearch();
+        updateVehicleArmorResearch();
+        updateInfantryArmorResearch();
+        updateInstantTrackingResearch();
+        updateSteelArmorResearch();
+        updateGhostCamoResearch();
+        updateGhostWarheadProduction();
+        updateGhostTacticalNukes();
+        updateInfantryArmorBonus();
+    }
+
+    private static void updateInfantryWeaponResearch(){
+        for(IntMap.Entry<InfantryWeaponData> entry : infantryWeaponData.entries()){
+            Team team = Team.get(entry.key);
+            InfantryWeaponData data = entry.value;
+            if(team == null || data == null || data.researchingLevel <= 0) continue;
+
+            int level = Mathf.clamp(data.researchingLevel, 1, infantryWeaponMaxLevel);
+            data.researchTime += Time.delta;
+            if(data.researchTime >= infantryWeaponResearchTime[level]){
+                data.level = Math.max(data.level, level);
+                data.researchingLevel = 0;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateVehicleWeaponResearch(){
+        for(IntMap.Entry<VehicleWeaponData> entry : vehicleWeaponData.entries()){
+            Team team = Team.get(entry.key);
+            VehicleWeaponData data = entry.value;
+            if(team == null || data == null || data.researchingLevel <= 0) continue;
+
+            int level = Mathf.clamp(data.researchingLevel, 1, vehicleWeaponMaxLevel);
+            data.researchTime += Time.delta;
+            if(data.researchTime >= vehicleWeaponResearchTime[level]){
+                data.level = Math.max(data.level, level);
+                data.researchingLevel = 0;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateShipWeaponResearch(){
+        for(IntMap.Entry<ShipWeaponData> entry : shipWeaponData.entries()){
+            Team team = Team.get(entry.key);
+            ShipWeaponData data = entry.value;
+            if(team == null || data == null || data.researchingLevel <= 0) continue;
+
+            int level = Mathf.clamp(data.researchingLevel, 1, shipWeaponMaxLevel);
+            data.researchTime += Time.delta;
+            if(data.researchTime >= shipWeaponResearchTime[level]){
+                data.level = Math.max(data.level, level);
+                data.researchingLevel = 0;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateVehicleArmorResearch(){
+        for(IntMap.Entry<VehicleArmorData> entry : vehicleArmorData.entries()){
+            Team team = Team.get(entry.key);
+            VehicleArmorData data = entry.value;
+            if(team == null || data == null || data.researchingLevel <= 0) continue;
+
+            int level = Mathf.clamp(data.researchingLevel, 1, vehicleArmorMaxLevel);
+            data.researchTime += Time.delta;
+            if(data.researchTime >= vehicleArmorResearchTime[level]){
+                data.level = Math.max(data.level, level);
+                data.researchingLevel = 0;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateInfantryArmorResearch(){
+        for(IntMap.Entry<InfantryArmorData> entry : infantryArmorData.entries()){
+            Team team = Team.get(entry.key);
+            InfantryArmorData data = entry.value;
+            if(team == null || data == null || data.researchingLevel <= 0) continue;
+
+            int level = Mathf.clamp(data.researchingLevel, 1, infantryWeaponMaxLevel);
+            data.researchTime += Time.delta;
+            if(data.researchTime >= infantryWeaponResearchTime[level]){
+                data.level = Math.max(data.level, level);
+                data.researchingLevel = 0;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateInstantTrackingResearch(){
+        for(IntMap.Entry<InstantTrackingData> entry : instantTrackingData.entries()){
+            Team team = Team.get(entry.key);
+            InstantTrackingData data = entry.value;
+            if(team == null || data == null || !data.researching) continue;
+
+            data.researchTime += Time.delta;
+            if(data.researchTime >= instantTrackingResearchTime){
+                data.level = 1;
+                data.researching = false;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateSteelArmorResearch(){
+        for(IntMap.Entry<SteelArmorData> entry : steelArmorData.entries()){
+            Team team = Team.get(entry.key);
+            SteelArmorData data = entry.value;
+            if(team == null || data == null || !data.researching) continue;
+
+            data.researchTime += Time.delta;
+            if(data.researchTime >= steelArmorResearchTime){
+                data.level = 1;
+                data.researching = false;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateGhostCamoResearch(){
+        for(IntMap.Entry<GhostCamoData> entry : ghostCamoData.entries()){
+            Team team = Team.get(entry.key);
+            GhostCamoData data = entry.value;
+            if(team == null || data == null || !data.researching) continue;
+
+            data.researchTime += Time.delta;
+            if(data.researchTime >= ghostCamoResearchTime){
+                data.level = 1;
+                data.researching = false;
+                data.researchTime = 0f;
+            }
+        }
+    }
+
+    private static void updateGhostWarheadProduction(){
+        IntSeq remove = new IntSeq();
+
+        for(IntMap.Entry<GhostWarheadSiloData> entry : ghostWarheadSiloData.entries()){
+            int pos = entry.key;
+            GhostWarheadSiloData data = entry.value;
+            Building build = world.build(pos);
+
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad){
+                remove.add(pos);
+                continue;
+            }
+
+            if(data == null || !data.producing) continue;
+            data.buildTime += Time.delta;
+            if(data.buildTime >= ghostWarheadBuildTime){
+                data.buildTime = 0f;
+                data.producing = false;
+                data.armed = true;
+            }
+        }
+
+        for(int i = 0; i < remove.size; i++){
+            ghostWarheadSiloData.remove(remove.get(i));
+        }
+    }
+
+    private static void updateGhostTacticalNukes(){
+        IntSeq remove = new IntSeq();
+
+        for(IntMap.Entry<GhostTacticalNukeData> entry : ghostTacticalNukeData.entries()){
+            int unitId = entry.key;
+            GhostTacticalNukeData data = entry.value;
+            Unit unit = Groups.unit.getByID(unitId);
+            Team team = Team.get(data.teamId);
+
+            if(unit == null || !unit.isValid() || !isGhost(unit)){
+                if(data.active && !data.missileFalling){
+                    refundReservedGhostWarhead(data.teamId, data.reservedSiloPos);
+                }
+                remove.add(unitId);
+                continue;
+            }
+
+            if(!data.active){
+                remove.add(unitId);
+                continue;
+            }
+
+            if(ravenMatrixDisabled(unit) && !data.missileFalling){
+                refundReservedGhostWarhead(data.teamId, data.reservedSiloPos);
+                data.active = false;
+                remove.add(unitId);
+                continue;
+            }
+
+            if(!data.missileFalling){
+                data.delayTime = Math.max(0f, data.delayTime - Time.delta);
+                if(data.delayTime <= 0.001f){
+                    data.missileFalling = true;
+                    data.missileTime = ghostTacticalNukeMissileFallTime;
+                }
+            }else{
+                data.missileTime = Math.max(0f, data.missileTime - Time.delta);
+                if(data.missileTime <= 0.001f){
+                    impactGhostTacticalNuke(team, data.target.x, data.target.y);
+                    data.active = false;
+                    remove.add(unitId);
+                }
+            }
+        }
+
+        for(int i = 0; i < remove.size; i++){
+            ghostTacticalNukeData.remove(remove.get(i));
+        }
+    }
+
+    private static void impactGhostTacticalNuke(@Nullable Team team, float x, float y){
+        float radius = ghostTacticalNukeDamageRadius;
+        float safeRadius = Math.max(radius, 0.001f);
+
+        Units.nearby(x - radius, y - radius, radius * 2f, radius * 2f, u -> {
+            if(u == null || !u.isValid()) return;
+            if(!u.checkTarget(true, true) || !u.hittable()) return;
+            float maxDst = radius + u.hitSize / 2f;
+            float dst = Mathf.dst(x, y, u.x, u.y);
+            if(dst > maxDst) return;
+            float frac = Mathf.clamp(dst / safeRadius);
+            float damage = Mathf.lerp(ghostTacticalNukeCenterDamage, ghostTacticalNukeEdgeDamage, frac);
+            u.damage(damage);
+        });
+
+        Units.nearbyBuildings(x, y, radius + 16f, build -> {
+            if(build == null || !build.isValid()) return;
+            float maxDst = radius + build.hitSize() / 2f;
+            float dst = Mathf.dst(x, y, build.x, build.y);
+            if(dst > maxDst) return;
+            float frac = Mathf.clamp(dst / safeRadius);
+            float damage = Mathf.lerp(ghostTacticalNukeCenterDamage, ghostTacticalNukeEdgeDamage, frac) + ghostTacticalNukeBuildingBonus;
+            build.damage(damage);
+        });
+
+        Fx.massiveExplosion.at(x, y);
+        Fx.dynamicExplosion.at(x, y, radius / tilesize, Color.valueOf("ff5656"));
+        Effect.shake(8f, 8f, x, y);
+    }
+
+    private static void drawGhostTacticalNukeOverlay(){
+        if(ghostTacticalNukeData.isEmpty()) return;
+
+        Tmp.m1.set(Draw.proj());
+        Draw.proj(Core.camera);
+        Draw.sort(false);
+
+        TextureRegion missileRegion = Core.atlas.find("missile-large");
+
+        for(IntMap.Entry<GhostTacticalNukeData> entry : ghostTacticalNukeData.entries()){
+            GhostTacticalNukeData data = entry.value;
+            if(data == null || !data.active) continue;
+
+            float x = data.target.x;
+            float y = data.target.y;
+            float pulse = 0.78f + Mathf.absin(Time.time, 5f, 0.22f);
+
+            Draw.z(Layer.effect + 5f);
+            Draw.color(1f, 0.12f, 0.12f, 0.25f * pulse);
+            Fill.circle(x, y, ghostTacticalNukeMarkerRadius);
+            Lines.stroke(1.45f);
+            Draw.color(1f, 0.22f, 0.22f, 0.95f);
+            Lines.circle(x, y, ghostTacticalNukeMarkerRadius);
+
+            if(data.missileFalling && missileRegion.found()){
+                float fin = 1f - Mathf.clamp(data.missileTime / ghostTacticalNukeMissileFallTime);
+                float drop = Mathf.lerp(230f, 0f, Interp.pow2In.apply(fin));
+                float scale = 1.35f;
+                Draw.z(Layer.effect + 6f);
+                Draw.color(Color.white);
+                Draw.rect(missileRegion, x, y + drop,
+                    missileRegion.width * missileRegion.scl() * scale,
+                    missileRegion.height * missileRegion.scl() * scale,
+                    -90f);
+                Drawf.light(x, y + drop, 34f, Pal.missileYellowBack, 0.55f * (1f - fin));
+            }
+        }
+
+        Draw.flush();
+        Draw.proj(Tmp.m1);
+    }
+
+    private static void updateInfantryArmorBonus(){
+        for(Unit unit : Groups.unit){
+            if(unit == null || !unit.isValid()) continue;
+            if(isBarracksInfantryType(unit.type)){
+                unit.statusArmor(unit.type.armor + infantryArmorBonus(unit.team));
+            }else if(isHeavyFactoryOrStarportType(unit.type)){
+                unit.statusArmor(unit.type.armor + vehicleArmorBonus(unit.team));
+            }
+        }
+    }
+
+    private static boolean isBarracksInfantryType(@Nullable UnitType type){
+        return type == dagger || type == reaper || type == fortress || type == ghost;
+    }
+
+    private static boolean isHeavyFactoryOrStarportType(@Nullable UnitType type){
+        return type == mace || type == locus || type == hurricane || type == precept || type == scepter || type == crawler
+            || type == flare || type == mega || type == liberator || type == avert || type == horizon || type == antumbra;
+    }
+
+    public static boolean infantryWeaponHasArmory(@Nullable Team team){
+        return team != null && team.data().getCount(Blocks.siliconCrucible) > 0;
+    }
+
+    public static boolean vehicleWeaponHasArmory(@Nullable Team team){
+        return infantryWeaponHasArmory(team);
+    }
+
+    public static boolean ghostCamoHasAcademy(@Nullable Team team){
+        return team != null && team.data().getCount(Blocks.launchPad) > 0;
+    }
+
+    public static boolean infantryAnyResearching(@Nullable Team team){
+        return infantryWeaponResearching(team) || infantryArmorResearching(team) || instantTrackingResearching(team) || steelArmorResearching(team);
+    }
+
+    public static boolean engineeringAnyResearching(@Nullable Team team){
+        return infantryAnyResearching(team);
+    }
+
+    public static int infantryWeaponLevel(@Nullable Team team){
+        InfantryWeaponData data = getInfantryWeaponData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, infantryWeaponMaxLevel);
+    }
+
+    public static int vehicleWeaponLevel(@Nullable Team team){
+        VehicleWeaponData data = getVehicleWeaponData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, vehicleWeaponMaxLevel);
+    }
+
+    public static int shipWeaponLevel(@Nullable Team team){
+        ShipWeaponData data = getShipWeaponData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, shipWeaponMaxLevel);
+    }
+
+    public static int vehicleArmorLevel(@Nullable Team team){
+        VehicleArmorData data = getVehicleArmorData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, vehicleArmorMaxLevel);
+    }
+
+    public static int infantryArmorLevel(@Nullable Team team){
+        InfantryArmorData data = getInfantryArmorData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, infantryWeaponMaxLevel);
+    }
+
+    public static int instantTrackingLevel(@Nullable Team team){
+        InstantTrackingData data = getInstantTrackingData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int steelArmorLevel(@Nullable Team team){
+        SteelArmorData data = getSteelArmorData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int ghostCamoLevel(@Nullable Team team){
+        GhostCamoData data = getGhostCamoData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int infantryWeaponResearchingLevel(@Nullable Team team){
+        InfantryWeaponData data = getInfantryWeaponData(team, false);
+        if(data == null) return 0;
+        return data.researchingLevel >= 1 && data.researchingLevel <= infantryWeaponMaxLevel ? data.researchingLevel : 0;
+    }
+
+    public static int vehicleWeaponResearchingLevel(@Nullable Team team){
+        VehicleWeaponData data = getVehicleWeaponData(team, false);
+        if(data == null) return 0;
+        return data.researchingLevel >= 1 && data.researchingLevel <= vehicleWeaponMaxLevel ? data.researchingLevel : 0;
+    }
+
+    public static int shipWeaponResearchingLevel(@Nullable Team team){
+        ShipWeaponData data = getShipWeaponData(team, false);
+        if(data == null) return 0;
+        return data.researchingLevel >= 1 && data.researchingLevel <= shipWeaponMaxLevel ? data.researchingLevel : 0;
+    }
+
+    public static int vehicleArmorResearchingLevel(@Nullable Team team){
+        VehicleArmorData data = getVehicleArmorData(team, false);
+        if(data == null) return 0;
+        return data.researchingLevel >= 1 && data.researchingLevel <= vehicleArmorMaxLevel ? data.researchingLevel : 0;
+    }
+
+    public static int infantryArmorResearchingLevel(@Nullable Team team){
+        InfantryArmorData data = getInfantryArmorData(team, false);
+        if(data == null) return 0;
+        return data.researchingLevel >= 1 && data.researchingLevel <= infantryWeaponMaxLevel ? data.researchingLevel : 0;
+    }
+
+    public static boolean infantryWeaponResearching(@Nullable Team team){
+        return infantryWeaponResearchingLevel(team) > 0;
+    }
+
+    public static boolean vehicleWeaponResearching(@Nullable Team team){
+        return vehicleWeaponResearchingLevel(team) > 0;
+    }
+
+    public static boolean shipWeaponResearching(@Nullable Team team){
+        return shipWeaponResearchingLevel(team) > 0;
+    }
+
+    public static boolean vehicleArmorResearching(@Nullable Team team){
+        return vehicleArmorResearchingLevel(team) > 0;
+    }
+
+    public static boolean armoryAnyResearching(@Nullable Team team){
+        return vehicleWeaponResearching(team) || shipWeaponResearching(team) || vehicleArmorResearching(team);
+    }
+
+    public static boolean infantryArmorResearching(@Nullable Team team){
+        return infantryArmorResearchingLevel(team) > 0;
+    }
+
+    public static boolean instantTrackingResearching(@Nullable Team team){
+        InstantTrackingData data = getInstantTrackingData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean steelArmorResearching(@Nullable Team team){
+        SteelArmorData data = getSteelArmorData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean ghostCamoResearching(@Nullable Team team){
+        GhostCamoData data = getGhostCamoData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static float infantryWeaponResearchProgress(@Nullable Team team){
+        InfantryWeaponData data = getInfantryWeaponData(team, false);
+        if(data == null) return 0f;
+        int level = infantryWeaponResearchingLevel(team);
+        if(level <= 0) return 0f;
+        return Mathf.clamp(data.researchTime / infantryWeaponResearchTime[level]);
+    }
+
+    public static float vehicleWeaponResearchProgress(@Nullable Team team){
+        VehicleWeaponData data = getVehicleWeaponData(team, false);
+        if(data == null) return 0f;
+        int level = vehicleWeaponResearchingLevel(team);
+        if(level <= 0) return 0f;
+        return Mathf.clamp(data.researchTime / vehicleWeaponResearchTime[level]);
+    }
+
+    public static float shipWeaponResearchProgress(@Nullable Team team){
+        ShipWeaponData data = getShipWeaponData(team, false);
+        if(data == null) return 0f;
+        int level = shipWeaponResearchingLevel(team);
+        if(level <= 0) return 0f;
+        return Mathf.clamp(data.researchTime / shipWeaponResearchTime[level]);
+    }
+
+    public static float vehicleArmorResearchProgress(@Nullable Team team){
+        VehicleArmorData data = getVehicleArmorData(team, false);
+        if(data == null) return 0f;
+        int level = vehicleArmorResearchingLevel(team);
+        if(level <= 0) return 0f;
+        return Mathf.clamp(data.researchTime / vehicleArmorResearchTime[level]);
+    }
+
+    public static float infantryArmorResearchProgress(@Nullable Team team){
+        InfantryArmorData data = getInfantryArmorData(team, false);
+        if(data == null) return 0f;
+        int level = infantryArmorResearchingLevel(team);
+        if(level <= 0) return 0f;
+        return Mathf.clamp(data.researchTime / infantryWeaponResearchTime[level]);
+    }
+
+    public static float instantTrackingResearchProgress(@Nullable Team team){
+        InstantTrackingData data = getInstantTrackingData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / instantTrackingResearchTime);
+    }
+
+    public static float steelArmorResearchProgress(@Nullable Team team){
+        SteelArmorData data = getSteelArmorData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / steelArmorResearchTime);
+    }
+
+    public static float ghostCamoResearchProgress(@Nullable Team team){
+        GhostCamoData data = getGhostCamoData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / ghostCamoResearchTime);
+    }
+
+    public static int infantryWeaponDisplayLevel(@Nullable Team team){
+        int level = infantryWeaponLevel(team);
+        if(level >= infantryWeaponMaxLevel) return -1;
+
+        int researchingLevel = infantryWeaponResearchingLevel(team);
+        if(researchingLevel > 0){
+            int next = researchingLevel + 1;
+            return next > infantryWeaponMaxLevel ? -1 : next;
+        }
+
+        return level + 1;
+    }
+
+    public static int vehicleWeaponDisplayLevel(@Nullable Team team){
+        int level = vehicleWeaponLevel(team);
+        if(level >= vehicleWeaponMaxLevel) return -1;
+
+        int researchingLevel = vehicleWeaponResearchingLevel(team);
+        if(researchingLevel > 0){
+            int next = researchingLevel + 1;
+            return next > vehicleWeaponMaxLevel ? -1 : next;
+        }
+
+        return level + 1;
+    }
+
+    public static int shipWeaponDisplayLevel(@Nullable Team team){
+        int level = shipWeaponLevel(team);
+        if(level >= shipWeaponMaxLevel) return -1;
+
+        int researchingLevel = shipWeaponResearchingLevel(team);
+        if(researchingLevel > 0){
+            int next = researchingLevel + 1;
+            return next > shipWeaponMaxLevel ? -1 : next;
+        }
+
+        return level + 1;
+    }
+
+    public static int vehicleArmorDisplayLevel(@Nullable Team team){
+        int level = vehicleArmorLevel(team);
+        if(level >= vehicleArmorMaxLevel) return -1;
+
+        int researchingLevel = vehicleArmorResearchingLevel(team);
+        if(researchingLevel > 0){
+            int next = researchingLevel + 1;
+            return next > vehicleArmorMaxLevel ? -1 : next;
+        }
+
+        return level + 1;
+    }
+
+    public static int infantryArmorDisplayLevel(@Nullable Team team){
+        int level = infantryArmorLevel(team);
+        if(level >= infantryWeaponMaxLevel) return -1;
+
+        int researchingLevel = infantryArmorResearchingLevel(team);
+        if(researchingLevel > 0){
+            int next = researchingLevel + 1;
+            return next > infantryWeaponMaxLevel ? -1 : next;
+        }
+
+        return level + 1;
+    }
+
+    public static int infantryWeaponCrystalCost(int level){
+        return level >= 1 && level <= infantryWeaponMaxLevel ? infantryWeaponCrystalCost[level] : 0;
+    }
+
+    public static int vehicleWeaponCrystalCost(int level){
+        return level >= 1 && level <= vehicleWeaponMaxLevel ? vehicleWeaponCrystalCost[level] : 0;
+    }
+
+    public static int shipWeaponCrystalCost(int level){
+        return level >= 1 && level <= shipWeaponMaxLevel ? shipWeaponCrystalCost[level] : 0;
+    }
+
+    public static int vehicleArmorCrystalCost(int level){
+        return level >= 1 && level <= vehicleArmorMaxLevel ? vehicleArmorCrystalCost[level] : 0;
+    }
+
+    public static int infantryWeaponGasCost(int level){
+        return level >= 1 && level <= infantryWeaponMaxLevel ? infantryWeaponGasCost[level] : 0;
+    }
+
+    public static int vehicleWeaponGasCost(int level){
+        return level >= 1 && level <= vehicleWeaponMaxLevel ? vehicleWeaponGasCost[level] : 0;
+    }
+
+    public static int shipWeaponGasCost(int level){
+        return level >= 1 && level <= shipWeaponMaxLevel ? shipWeaponGasCost[level] : 0;
+    }
+
+    public static int vehicleArmorGasCost(int level){
+        return level >= 1 && level <= vehicleArmorMaxLevel ? vehicleArmorGasCost[level] : 0;
+    }
+
+    public static float infantryWeaponResearchDuration(int level){
+        return level >= 1 && level <= infantryWeaponMaxLevel ? infantryWeaponResearchTime[level] : 0f;
+    }
+
+    public static float vehicleWeaponResearchDuration(int level){
+        return level >= 1 && level <= vehicleWeaponMaxLevel ? vehicleWeaponResearchTime[level] : 0f;
+    }
+
+    public static float shipWeaponResearchDuration(int level){
+        return level >= 1 && level <= shipWeaponMaxLevel ? shipWeaponResearchTime[level] : 0f;
+    }
+
+    public static float vehicleArmorResearchDuration(int level){
+        return level >= 1 && level <= vehicleArmorMaxLevel ? vehicleArmorResearchTime[level] : 0f;
+    }
+
+    private static boolean infantryUpgradeCanAfford(@Nullable Team team, int level){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, infantryWeaponCrystalCost(level))
+            && core.items.has(Items.highEnergyGas, infantryWeaponGasCost(level));
+    }
+
+    private static boolean vehicleWeaponCanAfford(@Nullable Team team, int level){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, vehicleWeaponCrystalCost(level))
+            && core.items.has(Items.highEnergyGas, vehicleWeaponGasCost(level));
+    }
+
+    private static boolean shipWeaponCanAfford(@Nullable Team team, int level){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, shipWeaponCrystalCost(level))
+            && core.items.has(Items.highEnergyGas, shipWeaponGasCost(level));
+    }
+
+    private static boolean vehicleArmorCanAfford(@Nullable Team team, int level){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, vehicleArmorCrystalCost(level))
+            && core.items.has(Items.highEnergyGas, vehicleArmorGasCost(level));
+    }
+
+    private static boolean instantTrackingCanAfford(@Nullable Team team){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, instantTrackingCrystalCost)
+            && core.items.has(Items.highEnergyGas, instantTrackingGasCost);
+    }
+
+    private static boolean steelArmorCanAfford(@Nullable Team team){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, steelArmorCrystalCost)
+            && core.items.has(Items.highEnergyGas, steelArmorGasCost);
+    }
+
+    private static boolean ghostCamoCanAfford(@Nullable Team team){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, ghostCamoCrystalCost)
+            && core.items.has(Items.highEnergyGas, ghostCamoGasCost);
+    }
+
+    private static void infantryUpgradeConsume(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, infantryWeaponCrystalCost(level));
+        core.items.remove(Items.highEnergyGas, infantryWeaponGasCost(level));
+    }
+
+    private static void vehicleWeaponConsume(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, vehicleWeaponCrystalCost(level));
+        core.items.remove(Items.highEnergyGas, vehicleWeaponGasCost(level));
+    }
+
+    private static void shipWeaponConsume(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, shipWeaponCrystalCost(level));
+        core.items.remove(Items.highEnergyGas, shipWeaponGasCost(level));
+    }
+
+    private static void vehicleArmorConsume(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, vehicleArmorCrystalCost(level));
+        core.items.remove(Items.highEnergyGas, vehicleArmorGasCost(level));
+    }
+
+    private static void infantryUpgradeRefund(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, infantryWeaponCrystalCost(level));
+        core.items.add(Items.highEnergyGas, infantryWeaponGasCost(level));
+    }
+
+    private static void vehicleWeaponRefund(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, vehicleWeaponCrystalCost(level));
+        core.items.add(Items.highEnergyGas, vehicleWeaponGasCost(level));
+    }
+
+    private static void shipWeaponRefund(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, shipWeaponCrystalCost(level));
+        core.items.add(Items.highEnergyGas, shipWeaponGasCost(level));
+    }
+
+    private static void vehicleArmorRefund(@Nullable Team team, int level){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, vehicleArmorCrystalCost(level));
+        core.items.add(Items.highEnergyGas, vehicleArmorGasCost(level));
+    }
+
+    private static void instantTrackingConsume(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, instantTrackingCrystalCost);
+        core.items.remove(Items.highEnergyGas, instantTrackingGasCost);
+    }
+
+    private static void instantTrackingRefund(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, instantTrackingCrystalCost);
+        core.items.add(Items.highEnergyGas, instantTrackingGasCost);
+    }
+
+    private static void steelArmorConsume(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, steelArmorCrystalCost);
+        core.items.remove(Items.highEnergyGas, steelArmorGasCost);
+    }
+
+    private static void steelArmorRefund(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, steelArmorCrystalCost);
+        core.items.add(Items.highEnergyGas, steelArmorGasCost);
+    }
+
+    private static void ghostCamoConsume(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, ghostCamoCrystalCost);
+        core.items.remove(Items.highEnergyGas, ghostCamoGasCost);
+    }
+
+    private static void ghostCamoRefund(@Nullable Team team){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, ghostCamoCrystalCost);
+        core.items.add(Items.highEnergyGas, ghostCamoGasCost);
+    }
+
+    public static boolean infantryWeaponCanStartResearch(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
+        InfantryWeaponData data = getInfantryWeaponData(team, false);
+        if(data != null && data.researchingLevel > 0) return false;
+        if(engineeringAnyResearching(team)) return false;
+        if(level != infantryWeaponLevel(team) + 1) return false;
+        if(!infantryWeaponHasArmory(team)) return false;
+        return infantryUpgradeCanAfford(team, level);
+    }
+
+    public static boolean vehicleWeaponCanStartResearch(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > vehicleWeaponMaxLevel) return false;
+        VehicleWeaponData data = getVehicleWeaponData(team, false);
+        if(data != null && data.researchingLevel > 0) return false;
+        if(armoryAnyResearching(team)) return false;
+        if(level != vehicleWeaponLevel(team) + 1) return false;
+        if(!vehicleWeaponHasArmory(team)) return false;
+        if(infantryWeaponLevel(team) < level) return false;
+        return vehicleWeaponCanAfford(team, level);
+    }
+
+    public static boolean vehicleArmorCanStartResearch(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > vehicleArmorMaxLevel) return false;
+        VehicleArmorData data = getVehicleArmorData(team, false);
+        if(data != null && data.researchingLevel > 0) return false;
+        if(armoryAnyResearching(team)) return false;
+        if(level != vehicleArmorLevel(team) + 1) return false;
+        if(!vehicleWeaponHasArmory(team)) return false;
+        return vehicleArmorCanAfford(team, level);
+    }
+
+    public static boolean shipWeaponCanStartResearch(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > shipWeaponMaxLevel) return false;
+        ShipWeaponData data = getShipWeaponData(team, false);
+        if(data != null && data.researchingLevel > 0) return false;
+        if(armoryAnyResearching(team)) return false;
+        if(level != shipWeaponLevel(team) + 1) return false;
+        if(!vehicleWeaponHasArmory(team)) return false;
+        return shipWeaponCanAfford(team, level);
+    }
+
+    public static boolean infantryArmorCanStartResearch(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
+        InfantryArmorData data = getInfantryArmorData(team, false);
+        if(data != null && data.researchingLevel > 0) return false;
+        if(engineeringAnyResearching(team)) return false;
+        if(level != infantryArmorLevel(team) + 1) return false;
+        if(!infantryWeaponHasArmory(team)) return false;
+        return infantryUpgradeCanAfford(team, level);
+    }
+
+    public static boolean instantTrackingCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        InstantTrackingData data = getInstantTrackingData(team, false);
+        if(data != null && (data.level >= 1 || data.researching)) return false;
+        if(engineeringAnyResearching(team)) return false;
+        return instantTrackingCanAfford(team);
+    }
+
+    public static boolean steelArmorCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        SteelArmorData data = getSteelArmorData(team, false);
+        if(data != null && (data.level >= 1 || data.researching)) return false;
+        if(engineeringAnyResearching(team)) return false;
+        return steelArmorCanAfford(team);
+    }
+
+    public static boolean ghostCamoCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        GhostCamoData data = getGhostCamoData(team, false);
+        if(data != null && (data.level >= 1 || data.researching)) return false;
+        if(!ghostCamoHasAcademy(team)) return false;
+        return ghostCamoCanAfford(team);
+    }
+
+    public static boolean infantryWeaponStartResearch(@Nullable Team team, int level){
+        if(!infantryWeaponCanStartResearch(team, level)) return false;
+        InfantryWeaponData data = getInfantryWeaponData(team, true);
+        if(data == null) return false;
+        infantryUpgradeConsume(team, level);
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean vehicleWeaponStartResearch(@Nullable Team team, int level){
+        if(!vehicleWeaponCanStartResearch(team, level)) return false;
+        VehicleWeaponData data = getVehicleWeaponData(team, true);
+        if(data == null) return false;
+        vehicleWeaponConsume(team, level);
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean vehicleArmorStartResearch(@Nullable Team team, int level){
+        if(!vehicleArmorCanStartResearch(team, level)) return false;
+        VehicleArmorData data = getVehicleArmorData(team, true);
+        if(data == null) return false;
+        vehicleArmorConsume(team, level);
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean shipWeaponStartResearch(@Nullable Team team, int level){
+        if(!shipWeaponCanStartResearch(team, level)) return false;
+        ShipWeaponData data = getShipWeaponData(team, true);
+        if(data == null) return false;
+        shipWeaponConsume(team, level);
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean infantryArmorStartResearch(@Nullable Team team, int level){
+        if(!infantryArmorCanStartResearch(team, level)) return false;
+        InfantryArmorData data = getInfantryArmorData(team, true);
+        if(data == null) return false;
+        infantryUpgradeConsume(team, level);
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean instantTrackingStartResearch(@Nullable Team team){
+        if(!instantTrackingCanStartResearch(team)) return false;
+        InstantTrackingData data = getInstantTrackingData(team, true);
+        if(data == null) return false;
+        instantTrackingConsume(team);
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean steelArmorStartResearch(@Nullable Team team){
+        if(!steelArmorCanStartResearch(team)) return false;
+        SteelArmorData data = getSteelArmorData(team, true);
+        if(data == null) return false;
+        steelArmorConsume(team);
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean ghostCamoStartResearch(@Nullable Team team){
+        if(!ghostCamoCanStartResearch(team)) return false;
+        GhostCamoData data = getGhostCamoData(team, true);
+        if(data == null) return false;
+        ghostCamoConsume(team);
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    public static boolean infantryWeaponCancelResearch(@Nullable Team team){
+        InfantryWeaponData data = getInfantryWeaponData(team, false);
+        if(team == null || data == null || data.researchingLevel <= 0) return false;
+        int level = data.researchingLevel;
+        data.researchingLevel = 0;
+        data.researchTime = 0f;
+        infantryUpgradeRefund(team, level);
+        return true;
+    }
+
+    public static boolean vehicleWeaponCancelResearch(@Nullable Team team){
+        VehicleWeaponData data = getVehicleWeaponData(team, false);
+        if(team == null || data == null || data.researchingLevel <= 0) return false;
+        int level = data.researchingLevel;
+        data.researchingLevel = 0;
+        data.researchTime = 0f;
+        vehicleWeaponRefund(team, level);
+        return true;
+    }
+
+    public static boolean vehicleArmorCancelResearch(@Nullable Team team){
+        VehicleArmorData data = getVehicleArmorData(team, false);
+        if(team == null || data == null || data.researchingLevel <= 0) return false;
+        int level = data.researchingLevel;
+        data.researchingLevel = 0;
+        data.researchTime = 0f;
+        vehicleArmorRefund(team, level);
+        return true;
+    }
+
+    public static boolean shipWeaponCancelResearch(@Nullable Team team){
+        ShipWeaponData data = getShipWeaponData(team, false);
+        if(team == null || data == null || data.researchingLevel <= 0) return false;
+        int level = data.researchingLevel;
+        data.researchingLevel = 0;
+        data.researchTime = 0f;
+        shipWeaponRefund(team, level);
+        return true;
+    }
+
+    public static boolean infantryArmorCancelResearch(@Nullable Team team){
+        InfantryArmorData data = getInfantryArmorData(team, false);
+        if(team == null || data == null || data.researchingLevel <= 0) return false;
+        int level = data.researchingLevel;
+        data.researchingLevel = 0;
+        data.researchTime = 0f;
+        infantryUpgradeRefund(team, level);
+        return true;
+    }
+
+    public static boolean instantTrackingCancelResearch(@Nullable Team team){
+        InstantTrackingData data = getInstantTrackingData(team, false);
+        if(team == null || data == null || !data.researching) return false;
+        data.researching = false;
+        data.researchTime = 0f;
+        instantTrackingRefund(team);
+        return true;
+    }
+
+    public static boolean steelArmorCancelResearch(@Nullable Team team){
+        SteelArmorData data = getSteelArmorData(team, false);
+        if(team == null || data == null || !data.researching) return false;
+        data.researching = false;
+        data.researchTime = 0f;
+        steelArmorRefund(team);
+        return true;
+    }
+
+    public static boolean ghostCamoCancelResearch(@Nullable Team team){
+        GhostCamoData data = getGhostCamoData(team, false);
+        if(team == null || data == null || !data.researching) return false;
+        data.researching = false;
+        data.researchTime = 0f;
+        ghostCamoRefund(team);
+        return true;
+    }
+
+    public static boolean ghostCamoAnyResearching(@Nullable Team team){
+        return ghostCamoResearching(team);
+    }
+
+    public static boolean ghostCamoCancelAnyResearch(@Nullable Team team){
+        return ghostCamoCancelResearch(team);
+    }
+
+    public static boolean infantryCancelAnyResearch(@Nullable Team team){
+        return infantryWeaponCancelResearch(team) || infantryArmorCancelResearch(team) || instantTrackingCancelResearch(team) || steelArmorCancelResearch(team);
+    }
+
+    public static int infantryWeaponBaseDamageBonus(@Nullable Team team){
+        return infantryWeaponLevel(team);
+    }
+
+    public static int vehicleWeaponMaceBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int vehicleWeaponLocusBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team);
+    }
+
+    public static int vehicleWeaponLocusLightBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int vehicleWeaponHurricaneBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int vehicleWeaponPreceptMobileBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int vehicleWeaponPreceptMobileHeavyBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 3;
+    }
+
+    public static int vehicleWeaponPreceptSiegeBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 4;
+    }
+
+    public static int vehicleWeaponPreceptSiegeHeavyBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 5;
+    }
+
+    public static int vehicleWeaponScepterGroundBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 3;
+    }
+
+    public static int vehicleWeaponScepterBurstBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team);
+    }
+
+    public static int vehicleWeaponScepterBurstLightBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int vehicleWeaponScepterImpactBaseBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 3;
+    }
+
+    public static int vehicleWeaponScepterImpactHeavyBonus(@Nullable Team team){
+        return vehicleWeaponLevel(team) * 4;
+    }
+
+    public static int shipWeaponBattlecruiserGroundBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponBattlecruiserAirBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponBansheeBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponVikingFighterBaseBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponVikingFighterHeavyBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponVikingMechBaseBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponVikingMechMechanicalBonus(@Nullable Team team){
+        return shipWeaponLevel(team) * 2;
+    }
+
+    public static int shipWeaponLiberatorFighterBonus(@Nullable Team team){
+        return shipWeaponLevel(team);
+    }
+
+    public static int shipWeaponLiberatorDefenseBonus(@Nullable Team team){
+        return shipWeaponLevel(team) * 5;
+    }
+
+    public static int infantryWeaponFortressHeavyBonus(@Nullable Team team){
+        return infantryWeaponLevel(team) * 2;
+    }
+
+    public static int infantryWeaponGhostLightBonus(@Nullable Team team){
+        return infantryWeaponLevel(team) * 2;
+    }
+
+    public static int infantryArmorBonus(@Nullable Team team){
+        return infantryArmorLevel(team);
+    }
+
+    public static int vehicleArmorBonus(@Nullable Team team){
+        return vehicleArmorLevel(team);
+    }
+
+    public static float instantTrackingRangeBonusTiles(@Nullable Team team){
+        return instantTrackingLevel(team) > 0 ? 1f : 0f;
+    }
+
+    public static float instantTrackingRangeBonus(@Nullable Team team){
+        return instantTrackingRangeBonusTiles(team) * tilesize;
+    }
+
+    public static float steelArmorBuildingArmorBonus(@Nullable Team team){
+        return steelArmorLevel(team) > 0 ? 2f : 0f;
+    }
+
+    public static int steelArmorBunkerSlotBonus(@Nullable Team team){
+        return steelArmorLevel(team) > 0 ? 2 : 0;
+    }
+
+    public static int steelArmorUpgradedCoreScvCapacity(@Nullable Team team){
+        return steelArmorLevel(team) > 0 ? 10 : 5;
+    }
+
+    public static int instantTrackingCrystalCost(){
+        return instantTrackingCrystalCost;
+    }
+
+    public static int instantTrackingGasCost(){
+        return instantTrackingGasCost;
+    }
+
+    public static float instantTrackingResearchDuration(){
+        return instantTrackingResearchTime;
+    }
+
+    public static int steelArmorCrystalCost(){
+        return steelArmorCrystalCost;
+    }
+
+    public static int steelArmorGasCost(){
+        return steelArmorGasCost;
+    }
+
+    public static float steelArmorResearchDuration(){
+        return steelArmorResearchTime;
+    }
+
+    public static int ghostCamoCrystalCost(){
+        return ghostCamoCrystalCost;
+    }
+
+    public static int ghostCamoGasCost(){
+        return ghostCamoGasCost;
+    }
+
+    public static float ghostCamoResearchDuration(){
+        return ghostCamoResearchTime;
+    }
+
+    public static int ghostWarheadCrystalCost(){
+        return ghostWarheadCrystalCost;
+    }
+
+    public static int ghostWarheadGasCost(){
+        return ghostWarheadGasCost;
+    }
+
+    public static float ghostWarheadBuildDuration(){
+        return ghostWarheadBuildTime;
+    }
+
     public static boolean ravenCanDeployTurret(@Nullable Unit unit){
         return isRaven(unit)
             && !ravenMatrixDisabled(unit)
@@ -2440,9 +4669,47 @@ public class UnitTypes{
     //endregion
 
     public static void load(){
+        ensureInfantryUpgradeHooks();
         //region ground attack
 
-        dagger = new UnitType("dagger"){{
+        dagger = new UnitType("dagger"){
+            TextureRegion rightGunRegion;
+
+            @Override
+            public void load(){
+                super.load();
+                rightGunRegion = Core.atlas.find("dagger-weapon");
+                if(!rightGunRegion.found()) rightGunRegion = Core.atlas.find("unit-dagger-weapon");
+                if(!rightGunRegion.found()) rightGunRegion = Core.atlas.find("weapon");
+            }
+
+            @Override
+            public void draw(Unit unit){
+                super.draw(unit);
+                if(rightGunRegion == null || !rightGunRegion.found()) return;
+
+                float rot = unit.rotation - 90f;
+                float swayX = 0f, swayY = 0f;
+                if(unit instanceof Mechc mech){
+                    rot = mech.baseRotation() - 90f;
+                    float e = unit.elevation;
+                    float side = Mathf.lerp(Mathf.sin(mech.walkExtend(true), 2f / Mathf.PI, 1f) * mechSideSway, 0f, e);
+                    float front = Mathf.lerp(Mathf.sin(mech.walkExtend(true), 1f / Mathf.PI, 1f) * mechFrontSway, 0f, e);
+                    Tmp.v1.trns(mech.baseRotation(), 0f, side);
+                    Tmp.v2.trns(mech.baseRotation() + 90f, 0f, front);
+                    swayX = Tmp.v1.x + Tmp.v2.x;
+                    swayY = Tmp.v1.y + Tmp.v2.y;
+                }
+
+                float wx = unit.x + swayX + Angles.trnsx(rot, 3.8f, 0.8f);
+                float wy = unit.y + swayY + Angles.trnsy(rot, 3.8f, 0.8f);
+
+                Draw.z(Layer.groundUnit + 0.05f);
+                Draw.rect(rightGunRegion, wx, wy, rot);
+                Draw.reset();
+            }
+
+            {
             speed = 3.15f;
             health = 45f;
             armor = 0f;
@@ -2457,38 +4724,61 @@ public class UnitTypes{
             population = 1;
 
             weapons.add(new Weapon(){{
+                mirror = false;
+                x = 3.8f;
+                y = 0.8f;
+                shootX = 0f;
+                shootY = 2.2f;
                 reload = 0.61f * 60f;
                 bullet = new PointBulletType(){
                     {
                         damage = 6f;
                         rangeOverride = 5f * tilesize;
-                        shootEffect = Fx.none;
+                        shootEffect = new Effect(12f, 48f, e -> {
+                            Draw.z(Layer.effect + 0.06f);
+                            float fout = e.fout();
+                            Draw.color(Color.valueOf("ffdca0"), Color.valueOf("ff9f43"), e.fin());
+                            Fill.circle(e.x, e.y, 0.55f + 0.8f * fout);
+                            Lines.stroke(1.25f * fout);
+                            Angles.randLenVectors(e.id, 7, 1.1f + 4f * e.fin(), e.rotation, 24f, (x, y) -> {
+                                Lines.lineAngle(e.x + x * 0.3f, e.y + y * 0.3f, Angles.angle(x, y), 1.2f + 2.1f * fout);
+                            });
+                            Drawf.light(e.x, e.y, 10f * fout, Color.valueOf("ffb66a"), 0.45f * fout);
+                            Draw.reset();
+                        });
                         smokeEffect = Fx.none;
                         hitEffect = Fx.none;
                         despawnEffect = Fx.none;
                         trailEffect = Fx.none;
                     }
 
-                @Override
-                public void hitEntity(Bullet b, Hitboxc entity, float health){
-                    Unit unit = entity instanceof Unit ? (Unit)entity : null;
-                    float armor = unit != null ? unit.armor : 0f;
-                    float effective = Math.max(b.damage - armor, 0.5f);
-                    if(entity instanceof Healthc){
-                        ((Healthc)entity).damagePierce(effective);
-                    }
-                    if(unit != null){
-                        Tmp.v3.set(unit).sub(b).nor().scl(knockback * 80f);
+                    @Override
+                    public void hitEntity(Bullet b, Hitboxc entity, float health){
+                        Unit unit = entity instanceof Unit ? (Unit)entity : null;
+                        float baseDamage = b.damage + infantryWeaponBaseDamageBonus(b.team);
+                        float armor = unit != null ? unit.armor() : 0f;
+                        float effective = Math.max(baseDamage - armor, 0.5f);
+                        if(entity instanceof Healthc){
+                            ((Healthc)entity).damagePierce(effective);
+                        }
+                        if(unit != null){
+                            Tmp.v3.set(unit).sub(b).nor().scl(knockback * 80f);
                         if(impact) Tmp.v3.setAngle(b.rotation() + (knockback < 0 ? 180f : 0f));
                         unit.impulse(Tmp.v3);
                         unit.apply(status, statusDuration);
                         Events.fire(unitDamageEvent.set(unit, b));
+                        }
+                        handlePierce(b, health, entity.x(), entity.y());
                     }
-                    handlePierce(b, health, entity.x(), entity.y());
-                }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        return b.damage + infantryWeaponBaseDamageBonus(b.team);
+                    }
                 };
             }});
-        }};
+            }
+        };
 
         reaper = new UnitType("reaper"){{
             speed = 5.25f;
@@ -2510,15 +4800,30 @@ public class UnitTypes{
             weapons.add(new Weapon(){{
                 reload = 0.79f * 60f;
                 shoot.shots = 2;
-                bullet = new PointBulletType(){{
-                    damage = 4f;
-                    rangeOverride = 5f * tilesize;
-                    shootEffect = Fx.none;
-                    smokeEffect = Fx.none;
-                    hitEffect = Fx.none;
-                    despawnEffect = Fx.none;
-                    trailEffect = Fx.none;
-                }};
+                bullet = new PointBulletType(){
+                    {
+                        damage = 4f;
+                        rangeOverride = 5f * tilesize;
+                        shootEffect = Fx.none;
+                        smokeEffect = Fx.none;
+                        hitEffect = Fx.none;
+                        despawnEffect = Fx.none;
+                        trailEffect = Fx.none;
+                    }
+
+                    @Override
+                    public void hitEntity(Bullet b, Hitboxc entity, float health){
+                        float prev = b.damage;
+                        b.damage = prev + infantryWeaponBaseDamageBonus(b.team);
+                        super.hitEntity(b, entity, health);
+                        b.damage = prev;
+                    }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        return b.damage + infantryWeaponBaseDamageBonus(b.team);
+                    }
+                };
             }});
         }
         @Override
@@ -2531,6 +4836,10 @@ public class UnitTypes{
             uiIcon = Core.atlas.find("unit-alpha-ui", fullIcon);
             shadowRegion = fullIcon;
             clipSize = Math.max(region.width * 2f, clipSize);
+        }
+        @Override
+        public void drawMech(Mechc mech){
+            // Reaper: hide mech legs entirely.
         }
         };
 
@@ -2552,9 +4861,10 @@ public class UnitTypes{
                 private void applyConeDamage(Bullet b){
                     float coneRange = 2f * tilesize;
                     float halfAngle = 60f;
-                    float damage = b.damage * b.damageMultiplier();
+                    float damage = (b.damage + vehicleWeaponMaceBaseBonus(b.team)) * b.damageMultiplier();
 
-                    Units.nearbyEnemies(b.team, b.x - coneRange, b.y - coneRange, coneRange * 2f, coneRange * 2f, u -> {
+                    Units.nearby((Team)null, b.x - coneRange, b.y - coneRange, coneRange * 2f, coneRange * 2f, u -> {
+                        if(!canDamageFriendlyOnlyWhenForced(b, u)) return;
                         if(!u.checkTarget(false, true) || !u.hittable()) return;
                         if(!u.within(b.x, b.y, coneRange + u.hitSize / 2f)) return;
                         if(!Angles.within(b.rotation(), b.angleTo(u), halfAngle)) return;
@@ -2564,7 +4874,7 @@ public class UnitTypes{
                     });
 
                     Units.nearbyBuildings(b.x, b.y, coneRange + 8f, build -> {
-                        if(build.team == b.team || !build.collide(b)) return;
+                        if(!canDamageFriendlyOnlyWhenForced(b, build) || !build.collide(b)) return;
                         if(!b.checkUnderBuild(build, build.x, build.y)) return;
                         if(Mathf.dst(b.x, b.y, build.x, build.y) > coneRange + build.hitSize() / 2f) return;
                         if(!Angles.within(b.rotation(), Angles.angle(b.x, b.y, build.x, build.y), halfAngle)) return;
@@ -2655,36 +4965,123 @@ public class UnitTypes{
                 hidden = true;
                 deathExplosionEffect = Fx.blastExplosion;
 
-                weapons.add(new Weapon("raven-turret-weapon"){{
-                    x = 0f;
-                    y = 0f;
-                    shootY = 4f;
-                    mirror = false;
-                    rotate = true;
-                    rotateSpeed = 6f;
-                    shootCone = 12f;
-                    reload = 0.57f * 60f;
-                    shootSound = Sounds.shootDuo;
+                weapons.add(new Weapon("raven-turret-weapon"){
+                    {
+                        x = 0f;
+                        y = 0f;
+                        shootY = 4f;
+                        mirror = false;
+                        rotate = true;
+                        rotateSpeed = 6f;
+                        shootCone = 12f;
+                        reload = 0.57f * 60f;
+                        shootSound = Sounds.shootDuo;
 
-                    bullet = new BasicBulletType(7f, 18f){{
-                        width = 7f;
-                        height = 9f;
-                        lifetime = 45f;
-                        rangeOverride = 6f * tilesize;
-                        collidesAir = true;
-                        collidesGround = true;
-                        shootEffect = Fx.shootSmall;
-                        smokeEffect = Fx.shootSmallSmoke;
-                        hitEffect = Fx.hitBulletColor;
-                        despawnEffect = Fx.none;
-                        trailLength = 5;
-                        trailWidth = 1.2f;
-                    }};
-                }});
+                        bullet = new BasicBulletType(7f, 18f){{
+                            width = 7f;
+                            height = 9f;
+                            lifetime = 45f;
+                            rangeOverride = 6f * tilesize;
+                            collidesAir = true;
+                            collidesGround = true;
+                            shootEffect = Fx.shootSmall;
+                            smokeEffect = Fx.shootSmallSmoke;
+                            hitEffect = Fx.hitBulletColor;
+                            despawnEffect = Fx.none;
+                            trailLength = 5;
+                            trailWidth = 1.2f;
+                        }};
+                    }
+
+                    @Override
+                    public void update(Unit unit, WeaponMount mount){
+                        float baseRange = 6f * tilesize + instantTrackingRangeBonus(unit.team);
+                        float prevRange = bullet.range;
+                        float prevOverride = bullet.rangeOverride;
+                        bullet.range = baseRange;
+                        bullet.rangeOverride = baseRange;
+                        super.update(unit, mount);
+                        bullet.range = prevRange;
+                        bullet.rangeOverride = prevOverride;
+                    }
+                });
             }
         };
 
-        fortress = new UnitType("fortress"){{
+        fortress = new UnitType("fortress"){
+            @Override
+            public void load(){
+                super.load();
+                if(!weapons.isEmpty()){
+                    Weapon weapon = weapons.first();
+                    if(weapon.region == null || !weapon.region.found()){
+                        weapon.region = Core.atlas.find("artillery-mount");
+                    }
+                    if(weapon.outlineRegion == null || !weapon.outlineRegion.found()){
+                        weapon.outlineRegion = Core.atlas.find("artillery-mount-outline");
+                    }
+                    if(weapon.region == null || !weapon.region.found()){
+                        weapon.region = Core.atlas.find("small-mount-weapon");
+                    }
+                    if(weapon.outlineRegion == null || !weapon.outlineRegion.found()){
+                        weapon.outlineRegion = Core.atlas.find("small-mount-weapon-outline");
+                    }
+                }
+            }
+
+            @Override
+            public void draw(Unit unit){
+                float prevX = Draw.xscl, prevY = Draw.yscl;
+                Draw.scl(prevX * 0.7f, prevY * 0.7f);
+                super.draw(unit);
+                Draw.scl(prevX, prevY);
+            }
+
+            @Override
+            public void update(Unit unit){
+                super.update(unit);
+                FortressBodyKickData data = fortressBodyKickData.get(unit.id);
+                if(data == null || !data.active){
+                    if(data != null){
+                        fortressBodyKickData.remove(unit.id);
+                    }
+                    return;
+                }
+
+                if(!Float.isFinite(unit.rotation) || !Float.isFinite(data.offset) || !Float.isFinite(data.omega) || !Float.isFinite(data.sign) || Mathf.zero(data.sign, 0.001f)){
+                    if(Float.isFinite(unit.rotation) == false) unit.rotation = 0f;
+                    fortressBodyKickData.remove(unit.id);
+                    return;
+                }
+
+                float dt = Math.min(Time.delta, 2f);
+                float prevOffset = data.offset;
+                float accel = -Mathf.sign(data.sign) * fortressBodyKickAngularAccel;
+                data.omega += accel * dt;
+                data.offset += data.omega * dt;
+                data.offset = Mathf.clamp(data.offset, -fortressBodyKickMaxAngle, fortressBodyKickMaxAngle);
+                unit.rotation += data.offset - prevOffset;
+
+                if(unit.mounts != null){
+                    if(unit.mounts.length > 0 && Float.isFinite(data.frozenMount0)){
+                        unit.mounts[0].rotation = data.frozenMount0;
+                    }
+                    if(unit.mounts.length > 1 && Float.isFinite(data.frozenMount1)){
+                        unit.mounts[1].rotation = data.frozenMount1;
+                    }
+                }
+
+                // Returned to zero with reverse angular speed: end kick phase.
+                if(data.sign * data.offset <= 0f && data.sign * data.omega < 0f){
+                    unit.rotation -= data.offset;
+                    data.offset = 0f;
+                    data.omega = 0f;
+                    data.active = false;
+                    fortressBodyKickData.remove(unit.id);
+                }
+            }
+
+            {
             rotateSpeed = 3f; // 180 deg/sec
             targetAir = false;
             speed = 3.15f;
@@ -2699,71 +5096,108 @@ public class UnitTypes{
             unitClasses = EnumSet.of(UnitClass.biological, UnitClass.heavy);
             population = 2;
 
-            weapons.add(new Weapon(){{
+            weapons.add(new Weapon("artillery-mount"){{
+                x = 6.8f;
+                y = 0f;
+                shootY = 2.8f;
+                mirror = true;
+                alternate = true;
+                rotate = true;
+                rotateSpeed = 6f;
                 reload = 1.07f * 60f;
-                bullet = new BasicBulletType(10f * tilesize / 60f, 10f){
-                    float heavyDamage = 20f;
-
+                recoil = 26f;
+                recoilTime = 14f;
+                shake = 1.1f;
+                bullet = new ArtilleryBulletType(3f, 20f, "shell"){
                     {
-                        collides = false;
-                        collidesTiles = false;
-                        pierce = true;
-                        pierceBuilding = true;
-                        keepVelocity = true;
+                        hitEffect = Fx.none;
+                        despawnEffect = Fx.none;
+                        knockback = 0.8f;
+                        lifetime = 16f;
+                        scaleLife = false;
                         rangeOverride = 6f * tilesize;
-                        lifetime = 60f;
-                    }
-
-                    @Override
-                    public float buildingDamage(Bullet b){
-                        return heavyDamage;
+                        width = height = 8f;
+                        collidesTiles = false;
+                        splashDamageRadius = 30f * 0.75f;
+                        splashDamage = 40f;
+                        trailEffect = Fx.none;
+                        trailMult = 0f;
                     }
 
                     @Override
                     public void update(Bullet b){
-                        super.update(b);
-                        Teamc target = b.data instanceof Teamc ? (Teamc)b.data : null;
-                        if(target == null) return;
-                        if(target instanceof Healthc && !((Healthc)target).isValid()){
-                            b.remove();
-                            return;
-                        }
-                        if(target instanceof Teamc && ((Teamc)target).team() == b.team){
-                            b.remove();
-                            return;
-                        }
-                        if(target instanceof Position){
-                            Position p = (Position)target;
-                            b.vel.setAngle(Angles.moveToward(b.vel.angle(), b.angleTo(p), 0.08f * Time.delta * 50f));
-                            b.vel.setLength(speed);
-                            float hitRange = (target instanceof Sized ? ((Sized)target).hitSize() / 2f : 0f) + hitSize;
-                            if(b.within(p, hitRange)){
-                                if(target instanceof Unit){
-                                    Unit u = (Unit)target;
-                                    hitEntity(b, u, u.health());
-                                }else if(target instanceof Building){
-                                    Building build = (Building)target;
-                                    if(build.team != b.team){
-                                        build.collision(b);
-                                        hit(b);
-                                    }
-                                }
-                                b.remove();
+                        b.keepAlive = true;
+                        FortressShellData data;
+                        if(b.data instanceof FortressShellData d){
+                            data = d;
+                        }else{
+                            data = new FortressShellData();
+                            data.target = b.data instanceof Teamc t ? t : null;
+                            data.originX = b.x;
+                            data.originY = b.y;
+                            if(!Float.isNaN(b.aimX) && !Float.isNaN(b.aimY)){
+                                data.lastInRangeX = b.aimX;
+                                data.lastInRangeY = b.aimY;
                             }
+                            b.data = data;
                         }
-                    }
 
-                    @Override
-                    public void hitEntity(Bullet b, Hitboxc entity, float health){
-                        float prev = b.damage;
-                        if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.heavy){
-                            b.damage = heavyDamage;
+                        float maxRange = rangeOverride > 0f ? rangeOverride : 6f * tilesize;
+                        Teamc target = data.target;
+                        boolean validTarget = target != null && target.team() != b.team && (!(target instanceof Healthc h) || h.isValid());
+
+                        if(validTarget){
+                            float tx = target.getX(), ty = target.getY();
+                            if(Mathf.within(data.originX, data.originY, tx, ty, maxRange)){
+                                data.lastInRangeX = tx;
+                                data.lastInRangeY = ty;
+                                b.aimX = tx;
+                                b.aimY = ty;
+                            }else{
+                                validTarget = false;
+                                data.target = null;
+                            }
+                        }else{
+                            data.target = null;
                         }
-                        super.hitEntity(b, entity, health);
-                        b.damage = prev;
+
+                        float tx = data.lastInRangeX, ty = data.lastInRangeY;
+                        if(Float.isNaN(tx) || Float.isNaN(ty)){
+                            b.remove();
+                            return;
+                        }
+
+                        b.aimX = tx;
+                        b.aimY = ty;
+                        float trackingTurn = data.target != null ? 240f : 160f;
+                        b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), trackingTurn * Time.delta));
+                        b.vel.setLength(speed);
+                        b.rotation(b.vel.angle());
+
+                        float hitRange = Math.max(0.65f, b.vel.len() * Time.delta * 0.85f);
+                        if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                            hit(b, tx, ty);
+                            b.remove();
+                        }
                     }
                 };
             }
+            @Override
+            public void draw(Unit unit, WeaponMount mount){
+                float prevX = Draw.xscl, prevY = Draw.yscl;
+                Draw.scl(prevX * 1.12f, prevY * 1.12f);
+                super.draw(unit, mount);
+                Draw.scl(prevX, prevY);
+            }
+
+            @Override
+            public void drawOutline(Unit unit, WeaponMount mount){
+                float prevX = Draw.xscl, prevY = Draw.yscl;
+                Draw.scl(prevX * 1.12f, prevY * 1.12f);
+                super.drawOutline(unit, mount);
+                Draw.scl(prevX, prevY);
+            }
+
             @Override
             protected void bullet(Unit unit, WeaponMount mount, float xOffset, float yOffset, float angleOffset, Mover mover){
                 if(!unit.isAdded()) return;
@@ -2786,9 +5220,40 @@ public class UnitTypes{
                     shooter = ((MissileAI)unit.controller()).shooter;
                 }
                 mount.bullet = bullet.create(unit, shooter, unit.team, bulletX, bulletY, angle, -1f, (1f - velocityRnd) + Mathf.random(velocityRnd) + extraVelocity, lifeScl, mount.target, mover, mount.aimX, mount.aimY, mount.target);
+
+                float forwardX = Angles.trnsx(unit.rotation, 1f);
+                float forwardY = Angles.trnsy(unit.rotation, 1f);
+                float relX = bulletX - unit.x;
+                float relY = bulletY - unit.y;
+                float sideCross = forwardX * relY - forwardY * relX;
+                float side = Float.isFinite(sideCross) && sideCross != 0f ? Mathf.sign(sideCross) : (mount.side ? 1f : -1f);
+                FortressBodyKickData kick = fortressBodyKickData.get(unit.id);
+                if(kick == null){
+                    kick = new FortressBodyKickData();
+                    fortressBodyKickData.put(unit.id, kick);
+                }
+                if(!kick.active){
+                    kick.offset = 0f;
+                    kick.omega = 0f;
+                    kick.sign = side;
+                }else if(kick.sign != side){
+                    //Switching fire side mid-kick starts a fresh kick from current orientation.
+                    kick.offset = 0f;
+                    kick.omega = 0f;
+                    kick.sign = side;
+                }
+
+                kick.active = true;
+                kick.omega += side * fortressBodyKickInitialOmega;
+                kick.omega = Mathf.clamp(kick.omega, -fortressBodyKickInitialOmega * 1.4f, fortressBodyKickInitialOmega * 1.4f);
+                if(unit.mounts != null){
+                    if(unit.mounts.length > 0) kick.frozenMount0 = unit.mounts[0].rotation;
+                    if(unit.mounts.length > 1) kick.frozenMount1 = unit.mounts[1].rotation;
+                }
             }
             });
-        }};
+            }
+        };
 
         ghost = new UnitType("ghost"){{
             speed = 3.15f;
@@ -2804,8 +5269,116 @@ public class UnitTypes{
             unitClasses = EnumSet.of(UnitClass.biological);
             population = 2;
             energyCapacity = 200f;
-            energyInit = 20f;
+            energyInit = 75f;
             energyRegen = 1f;
+
+            ghostStableAimBullet = new BasicBulletType(18f, ghostStableAimDamage){
+                {
+                    width = 7f;
+                    height = 11f;
+                    lifetime = 24f;
+                    hitSize = 3.5f;
+                    keepVelocity = false;
+                    collides = false;
+                    collidesTiles = false;
+                    collidesAir = true;
+                    collidesGround = true;
+                    hittable = false;
+                    absorbable = false;
+                    reflectable = false;
+                    pierceArmor = true;
+                    despawnHit = false;
+                    hitColor = backColor = trailColor = Color.valueOf("ff5d5d");
+                    frontColor = Color.white;
+                    trailWidth = 2.1f;
+                    trailLength = 7;
+                    shootEffect = Fx.shootSmall;
+                    smokeEffect = Fx.shootSmallSmoke;
+                    hitEffect = despawnEffect = Fx.hitBulletColor;
+                }
+
+                @Override
+                public void update(Bullet b){
+                    Unit target = b.data instanceof Unit u ? u : null;
+                    if(!ghostStableAimValidTarget(target)){
+                        b.remove();
+                        return;
+                    }
+
+                    float tx = target.x, ty = target.y;
+                    b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), 80f * Time.delta));
+                    b.vel.setLength(speed);
+                    b.rotation(b.vel.angle());
+
+                    float hitRange = 4f + target.hitSize / 2f;
+                    if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                        hit(b, tx, ty);
+                        float amount = b.damage;
+                        if(target.type.unitClasses.contains(UnitClass.psionic)){
+                            amount += ghostStableAimPsionicBonus;
+                        }
+                        target.damagePierce(amount);
+                        b.remove();
+                    }
+                }
+
+                @Override
+                public void createSplashDamage(Bullet b, float x, float y){
+                    //Target-only damage.
+                }
+            };
+
+            ghostEmpBullet = new BasicBulletType(ghostEmpProjectileSpeed, 0f){
+                {
+                    width = 7f;
+                    height = 10f;
+                    lifetime = 42f;
+                    hitSize = 3.6f;
+                    keepVelocity = false;
+                    collides = false;
+                    collidesTiles = false;
+                    collidesAir = false;
+                    collidesGround = false;
+                    hittable = false;
+                    absorbable = false;
+                    reflectable = false;
+                    despawnHit = false;
+                    hitColor = backColor = trailColor = Color.valueOf("7ecaff");
+                    frontColor = Color.white;
+                    trailWidth = 1.8f;
+                    trailLength = 10;
+                    shootEffect = Fx.shootSmall;
+                    smokeEffect = Fx.shootSmallSmoke;
+                    hitEffect = Fx.none;
+                    despawnEffect = Fx.none;
+                }
+
+                @Override
+                public void update(Bullet b){
+                    Vec2 target = b.data instanceof Vec2 v ? v : null;
+                    if(target == null){
+                        b.remove();
+                        return;
+                    }
+
+                    float tx = target.x, ty = target.y;
+                    b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), 45f * Time.delta));
+                    b.vel.setLength(speed);
+                    b.rotation(b.vel.angle());
+
+                    float hitRange = 4f;
+                    if(Mathf.within(b.x, b.y, tx, ty, hitRange) || b.time >= b.lifetime - 0.01f){
+                        hit(b, tx, ty);
+                        impactGhostEmp(b.owner instanceof Unit u ? u : null, tx, ty);
+                        b.remove();
+                    }
+                }
+
+                @Override
+                public void createSplashDamage(Bullet b, float x, float y){
+                    //No bullet splash; EMP logic is handled manually.
+                }
+            };
 
             weapons.add(new Weapon(){{
                 reload = 1.07f * 60f;
@@ -2823,14 +5396,39 @@ public class UnitTypes{
                 @Override
                 public void hitEntity(Bullet b, Hitboxc entity, float health){
                     float prev = b.damage;
+                    float baseDamage = prev + infantryWeaponBaseDamageBonus(b.team);
+                    b.damage = baseDamage;
                     if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.light){
-                        b.damage = 20f;
+                        b.damage = prev + 10f + infantryWeaponGhostLightBonus(b.team);
                     }
                     super.hitEntity(b, entity, health);
                     b.damage = prev;
                 }
+
+                @Override
+                public float buildingDamage(Bullet b){
+                    return b.damage + infantryWeaponBaseDamageBonus(b.team);
+                }
                 };
             }});
+        }
+        @Override
+        public void update(Unit unit){
+            super.update(unit);
+            updateGhost(unit);
+        }
+        @Override
+        public void draw(Unit unit){
+            float prevX = Draw.xscl, prevY = Draw.yscl;
+            Draw.scl(prevX * 0.7f, prevY * 0.7f);
+            super.draw(unit);
+            Draw.scl(prevX, prevY);
+            drawGhostStableAimBeam(unit);
+        }
+        @Override
+        public void killed(Unit unit){
+            clearGhostStableAimData(unit);
+            clearGhostEmpData(unit);
         }
         @Override
         public void load(){
@@ -2838,6 +5436,7 @@ public class UnitTypes{
             region = Core.atlas.find("atrax");
             outlineRegion = region;
             baseRegion = Core.atlas.find("nova-base", region);
+            legRegion = Core.atlas.find("dagger-leg", legRegion);
             fullIcon = Core.atlas.find("unit-atrax-full", region);
             uiIcon = Core.atlas.find("unit-atrax-ui", fullIcon);
             shadowRegion = fullIcon;
@@ -3023,9 +5622,9 @@ public class UnitTypes{
                             if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                 hit(b, tx, ty);
 
-                                float amount = damage;
+                                float amount = damage + vehicleWeaponScepterBurstBaseBonus(b.team);
                                 if(unit.type.armorType == ArmorType.light){
-                                    amount = 12f;
+                                    amount = damage + 6f + vehicleWeaponScepterBurstLightBonus(b.team);
                                 }
                                 unit.damage(amount);
 
@@ -3164,9 +5763,9 @@ public class UnitTypes{
                             if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                 hit(b, tx, ty);
 
-                                float amount = damage;
+                                float amount = damage + vehicleWeaponScepterImpactBaseBonus(b.team);
                                 if(unit.type.unitClasses.contains(UnitClass.heavy)){
-                                    amount = 35f;
+                                    amount = damage + 10f + vehicleWeaponScepterImpactHeavyBonus(b.team);
                                 }
                                 unit.damage(amount);
 
@@ -3258,6 +5857,19 @@ public class UnitTypes{
                         smokeEffect = Fx.none;
                         trailEffect = Fx.none;
                     }
+
+                    @Override
+                    public void hitEntity(Bullet b, Hitboxc entity, float health){
+                        float prev = b.damage;
+                        b.damage = prev + vehicleWeaponScepterGroundBaseBonus(b.team);
+                        super.hitEntity(b, entity, health);
+                        b.damage = prev;
+                    }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        return b.damage + vehicleWeaponScepterGroundBaseBonus(b.team);
+                    }
                 };
                 }
             }
@@ -3344,7 +5956,7 @@ public class UnitTypes{
             rotateMoveFirst = false;
 
             buildSpeed = 1f;
-            commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand);
+            commands = Seq.with(UnitCommand.moveCommand, UnitCommand.harvestCommand, UnitCommand.repairCommand);
 
             ammoType = new PowerAmmoType(1000);
 
@@ -3750,6 +6362,20 @@ public class UnitTypes{
 
                     Units.nearbyEnemies(b.team, x - splashDamageRadius, y - splashDamageRadius, splashDamageRadius * 2f, splashDamageRadius * 2f, u -> {
                         if(!u.within(x, y, splashDamageRadius + u.hitSize / 2f)) return;
+                        if(u.shield > 0.001f){
+                            u.damagePierce(25f);
+                        }
+                    });
+
+                    float amount = splashDamage * b.damageMultiplier();
+                    Units.nearby(b.team, x - splashDamageRadius, y - splashDamageRadius, splashDamageRadius * 2f, splashDamageRadius * 2f, u -> {
+                        if(!u.checkTarget(collidesAir, collidesGround) || !u.hittable()) return;
+                        if(!u.within(x, y, splashDamageRadius + u.hitSize / 2f)) return;
+
+                        float dist = scaledSplashDamage ? Math.max(0f, u.dst(x, y) - u.hitSize / 2f) : u.dst(x, y);
+                        float scaled = splashDamageRadius <= 0.00001f ? 1f : Mathf.lerp(1f - dist / splashDamageRadius, 1f, 0.4f);
+                        u.damage(amount * scaled);
+
                         if(u.shield > 0.001f){
                             u.damagePierce(25f);
                         }
@@ -4290,6 +6916,17 @@ public class UnitTypes{
                 Draw.scl(prevX, prevY);
             }
 
+            @Override
+            public void update(Unit unit){
+                super.update(unit);
+                updateViking(unit);
+            }
+
+            @Override
+            public void killed(Unit unit){
+                clearVikingData(unit);
+            }
+
             {
                 researchCostMultiplier = 0.5f;
                 speed = 3.85f;
@@ -4312,7 +6949,7 @@ public class UnitTypes{
                 wreckSoundVolume = 0.7f;
                 range = maxRange = 9f * tilesize;
                 targetAir = true;
-                targetGround = false;
+                targetGround = true;
 
                 moveSound = Sounds.loopThruster;
                 moveSoundPitchMin = 0.3f;
@@ -4320,6 +6957,18 @@ public class UnitTypes{
                 moveSoundVolume = 0.2f;
 
                 weapons.add(new Weapon(){
+                    @Override
+                    public void update(Unit unit, WeaponMount mount){
+                        if(vikingIsMechMode(unit) || vikingIsTransforming(unit)){
+                            mount.shoot = false;
+                            mount.rotate = false;
+                            mount.warmup = Mathf.approachDelta(mount.warmup, 0f, 0.1f);
+                            mount.heat = Mathf.approachDelta(mount.heat, 0f, 0.1f);
+                            return;
+                        }
+                        super.update(unit, mount);
+                    }
+
                     @Override
                     protected void handleBullet(Unit unit, WeaponMount mount, Bullet bullet){
                         super.handleBullet(unit, mount, bullet);
@@ -4397,9 +7046,9 @@ public class UnitTypes{
                                 float hitRange = 2f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                     if(target.team() != b.team){
-                                        float amount = damage;
+                                        float amount = damage + shipWeaponVikingFighterBaseBonus(b.team);
                                         if(target instanceof Unit u && u.type.armorType == ArmorType.heavy){
-                                            amount = 14f;
+                                            amount = 14f + shipWeaponVikingFighterHeavyBonus(b.team);
                                         }
                                         if(target instanceof Unit u){
                                             u.damage(amount);
@@ -4410,6 +7059,74 @@ public class UnitTypes{
                                     hit(b, tx, ty);
                                     b.remove();
                                 }
+                            }
+                        };
+                    }
+                });
+
+                weapons.add(new Weapon("viking-gatling"){
+                    @Override
+                    public void update(Unit unit, WeaponMount mount){
+                        if(!vikingIsMechMode(unit) || vikingIsTransforming(unit)){
+                            mount.shoot = false;
+                            mount.rotate = false;
+                            mount.warmup = Mathf.approachDelta(mount.warmup, 0f, 0.1f);
+                            mount.heat = Mathf.approachDelta(mount.heat, 0f, 0.1f);
+                            return;
+                        }
+                        super.update(unit, mount);
+                    }
+
+                    @Override
+                    protected void handleBullet(Unit unit, WeaponMount mount, Bullet bullet){
+                        super.handleBullet(unit, mount, bullet);
+                        bullet.data = mount.target;
+                    }
+
+                    {
+                        x = 0f;
+                        y = 1f;
+                        minShootVelocity = -1f;
+                        mirror = false;
+                        shootCone = 10f;
+                        reload = 0.71f * 60f;
+                        targetAir = false;
+                        targetGround = true;
+                        ejectEffect = Fx.none;
+                        shootSound = Sounds.shoot;
+
+                        bullet = new BulletType(0f, 12f){
+                            @Override
+                            public void init(Bullet b){
+                                super.init(b);
+
+                                Teamc target = b.data instanceof Teamc t ? t : null;
+                                if(target instanceof Healthc h && h.isValid() && target.team() != b.team){
+                                    float damage = 12f + shipWeaponVikingMechBaseBonus(b.team);
+                                    if(target instanceof Unit u && u.type.unitClasses.contains(UnitClass.mechanical)){
+                                        damage = 20f + shipWeaponVikingMechMechanicalBonus(b.team);
+                                    }
+                                    h.damage(damage);
+                                }
+                                b.remove();
+                            }
+
+                            {
+                                instantDisappear = true;
+                                lifetime = 1f;
+                                rangeOverride = vikingMechRange;
+                                collides = false;
+                                collidesTiles = false;
+                                collidesAir = false;
+                                collidesGround = true;
+                                keepVelocity = false;
+                                hittable = false;
+                                absorbable = false;
+                                reflectable = false;
+                                shootEffect = Fx.none;
+                                smokeEffect = Fx.none;
+                                hitEffect = Fx.none;
+                                despawnEffect = Fx.none;
                             }
                         };
                     }
@@ -4558,18 +7275,19 @@ public class UnitTypes{
                                 return;
                             }
 
-                            float hitRange = 2f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
-                            if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
-                                if(target.team() != b.team){
-                                    if(target instanceof Unit u){
-                                        u.damage(damage);
-                                    }else if(target instanceof Building build){
-                                        build.damage(damage * buildingDamageMultiplier);
+                                float hitRange = 2f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
+                                if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                                    if(target.team() != b.team){
+                                        float amount = damage + shipWeaponLiberatorFighterBonus(b.team);
+                                        if(target instanceof Unit u){
+                                            u.damage(amount);
+                                        }else if(target instanceof Building build){
+                                            build.damage(amount * buildingDamageMultiplier);
+                                        }
                                     }
+                                    hit(b, tx, ty);
+                                    b.remove();
                                 }
-                                hit(b, tx, ty);
-                                b.remove();
-                            }
                         }
 
                         @Override
@@ -4644,19 +7362,34 @@ public class UnitTypes{
                         layerOffset = 0.0001f;
                         recoil = 1f;
 
-                        bullet = new BasicBulletType(13.333f, 75f){{
-                            width = 7f;
-                            height = 20f;
-                            lifetime = 9f;
-                            rangeOverride = liberatorDefenseRange();
-                            collidesAir = false;
-                            collidesGround = true;
-                            hitEffect = Fx.hitBulletColor;
-                            despawnEffect = Fx.none;
-                            shootEffect = Fx.shootBig;
-                            smokeEffect = Fx.shootBigSmoke;
-                            sprite = "bullet";
-                        }};
+                        bullet = new BasicBulletType(13.333f, 75f){
+                            @Override
+                            public void hitEntity(Bullet b, Hitboxc entity, float health){
+                                float prev = b.damage;
+                                b.damage = prev + shipWeaponLiberatorDefenseBonus(b.team);
+                                super.hitEntity(b, entity, health);
+                                b.damage = prev;
+                            }
+
+                            @Override
+                            public float buildingDamage(Bullet b){
+                                return b.damage + shipWeaponLiberatorDefenseBonus(b.team);
+                            }
+
+                            {
+                                width = 7f;
+                                height = 20f;
+                                lifetime = 9f;
+                                rangeOverride = liberatorDefenseRange();
+                                collidesAir = false;
+                                collidesGround = true;
+                                hitEffect = Fx.hitBulletColor;
+                                despawnEffect = Fx.none;
+                                shootEffect = Fx.shootBig;
+                                smokeEffect = Fx.shootBigSmoke;
+                                sprite = "bullet";
+                            }
+                        };
                     }
                 });
             }
@@ -4687,7 +7420,7 @@ public class UnitTypes{
             }
 
             {
-                health = 140f;
+                health = 100f;
                 speed = 3.85f;
                 accel = 0.09f;
                 drag = 0.08f;
@@ -4730,26 +7463,41 @@ public class UnitTypes{
                     targetGround = true;
                     shootSound = Sounds.shootMissileSmall;
 
-                    bullet = new MissileBulletType(4.2f, 12f, "missile"){{
-                        width = 8f;
-                        height = 8f;
-                        shrinkY = 0f;
-                        lifetime = 24f;
-                        rangeOverride = 6f * tilesize;
-                        collidesAir = false;
-                        collidesGround = true;
-                        keepVelocity = false;
-                        splashDamage = 0f;
-                        splashDamageRadius = 0f;
-                        weaveMag = 0.5f;
-                        weaveScale = 7f;
-                        homingPower = 0.06f;
-                        trailColor = Pal.unitBack;
-                        backColor = Pal.unitBack;
-                        frontColor = Color.white;
-                        hitEffect = Fx.hitBulletColor;
-                        despawnEffect = Fx.none;
-                    }};
+                    bullet = new MissileBulletType(4.2f, 12f, "missile"){
+                        @Override
+                        public void hitEntity(Bullet b, Hitboxc entity, float health){
+                            float prev = b.damage;
+                            b.damage = prev + shipWeaponBansheeBonus(b.team);
+                            super.hitEntity(b, entity, health);
+                            b.damage = prev;
+                        }
+
+                        @Override
+                        public float buildingDamage(Bullet b){
+                            return b.damage + shipWeaponBansheeBonus(b.team);
+                        }
+
+                        {
+                            width = 8f;
+                            height = 8f;
+                            shrinkY = 0f;
+                            lifetime = 24f;
+                            rangeOverride = 6f * tilesize;
+                            collidesAir = false;
+                            collidesGround = true;
+                            keepVelocity = false;
+                            splashDamage = 0f;
+                            splashDamageRadius = 0f;
+                            weaveMag = 0.5f;
+                            weaveScale = 7f;
+                            homingPower = 0.06f;
+                            trailColor = Pal.unitBack;
+                            backColor = Pal.unitBack;
+                            frontColor = Color.white;
+                            hitEffect = Fx.hitBulletColor;
+                            despawnEffect = Fx.none;
+                        }
+                    };
                 }});
             }
         };
@@ -4960,37 +7708,160 @@ public class UnitTypes{
 
                 loopSound = Sounds.loopHover;
 
-                BulletType laserGround = new LaserBoltBulletType(8f, 8f){{
-                    width = 8f;
-                    height = 8f;
-                    lifetime = battlecruiserWeaponRange / 8f;
-                    rangeOverride = battlecruiserWeaponRange;
-                    collidesAir = false;
-                    collidesGround = true;
-                    backColor = Color.valueOf("ff5a5a");
-                    frontColor = Color.white;
-                    trailColor = Color.valueOf("ff5a5a");
-                    trailWidth = 2.1f;
-                    trailLength = 12;
-                    hitEffect = Fx.hitBulletColor;
-                    despawnEffect = Fx.none;
-                }};
+                BulletType laserGround = new LaserBoltBulletType(8f, 8f){
+                    private boolean validTarget(@Nullable Teamc target){
+                        if(target == null) return false;
+                        if(target instanceof Healthc h && !h.isValid()) return false;
+                        if(target instanceof Unit u){
+                            return u.hittable() && u.checkTarget(false, true);
+                        }
+                        return target instanceof Building;
+                    }
 
-                BulletType laserAir = new LaserBoltBulletType(8f, 5f){{
-                    width = 8f;
-                    height = 8f;
-                    lifetime = battlecruiserWeaponRange / 8f;
-                    rangeOverride = battlecruiserWeaponRange;
-                    collidesAir = true;
-                    collidesGround = false;
-                    backColor = Color.valueOf("ff5a5a");
-                    frontColor = Color.white;
-                    trailColor = Color.valueOf("ff5a5a");
-                    trailWidth = 2.1f;
-                    trailLength = 12;
-                    hitEffect = Fx.hitBulletColor;
-                    despawnEffect = Fx.none;
-                }};
+                    @Override
+                    public void update(Bullet b){
+                        b.keepAlive = true;
+                        Teamc target = b.data instanceof Teamc t ? t : null;
+                        boolean hadTarget = target != null;
+
+                        if(validTarget(target)){
+                            b.aimX = target.getX();
+                            b.aimY = target.getY();
+                        }else if(hadTarget){
+                            float tx = b.aimX, ty = b.aimY;
+                            if(Float.isNaN(tx) || Float.isNaN(ty)){
+                                tx = b.x;
+                                ty = b.y;
+                            }
+                            hit(b, tx, ty);
+                            b.remove();
+                            return;
+                        }else if(Float.isNaN(b.aimX) || Float.isNaN(b.aimY)){
+                            b.remove();
+                            return;
+                        }
+
+                        float tx = b.aimX, ty = b.aimY;
+                        b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), 90f * Time.delta));
+                        b.vel.setLength(speed);
+                        b.rotation(b.vel.angle());
+
+                        float hitRange = 3f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
+                        if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                            hit(b, tx, ty);
+                            float amount = b.damage + shipWeaponBattlecruiserGroundBonus(b.team);
+                            if(target instanceof Unit u){
+                                u.damage(amount);
+                            }else if(target instanceof Building build){
+                                build.damage(amount * buildingDamageMultiplier);
+                            }
+                            b.remove();
+                        }
+                    }
+
+                    @Override
+                    public void createSplashDamage(Bullet b, float x, float y){
+                        //Target-only collision.
+                    }
+
+                    {
+                        width = 8f;
+                        height = 8f;
+                        lifetime = 60f;
+                        rangeOverride = battlecruiserWeaponRange;
+                        collides = false;
+                        collidesTiles = false;
+                        collidesAir = false;
+                        collidesGround = true;
+                        hittable = false;
+                        absorbable = false;
+                        reflectable = false;
+                        keepVelocity = false;
+                        despawnHit = false;
+                        backColor = Color.valueOf("ff5a5a");
+                        frontColor = Color.white;
+                        trailColor = Color.valueOf("ff5a5a");
+                        trailWidth = 2.1f;
+                        trailLength = 12;
+                        hitEffect = Fx.hitBulletColor;
+                        despawnEffect = Fx.none;
+                    }
+                };
+
+                BulletType laserAir = new LaserBoltBulletType(8f, 5f){
+                    private boolean validTarget(@Nullable Teamc target){
+                        if(target == null) return false;
+                        if(target instanceof Healthc h && !h.isValid()) return false;
+                        return target instanceof Unit u && u.hittable() && u.checkTarget(true, false);
+                    }
+
+                    @Override
+                    public void update(Bullet b){
+                        b.keepAlive = true;
+                        Teamc target = b.data instanceof Teamc t ? t : null;
+                        boolean hadTarget = target != null;
+
+                        if(validTarget(target)){
+                            b.aimX = target.getX();
+                            b.aimY = target.getY();
+                        }else if(hadTarget){
+                            float tx = b.aimX, ty = b.aimY;
+                            if(Float.isNaN(tx) || Float.isNaN(ty)){
+                                tx = b.x;
+                                ty = b.y;
+                            }
+                            hit(b, tx, ty);
+                            b.remove();
+                            return;
+                        }else if(Float.isNaN(b.aimX) || Float.isNaN(b.aimY)){
+                            b.remove();
+                            return;
+                        }
+
+                        float tx = b.aimX, ty = b.aimY;
+                        b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), 90f * Time.delta));
+                        b.vel.setLength(speed);
+                        b.rotation(b.vel.angle());
+
+                        float hitRange = 3f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
+                        if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                            hit(b, tx, ty);
+                            float amount = b.damage + shipWeaponBattlecruiserAirBonus(b.team);
+                            if(target instanceof Unit u){
+                                u.damage(amount);
+                            }
+                            b.remove();
+                        }
+                    }
+
+                    @Override
+                    public void createSplashDamage(Bullet b, float x, float y){
+                        //Target-only collision.
+                    }
+
+                    {
+                        width = 8f;
+                        height = 8f;
+                        lifetime = 60f;
+                        rangeOverride = battlecruiserWeaponRange;
+                        collides = false;
+                        collidesTiles = false;
+                        collidesAir = true;
+                        collidesGround = false;
+                        hittable = false;
+                        absorbable = false;
+                        reflectable = false;
+                        keepVelocity = false;
+                        despawnHit = false;
+                        backColor = Color.valueOf("ff5a5a");
+                        frontColor = Color.white;
+                        trailColor = Color.valueOf("ff5a5a");
+                        trailWidth = 2.1f;
+                        trailLength = 12;
+                        hitEffect = Fx.hitBulletColor;
+                        despawnEffect = Fx.none;
+                    }
+                };
 
                 battlecruiserYamatoBullet = new LaserBoltBulletType(6f, 240f){{
                     width = 24f;
@@ -5010,7 +7881,13 @@ public class UnitTypes{
                 }};
 
                 weapons.add(
-                new Weapon("battlecruiser-ground-laser"){{
+                new Weapon("battlecruiser-ground-laser"){
+                    @Override
+                    protected void handleBullet(Unit unit, WeaponMount mount, Bullet bullet){
+                        super.handleBullet(unit, mount, bullet);
+                        bullet.data = mount.target;
+                    }
+                    {
                     x = 12f * battlecruiserBodyScale;
                     y = 5f * battlecruiserBodyScale;
                     shootY = 4f * battlecruiserBodyScale;
@@ -5023,7 +7900,13 @@ public class UnitTypes{
                     shootSound = Sounds.shootLaser;
                     bullet = laserGround;
                 }},
-                new Weapon("battlecruiser-air-laser"){{
+                new Weapon("battlecruiser-air-laser"){
+                    @Override
+                    protected void handleBullet(Unit unit, WeaponMount mount, Bullet bullet){
+                        super.handleBullet(unit, mount, bullet);
+                        bullet.data = mount.target;
+                    }
+                    {
                     x = 12f * battlecruiserBodyScale;
                     y = -5f * battlecruiserBodyScale;
                     shootY = 4f * battlecruiserBodyScale;
@@ -6758,7 +9641,8 @@ public class UnitTypes{
 
                         Rect unitRect = Tmp.r1.setPosition(x1, y1).setSize(Tmp.v1.x, Tmp.v1.y).normalize().grow(radius * 2f);
 
-                        Units.nearbyEnemies(b.team, unitRect, u -> {
+                        Units.nearby((Team)null, unitRect.x, unitRect.y, unitRect.width, unitRect.height, u -> {
+                            if(!canDamageFriendlyOnlyWhenForced(b, u)) return;
                             if(!u.checkTarget(collidesAir, collidesGround) || !u.hittable()) return;
                             u.hitbox(Tmp.r2);
                             Vec2 hit = Geometry.raycastRect(x1, y1, x2, y2, Tmp.r2.grow(radius * 2f));
@@ -6769,7 +9653,7 @@ public class UnitTypes{
                         });
 
                         Units.nearbyBuildings((x1 + x2) / 2f, (y1 + y2) / 2f, currentLength(b) / 2f + radius + 8f, build -> {
-                            if(build.team == b.team || !build.collide(b)) return;
+                            if(!canDamageFriendlyOnlyWhenForced(b, build) || !build.collide(b)) return;
                             if(!b.checkUnderBuild(build, build.x, build.y)) return;
                             if(!intersectsCircle(x1, y1, x2, y2, build.x, build.y, build.hitSize() / 2f + radius)) return;
 
@@ -6804,11 +9688,19 @@ public class UnitTypes{
                     @Override
                     public void hitEntity(Bullet b, Hitboxc entity, float health){
                         float prev = b.damage;
+                        float baseDamage = prev + vehicleWeaponLocusBaseBonus(b.team);
+                        b.damage = baseDamage;
                         if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.light){
-                            b.damage = lightArmorDamage;
+                            b.damage = lightArmorDamage + vehicleWeaponLocusLightBonus(b.team);
                         }
                         super.hitEntity(b, entity, health);
                         b.damage = prev;
+                    }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        float base = b.damage + vehicleWeaponLocusBaseBonus(b.team);
+                        return base * buildingDamageMultiplier;
                     }
                         };
                     }
@@ -6961,9 +9853,9 @@ public class UnitTypes{
 
                             @Override
                             public void hitEntity(Bullet b, Hitboxc entity, float health){
-                                float amount = damage;
+                                float amount = damage + vehicleWeaponPreceptMobileBaseBonus(b.team);
                                 if(entity instanceof Unit u && u.type.armorType == ArmorType.heavy){
-                                    amount = 25f;
+                                    amount = damage + 10f + vehicleWeaponPreceptMobileHeavyBonus(b.team);
                                 }
 
                                 if(entity instanceof Healthc h){
@@ -6979,6 +9871,11 @@ public class UnitTypes{
                                 }
 
                                 handlePierce(b, health, entity.x(), entity.y());
+                            }
+
+                            @Override
+                            public float buildingDamage(Bullet b){
+                                return damage + vehicleWeaponPreceptMobileBaseBonus(b.team);
                             }
                         };
                     }
@@ -7047,9 +9944,9 @@ public class UnitTypes{
 
                             @Override
                             public void hitEntity(Bullet b, Hitboxc entity, float health){
-                                float amount = damage;
+                                float amount = damage + vehicleWeaponPreceptSiegeBaseBonus(b.team);
                                 if(entity instanceof Unit u && u.type.armorType == ArmorType.heavy){
-                                    amount = 70f;
+                                    amount = damage + 30f + vehicleWeaponPreceptSiegeHeavyBonus(b.team);
                                 }
 
                                 if(entity instanceof Healthc h){
@@ -7065,6 +9962,20 @@ public class UnitTypes{
                                 }
 
                                 handlePierce(b, health, entity.x(), entity.y());
+                            }
+
+                            @Override
+                            public float buildingDamage(Bullet b){
+                                return damage + vehicleWeaponPreceptSiegeBaseBonus(b.team);
+                            }
+
+                            @Override
+                            public void createSplashDamage(Bullet b, float x, float y){
+                                if(splashDamageRadius <= 0f || b.absorbed) return;
+                                Damage.damage(null, x, y, splashDamageRadius, splashDamage * b.damageMultiplier(), splashDamagePierce, collidesAir, collidesGround, scaledSplashDamage, b);
+                                if(status != StatusEffects.none){
+                                    Damage.status(null, x, y, splashDamageRadius, status, statusDuration, collidesAir, collidesGround);
+                                }
                             }
                         };
                     }
@@ -7358,10 +10269,11 @@ public class UnitTypes{
 
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                     hit(b, tx, ty);
+                                    float amount = b.damage + vehicleWeaponHurricaneBaseBonus(b.team);
                                     if(target instanceof Unit u){
-                                        u.damage(b.damage);
+                                        u.damage(amount);
                                     }else if(target instanceof Building build && build.team != b.team){
-                                        build.damage(b.damage * buildingDamageMultiplier);
+                                        build.damage(amount * buildingDamageMultiplier);
                                     }
                                     b.remove();
                                 }

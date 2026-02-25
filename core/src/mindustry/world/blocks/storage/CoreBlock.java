@@ -805,7 +805,7 @@ public class CoreBlock extends StorageBlock{
                     loadingScvs.removeIndex(i);
                     continue;
                 }
-                if(storedScvs >= scvStorageCapacity){
+                if(storedScvs >= scvStorageLimit()){
                     loadingScvs.removeIndex(i);
                     continue;
                 }
@@ -821,8 +821,15 @@ public class CoreBlock extends StorageBlock{
             return storedScvs > 0;
         }
 
+        public int scvStorageLimit(){
+            if(block == Blocks.coreOrbital || block == Blocks.corePlanetaryFortress){
+                return UnitTypes.steelArmorUpgradedCoreScvCapacity(team);
+            }
+            return scvStorageCapacity;
+        }
+
         public boolean requestLoadScvs(){
-            int free = scvStorageCapacity - storedScvs - loadingScvs.size;
+            int free = scvStorageLimit() - storedScvs - loadingScvs.size;
             if(free <= 0) return false;
 
             Seq<Unit> candidates = new Seq<>();

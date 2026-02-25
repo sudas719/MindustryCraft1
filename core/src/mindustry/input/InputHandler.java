@@ -40,6 +40,7 @@ import mindustry.world.blocks.*;
 import mindustry.world.blocks.distribution.*;
 import mindustry.world.blocks.environment.CrystalMineralWall;
 import mindustry.world.blocks.environment.SteamVent;
+import mindustry.world.blocks.defense.BunkerBlock;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.*;
 import mindustry.world.meta.*;
@@ -325,6 +326,26 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return new Vec2(Mathf.clamp(target.x, 0f, maxX), Mathf.clamp(target.y, 0f, maxY));
     }
 
+    private static boolean canScvRepairTarget(Unit unit, @Nullable Teamc target, boolean explicitRepairCommand){
+        if(unit == null || unit.type != UnitTypes.nova || target == null) return false;
+        if(target.team() != unit.team) return false;
+
+        if(target instanceof Unit ally){
+            if(!ally.isValid() || ally == unit || !ally.damaged()) return false;
+            if(!ally.type.unitClasses.contains(UnitClass.mechanical)) return false;
+            if(UnitTypes.isMedivac(ally) && UnitTypes.medivacPayloadSlotsFree(ally) > 0 && !explicitRepairCommand){
+                return false;
+            }
+            return true;
+        }
+
+        if(target instanceof Building build){
+            return build.isValid() && build.team == unit.team && build.damaged();
+        }
+
+        return false;
+    }
+
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
     public static void commandUnits(Player player, int[] unitIds, @Nullable Building buildTarget, @Nullable Unit unitTarget, @Nullable Vec2 posTarget, boolean queueCommand, boolean finalBatch, boolean forceAttackTarget){
         if(player == null || unitIds == null) return;
@@ -347,7 +368,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 if(unit != null && unit.team == player.team()){
 
                     if(unit.controller() instanceof CommandAI){
+                        if(UnitTypes.isBattlecruiser(unit)){
+                            //Player-issued direct commands should override Yamato lock/charge.
+                            UnitTypes.commandBattlecruiserCancelYamato(unit);
+                        }
                         CommandAI ai = (CommandAI)unit.controller();
+                        boolean scvRepairCommandRequested = unit.type == UnitTypes.nova && ai.command == UnitCommand.repairCommand;
                         BuildPlan plan = unit.buildPlan();
                         if(unit.type == UnitTypes.nova && plan != null && plan.requireClose && !plan.initialized){
                             boolean keep = teamTarget == null && safePosTarget != null &&
@@ -367,7 +393,17 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
                     if(teamTarget != null){
                         boolean forcedAllyAttack = forceAttackTarget && teamTarget.team() == player.team();
-                        if(teamTarget.team() == player.team() && !forcedAllyAttack){
+                        boolean scvRepairTarget = canScvRepairTarget(unit, teamTarget, scvRepairCommandRequested);
+                        if(teamTarget.team() == player.team() && scvRepairTarget){
+                            ai.command(UnitCommand.repairCommand);
+                            anyCommandedTarget = true;
+                            if(queueCommand){
+                                ai.commandQueue(teamTarget);
+                            }else{
+                                ai.commandQueue.clear();
+                                ai.commandTarget(teamTarget);
+                            }
+                        }else if(teamTarget.team() == player.team() && !forcedAllyAttack){
                             ai.commandFollow(teamTarget);
                         }else if(forcedAllyAttack || !((teamTarget instanceof Unit && !unit.canTarget((Unit)teamTarget)) || (teamTarget instanceof Building && !unit.type.targetGround))){
                             anyCommandedTarget = true;
@@ -586,6 +622,25 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandVikingMode(Player player, int[] unitIds, boolean mechMode){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isViking(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandVikingMode(unit, mechMode);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
     public static void commandLiberatorMode(Player player, int[] unitIds, boolean defenseMode, @Nullable Vec2 zoneTarget){
         if(player == null || unitIds == null) return;
 
@@ -686,6 +741,145 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isBanshee(unit)) continue;
             UnitTypes.commandBansheeCloak(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostCloak(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandGhostCloak(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostStableAim(Player player, int[] unitIds, int targetId){
+        if(player == null || unitIds == null || targetId < 0) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Unit target = Groups.unit.getByID(targetId);
+        if(!UnitTypes.ghostStableAimValidTarget(target)) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandGhostStableAim(unit, target);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostStableAimCancel(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            UnitTypes.commandGhostCancelStableAim(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostEmp(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandGhostEmp(unit, safeTarget);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostEmpCancel(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            UnitTypes.commandGhostCancelEmp(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostTacticalNuke(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandGhostTacticalNuke(unit, safeTarget);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandGhostTacticalNukeCancel(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
+            UnitTypes.commandGhostCancelTacticalNuke(unit);
             unit.lastCommanded = player.coloredName();
         }
     }
@@ -806,6 +1000,24 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             UnitTypes.commandRavenMatrix(unit, target);
             unit.lastCommanded = player.coloredName();
         }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandBunkerLoadUnits(Player player, int bunkerPos, int[] unitIds){
+        if(player == null || unitIds == null || unitIds.length == 0) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        Building building = world.build(bunkerPos);
+        if(!(building instanceof BunkerBlock.BunkerBuild bunker) || bunker.team != player.team()) return;
+        if(bunker.recycling) return;
+
+        bunker.commandLoadUnits(unitIds);
+        bunker.updateLastAccess(player);
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
@@ -1677,6 +1889,17 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         Call.commandMedivacMovingUnload(player, ids, false);
                         Call.commandUnits(player, ids, null, allyTarget, target, queue, true, false);
                         return;
+                    }
+                }
+
+                if(Core.input.keyDown(KeyCode.r) && teamTarget != null && teamTarget.team() == player.team()){
+                    IntSeq scvIds = new IntSeq();
+                    for(Unit unit : selectedUnits){
+                        if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova) continue;
+                        scvIds.add(unit.id);
+                    }
+                    if(scvIds.size > 0){
+                        Call.setUnitCommand(player, scvIds.toArray(), UnitCommand.repairCommand);
                     }
                 }
 

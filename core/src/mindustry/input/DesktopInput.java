@@ -1229,8 +1229,13 @@ public class DesktopInput extends InputHandler{
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_UNLOAD
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_YAMATO
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BATTLECRUISER_WARP
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_TACTICAL_NUKE
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_STABLE_AIM
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_EMP
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_ANTI_ARMOR
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_ATTACK
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_LOAD
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MOVE
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.ATTACK
@@ -1372,6 +1377,27 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_TACTICAL_NUKE){
+            if(executeGhostTacticalNukeCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_STABLE_AIM){
+            if(executeGhostStableAimCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_EMP){
+            if(executeGhostEmpCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_ANTI_ARMOR){
             if(executeRavenAntiArmorCommand(worldX, worldY) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
@@ -1381,6 +1407,20 @@ public class DesktopInput extends InputHandler{
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX){
             if(executeRavenMatrixCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_ATTACK){
+            if(executeBunkerAttackCommand(worldX, worldY)){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_LOAD){
+            if(executeBunkerLoadCommand(worldX, worldY)){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
@@ -1664,6 +1704,16 @@ public class DesktopInput extends InputHandler{
         return ids.toArray();
     }
 
+    private int[] selectedGhostIds(Boolf<Unit> filter){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            ids.add(unit.id);
+        }
+        return ids.toArray();
+    }
+
     private int[] selectedBattlecruiserIds(Boolf<Unit> filter){
         IntSeq ids = new IntSeq();
         for(Unit unit : selectedUnits){
@@ -1758,6 +1808,29 @@ public class DesktopInput extends InputHandler{
         return true;
     }
 
+    private boolean executeGhostTacticalNukeCommand(float worldX, float worldY){
+        int[] ids = selectedGhostIds(u -> UnitTypes.ghostCanUseTacticalNuke(u, worldX, worldY));
+        if(ids.length == 0) return false;
+        Call.commandGhostTacticalNuke(player, ids, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeGhostStableAimCommand(float worldX, float worldY){
+        Unit target = selectedAnyUnit(worldX, worldY);
+        if(!UnitTypes.ghostStableAimValidTarget(target)) return false;
+        int[] ids = selectedGhostIds(UnitTypes::ghostCanUseStableAim);
+        if(ids.length == 0) return false;
+        Call.commandGhostStableAim(player, ids, target.id);
+        return true;
+    }
+
+    private boolean executeGhostEmpCommand(float worldX, float worldY){
+        int[] ids = selectedGhostIds(UnitTypes::ghostCanUseEmp);
+        if(ids.length == 0) return false;
+        Call.commandGhostEmp(player, ids, new Vec2(worldX, worldY));
+        return true;
+    }
+
     private boolean executeRavenMatrixCommand(float worldX, float worldY){
         Unit target = selectedAnyUnit(worldX, worldY);
         if(target == null || !target.isValid()) return false;
@@ -1766,6 +1839,33 @@ public class DesktopInput extends InputHandler{
         if(ids.length == 0) return false;
 
         Call.commandAvertMatrix(player, ids, target.id);
+        return true;
+    }
+
+    private boolean executeBunkerAttackCommand(float worldX, float worldY){
+        if(commandBuildings.isEmpty()) return false;
+        int[] buildings = commandBuildings.mapInt(b -> b.pos()).toArray();
+        if(buildings.length == 0) return false;
+        Call.commandBuilding(player, buildings, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeBunkerLoadCommand(float worldX, float worldY){
+        if(commandBuildings.isEmpty()) return false;
+        Building bunker = null;
+        for(Building build : commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild){
+                bunker = build;
+                break;
+            }
+        }
+        if(!(bunker instanceof BunkerBlock.BunkerBuild bunkerBuild) || bunkerBuild.recycling) return false;
+
+        Unit target = selectedAnyUnit(worldX, worldY);
+        if(target == null || !target.isValid() || target.team != player.team()) return false;
+        if(!bunkerBuild.canLoadType(target.type)) return false;
+
+        Call.commandBunkerLoadUnits(player, bunker.pos(), new int[]{target.id});
         return true;
     }
 

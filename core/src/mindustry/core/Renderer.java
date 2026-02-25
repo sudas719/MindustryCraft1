@@ -43,6 +43,8 @@ public class Renderer implements ApplicationListener{
     public float weatherAlpha;
     /** minZoom = zooming out, maxZoom = zooming in, used by cutscenes */
     public float minZoom = 1.5f, maxZoom = 6f;
+    /** gameplay max visible span, in tiles (landscape width ~= 40 tiles) */
+    private static final float gameplayMaxVisibleTiles = 40f;
     /** base gameplay zoom range; intentionally wider than cutscene range */
     private static final float minZoomInGameBase = 0.35f, maxZoomInGameBase = 12f;
 
@@ -126,6 +128,13 @@ public class Renderer implements ApplicationListener{
             if(backgroundBuffer != null){
                 backgroundBuffer.dispose();
                 backgroundBuffer = null;
+            }
+
+            //force initial gameplay camera to exactly the capped view size on world enter
+            if(!control.input.logicCutscene){
+                float fixed = fixedGameplayMinScale();
+                targetscale = fixed;
+                camerascale = fixed;
             }
         });
     }
@@ -403,7 +412,10 @@ public class Renderer implements ApplicationListener{
         Draw.reset();
 
         Draw.draw(Layer.overlayUI, overlays::drawTop);
-        if(state.rules.fog) Draw.draw(Layer.fogOfWar, fog::drawFog);
+        if(state.rules.fog){
+            Draw.draw(Layer.fogOfWar, fog::drawFog);
+            Draw.draw(Layer.fogOfWar + 0.01f, overlays::drawRadarIntelPostFog);
+        }
         Draw.draw(Layer.space, () -> {
             if(launchAnimator == null || landTime <= 0f) return;
             launchAnimator.drawLaunch();
@@ -521,7 +533,7 @@ public class Renderer implements ApplicationListener{
 
     public float minScale(){
         if(control.input.logicCutscene) return Scl.scl(minZoom);
-        return Scl.scl(minZoomInGame);
+        return Math.max(Scl.scl(minZoomInGame), fixedGameplayMinScale());
     }
 
     public float maxScale(){
@@ -531,6 +543,12 @@ public class Renderer implements ApplicationListener{
 
     public float getScale(){
         return targetscale;
+    }
+
+    private float fixedGameplayMinScale(){
+        float maxScreenSpan = Math.max(graphics.getWidth(), graphics.getHeight());
+        float maxWorldSpan = gameplayMaxVisibleTiles * tilesize;
+        return maxWorldSpan <= 0f ? 1f : maxScreenSpan / maxWorldSpan;
     }
 
     public void setScale(float scl){

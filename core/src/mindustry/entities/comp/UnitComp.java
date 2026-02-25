@@ -874,7 +874,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         updateDrowning();
 
-        if(type.energyCapacity > 0f && !UnitTypes.bansheeCloaked(self())){
+        if(type.energyCapacity > 0f && !UnitTypes.bansheeCloaked(self()) && !UnitTypes.ghostCloaked(self())){
             energy = Mathf.clamp(energy + type.energyRegen * Time.delta / 60f, 0f, type.energyCapacity);
         }
 

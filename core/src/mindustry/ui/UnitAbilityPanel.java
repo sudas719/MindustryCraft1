@@ -14,7 +14,9 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.Font;
 import arc.graphics.g2d.Fill;
+import arc.graphics.g2d.GlyphLayout;
 import arc.graphics.g2d.Lines;
 import mindustry.ai.*;
 import mindustry.ai.types.*;
@@ -64,10 +66,15 @@ public class UnitAbilityPanel extends Table{
         MEDIVAC_HEAL,
         MEDIVAC_LOAD,
         MEDIVAC_UNLOAD,
+        GHOST_TACTICAL_NUKE,
+        GHOST_STABLE_AIM,
+        GHOST_EMP,
         BATTLECRUISER_YAMATO,
         BATTLECRUISER_WARP,
         RAVEN_ANTI_ARMOR,
-        RAVEN_MATRIX
+        RAVEN_MATRIX,
+        BUNKER_ATTACK,
+        BUNKER_LOAD
     }
 
     private enum NovaPanel{
@@ -94,6 +101,8 @@ public class UnitAbilityPanel extends Table{
     private CorePanel corePanel = CorePanel.MAIN;
     private @Nullable Block placingBlock;
     private @Nullable BuildInfo hoverBuildInfo;
+    private @Nullable AbilityInfo hoverAbilityInfo;
+    private final GlyphLayout hoverInfoLayout = new GlyphLayout();
     private Table mainPanel;
     private Table commandModePanel;
     private float forcedMinWidth = -1f;
@@ -123,6 +132,7 @@ public class UnitAbilityPanel extends Table{
         UnitType unit;
         String key;
         String name;
+        String description = "";
         int crystalCost;
         int gasCost;
         int timeSeconds;
@@ -130,6 +140,15 @@ public class UnitAbilityPanel extends Table{
         @Nullable Boolp progressVisible;
         @Nullable Drawable progressIcon;
         @Nullable Color progressColor;
+    }
+
+    private static class AbilityInfo{
+        String key = "";
+        String name = "";
+        String description = "";
+        int crystalCost = -1;
+        int gasCost = -1;
+        int timeSeconds = -1;
     }
 
     private RTSCommand[] commands = {
@@ -207,6 +226,10 @@ public class UnitAbilityPanel extends Table{
                         handleLiberatorHotkeys();
                     }else if(isOnlyMedivacSelected()){
                         handleMedivacHotkeys();
+                    }else if(isOnlyGhostSelected()){
+                        handleGhostHotkeys();
+                    }else if(isOnlyVikingSelected()){
+                        handleVikingHotkeys();
                     }else if(isOnlyBattlecruiserSelected()){
                         handleBattlecruiserHotkeys();
                     }else if(isOnlyBansheeSelected()){
@@ -253,6 +276,7 @@ public class UnitAbilityPanel extends Table{
     private void rebuild(){
         clearChildren();
         clearPanelSize();
+        hoverAbilityInfo = null;
 
         if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.isEmpty()){
             buildEmptyPanel();
@@ -273,10 +297,15 @@ public class UnitAbilityPanel extends Table{
         && activeCommand != CommandMode.MEDIVAC_HEAL
         && activeCommand != CommandMode.MEDIVAC_LOAD
         && activeCommand != CommandMode.MEDIVAC_UNLOAD
+        && activeCommand != CommandMode.GHOST_TACTICAL_NUKE
+        && activeCommand != CommandMode.GHOST_STABLE_AIM
+        && activeCommand != CommandMode.GHOST_EMP
         && activeCommand != CommandMode.BATTLECRUISER_YAMATO
         && activeCommand != CommandMode.BATTLECRUISER_WARP
         && activeCommand != CommandMode.RAVEN_ANTI_ARMOR
-        && activeCommand != CommandMode.RAVEN_MATRIX){
+        && activeCommand != CommandMode.RAVEN_MATRIX
+        && activeCommand != CommandMode.BUNKER_ATTACK
+        && activeCommand != CommandMode.BUNKER_LOAD){
             buildCommandModePanel();
         }else{
             buildMainPanel();
@@ -286,6 +315,16 @@ public class UnitAbilityPanel extends Table{
     private void buildMainPanel(){
         if(isOnlyMedivacSelected()){
             buildMedivacPanel();
+        }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_TACTICAL_NUKE){
+            buildCoreTargetPanel("战术聚变打击", "左键选择打击目标点");
+        }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_STABLE_AIM){
+            buildCoreTargetPanel("Stable Aim", "Left-click biological unit target");
+        }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_EMP){
+            buildCoreTargetPanel("EMP", "Left-click target point");
+        }else if(isOnlyGhostSelected()){
+            buildGhostPanel();
+        }else if(isOnlyVikingSelected()){
+            buildVikingPanel();
         }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_YAMATO){
             buildCoreTargetPanel("大和炮", "左键选择敌方目标");
         }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_WARP){
@@ -584,6 +623,78 @@ public class UnitAbilityPanel extends Table{
         add(grid);
     }
 
+    private void buildGhostPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        addCountedIconButton(grid, "n", Icon.warning, this::anyGhostCanUseTacticalNuke, () -> enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE), this::selectedGhostWarheadCount);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        addIconButton(grid, "r", Icon.warning, this::anyGhostCanUseStableAim, () -> enterCommandMode(CommandMode.GHOST_STABLE_AIM));
+        addIconButton(grid, "e", Icon.warning, this::anyGhostCanUseEmp, () -> enterCommandMode(CommandMode.GHOST_EMP));
+        addIconButton(grid, "c", Icon.eyeSmall, this::anyGhostCanToggleCloak, this::issueGhostCloakCommand);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildVikingPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        if(anyVikingCanSwitchToFighter()){
+            addIconButton(grid, "e", Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false));
+        }else{
+            addEmpty(grid);
+        }
+        if(anyVikingCanSwitchToMech()){
+            addIconButton(grid, "d", Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true));
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
     private void buildRavenPanel(){
         setPanelRows(3);
         Table grid = new Table();
@@ -665,8 +776,12 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "y", Icon.warning, this::anyBattlecruiserCanUseYamato, () -> enterCommandMode(CommandMode.BATTLECRUISER_YAMATO));
-        addIconButton(grid, "t", Icon.effect, this::anyBattlecruiserCanUseWarp, () -> enterCommandMode(CommandMode.BATTLECRUISER_WARP));
+        addBattlecruiserCooldownButton(grid, "y", Icon.warning, this::anyBattlecruiserCanUseYamato,
+        () -> enterCommandMode(CommandMode.BATTLECRUISER_YAMATO),
+        this::selectedBattlecruiserYamatoCooldown, UnitTypes::battlecruiserYamatoCooldownDuration);
+        addBattlecruiserCooldownButton(grid, "t", Icon.effect, this::anyBattlecruiserCanUseWarp,
+        () -> enterCommandMode(CommandMode.BATTLECRUISER_WARP),
+        this::selectedBattlecruiserWarpCooldown, UnitTypes::battlecruiserWarpCooldownDuration);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -936,6 +1051,31 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
+        if(isOnlyRadarSelected()){
+            buildRadarPanel();
+            return;
+        }
+
+        if(isOnlyBunkerSelected()){
+            buildBunkerPanel();
+            return;
+        }
+
+        if(isOnlyArmorySelected()){
+            buildArmoryPanel();
+            return;
+        }
+
+        if(isOnlyEngineeringSelected()){
+            buildEngineeringPanel();
+            return;
+        }
+
+        if(isOnlyGhostAcademySelected()){
+            buildGhostAcademyPanel();
+            return;
+        }
+
         if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
             buildFactoryPanel(factory);
             return;
@@ -1188,6 +1328,337 @@ public class UnitAbilityPanel extends Table{
         add(grid);
     }
 
+    private void buildArmoryPanel(){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+
+        int weaponDisplayLevel = UnitTypes.vehicleWeaponDisplayLevel(player.team());
+        if(weaponDisplayLevel > 0){
+            BuildInfo upgradeInfo = makeVehicleWeaponUpgradeInfo("e", weaponDisplayLevel);
+            Button upgradeButton = addIconButton(grid, "e", new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon),
+                () -> UnitTypes.vehicleWeaponCanStartResearch(player.team(), weaponDisplayLevel),
+                this::tryStartVehicleWeaponResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        int armorDisplayLevel = UnitTypes.vehicleArmorDisplayLevel(player.team());
+        if(armorDisplayLevel > 0){
+            BuildInfo upgradeInfo = makeVehicleArmorUpgradeInfo("a", armorDisplayLevel);
+            Button upgradeButton = addIconButton(grid, "a", new TextureRegionDrawable(Blocks.surgeCrucible.uiIcon),
+                () -> UnitTypes.vehicleArmorCanStartResearch(player.team(), armorDisplayLevel),
+                this::tryStartVehicleArmorResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        int shipDisplayLevel = UnitTypes.shipWeaponDisplayLevel(player.team());
+        if(shipDisplayLevel > 0){
+            BuildInfo upgradeInfo = makeShipWeaponUpgradeInfo("h", shipDisplayLevel);
+            Button upgradeButton = addIconButton(grid, "h", new TextureRegionDrawable(Blocks.shipFabricator.uiIcon),
+                () -> UnitTypes.shipWeaponCanStartResearch(player.team(), shipDisplayLevel),
+                this::tryStartShipWeaponResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(UnitTypes.armoryAnyResearching(player.team())){
+            BuildInfo researchInfo = makeArmoryAnyResearchInfo("Esc");
+            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelArmoryResearch);
+            cancelButton.update(() -> {
+                if(cancelButton.isOver()){
+                    hoverBuildInfo = researchInfo;
+                }else if(hoverBuildInfo == researchInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildEngineeringPanel(){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+
+        int weaponDisplayLevel = UnitTypes.infantryWeaponDisplayLevel(player.team());
+        if(weaponDisplayLevel > 0){
+            BuildInfo upgradeInfo = makeInfantryWeaponUpgradeInfo("e", weaponDisplayLevel);
+            Button upgradeButton = addIconButton(grid, "e", new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon),
+                () -> UnitTypes.infantryWeaponCanStartResearch(player.team(), weaponDisplayLevel),
+                this::tryStartInfantryWeaponResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        int armorDisplayLevel = UnitTypes.infantryArmorDisplayLevel(player.team());
+        if(armorDisplayLevel > 0){
+            BuildInfo upgradeInfo = makeInfantryArmorUpgradeInfo("a", armorDisplayLevel);
+            Button upgradeButton = addIconButton(grid, "a", new TextureRegionDrawable(Blocks.multiPress.uiIcon),
+                () -> UnitTypes.infantryArmorCanStartResearch(player.team(), armorDisplayLevel),
+                this::tryStartInfantryArmorResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        if(UnitTypes.instantTrackingLevel(player.team()) <= 0){
+            BuildInfo upgradeInfo = makeInstantTrackingUpgradeInfo("h");
+            Button upgradeButton = addIconButton(grid, "h", new TextureRegionDrawable(Blocks.swarmer.uiIcon),
+                () -> UnitTypes.instantTrackingCanStartResearch(player.team()),
+                this::tryStartInstantTrackingResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+        if(UnitTypes.steelArmorLevel(player.team()) <= 0){
+            BuildInfo upgradeInfo = makeSteelArmorUpgradeInfo("b");
+            Button upgradeButton = addIconButton(grid, "b", new TextureRegionDrawable(Blocks.atmosphericConcentrator.uiIcon),
+                () -> UnitTypes.steelArmorCanStartResearch(player.team()),
+                this::tryStartSteelArmorResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(UnitTypes.infantryAnyResearching(player.team())){
+            BuildInfo researchInfo = makeInfantryAnyResearchInfo("Esc");
+            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelInfantryResearch);
+            cancelButton.update(() -> {
+                if(cancelButton.isOver()){
+                    hoverBuildInfo = researchInfo;
+                }else if(hoverBuildInfo == researchInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildGhostAcademyPanel(){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+
+        if(UnitTypes.ghostCamoLevel(player.team()) <= 0){
+            BuildInfo upgradeInfo = makeGhostCamoUpgradeInfo("c");
+            Button upgradeButton = addIconButton(grid, "c", new TextureRegionDrawable(Blocks.launchPad.uiIcon),
+                () -> UnitTypes.ghostCamoCanStartResearch(player.team()),
+                this::tryStartGhostCamoResearch);
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        BuildInfo warheadInfo = makeGhostWarheadBuildInfo("n");
+        Button warheadButton = addIconButton(grid, "n", Icon.warning, this::anyGhostAcademyCanBuildWarhead, this::tryStartGhostWarheadProduction);
+        warheadButton.update(() -> {
+            if(warheadButton.isOver()){
+                hoverBuildInfo = warheadInfo;
+            }else if(hoverBuildInfo == warheadInfo){
+                hoverBuildInfo = null;
+            }
+        });
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(UnitTypes.ghostCamoAnyResearching(player.team())){
+            BuildInfo researchInfo = makeGhostCamoResearchInfo("Esc");
+            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelGhostCamoResearch);
+            cancelButton.update(() -> {
+                if(cancelButton.isOver()){
+                    hoverBuildInfo = researchInfo;
+                }else if(hoverBuildInfo == researchInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildRadarPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        fillRow(grid, 0, 0);
+        grid.row();
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addIconButton(grid, "v", Icon.cancel, this::anyRadarCanStartRecycle, this::issueRadarRecycle);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildBunkerPanel(){
+        if(activeCommand == CommandMode.RALLY){
+            buildCoreRallyPanel();
+            return;
+        }
+        if(activeCommand == CommandMode.BUNKER_ATTACK){
+            buildCoreTargetPanel("Attack Target", "Left-click enemy target");
+            return;
+        }
+        if(activeCommand == CommandMode.BUNKER_LOAD){
+            buildCoreTargetPanel("Load Units", "Left-click a Barracks unit");
+            return;
+        }
+
+        setPanelRows(3);
+        Table grid = new Table();
+        boolean hasUnits = anyBunkerHasGarrison();
+
+        //Row 1: S ... A (shown only when garrisoned)
+        if(hasUnits){
+            addIconButton(grid, "s", Icon.cancel, () -> true, this::issueBunkerStopAttack);
+        }else{
+            addEmpty(grid);
+        }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(hasUnits){
+            addIconButton(grid, "a", Icon.warning, () -> true, () -> enterCommandMode(CommandMode.BUNKER_ATTACK));
+        }else{
+            addEmpty(grid);
+        }
+        grid.row();
+
+        //Row 2: col5 Y rally for unload target
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
+        grid.row();
+
+        //Row 3: col2 L, col3 D, col4 V
+        addEmpty(grid);
+        if(anyBunkerHasSpace()){
+            addIconButton(grid, "l", Icon.upload, () -> true, () -> enterCommandMode(CommandMode.BUNKER_LOAD));
+        }else{
+            addEmpty(grid);
+        }
+        if(hasUnits){
+            addIconButton(grid, "d", Icon.download, () -> true, this::issueBunkerUnloadAll);
+        }else{
+            addEmpty(grid);
+        }
+        addIconButton(grid, "v", Icon.cancel, this::anyBunkerCanStartRecycle, this::issueBunkerRecycle);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
     private boolean supplyAnyClosed(){
         for(Building build : control.input.commandBuildings){
             if(build instanceof Door.DoorBuild door && isSupplyDoor(build) && !door.open){
@@ -1411,6 +1882,95 @@ public class UnitAbilityPanel extends Table{
         add(grid);
     }
 
+    @Override
+    public void draw(){
+        super.draw();
+        drawHoverCard();
+    }
+
+    private @Nullable AbilityInfo currentHoverInfo(){
+        if(hoverBuildInfo != null){
+            AbilityInfo info = new AbilityInfo();
+            info.key = hoverBuildInfo.key == null ? "" : hoverBuildInfo.key;
+            info.name = hoverBuildInfo.name == null ? "Action" : hoverBuildInfo.name;
+            info.description = hoverBuildInfo.description == null ? "" : hoverBuildInfo.description;
+            info.crystalCost = hoverBuildInfo.crystalCost;
+            info.gasCost = hoverBuildInfo.gasCost;
+            info.timeSeconds = hoverBuildInfo.timeSeconds;
+            return info;
+        }
+        return hoverAbilityInfo;
+    }
+
+    private void drawHoverCard(){
+        AbilityInfo info = currentHoverInfo();
+        if(info == null) return;
+
+        StringBuilder text = new StringBuilder();
+        String title = info.name == null || info.name.isEmpty() ? "技能" : info.name;
+        if(info.key != null && !info.key.isEmpty()){
+            title += " (" + info.key + ")";
+        }
+        text.append(title);
+
+        if(info.crystalCost >= 0 || info.gasCost >= 0){
+            text.append("\n花费: ");
+            if(info.crystalCost >= 0){
+                text.append(Math.max(info.crystalCost, 0)).append(" 晶体");
+            }
+            if(info.gasCost > 0){
+                if(info.crystalCost >= 0) text.append(" / ");
+                text.append(info.gasCost).append(" 气");
+            }
+            if(info.crystalCost < 0 && info.gasCost <= 0){
+                text.append("-");
+            }
+        }
+
+        if(info.timeSeconds >= 0){
+            text.append("\n时间: ").append(info.timeSeconds).append("s");
+        }
+
+        if(info.description != null && !info.description.isEmpty()){
+            text.append("\n").append(info.description);
+        }else{
+            text.append("\n左键点击效果等同于快捷键。");
+        }
+
+        Font font = Fonts.outline;
+        boolean prevInts = font.usesIntegerPositions();
+        font.setUseIntegerPositions(false);
+
+        float maxTextWidth = 340f;
+        hoverInfoLayout.setText(font, text, Color.white, maxTextWidth, Align.left, true);
+
+        float cardW = Math.max(220f, hoverInfoLayout.width + 18f);
+        float cardH = hoverInfoLayout.height + 16f;
+        float px = x + width - cardW;
+        float py = y + height + 8f;
+
+        float minX = Core.scene.marginLeft + 4f;
+        float maxX = Core.graphics.getWidth() - Core.scene.marginRight - cardW - 4f;
+        px = Mathf.clamp(px, minX, Math.max(minX, maxX));
+
+        float topLimit = Core.graphics.getHeight() - 4f;
+        if(py + cardH > topLimit){
+            py = y - cardH - 8f;
+        }
+
+        Draw.color(0.07f, 0.08f, 0.10f, 0.95f);
+        Fill.rect(px + cardW / 2f, py + cardH / 2f, cardW, cardH);
+        Draw.color(Color.valueOf("2f5f2f"));
+        Lines.stroke(1.5f);
+        Lines.rect(px, py, cardW, cardH);
+        Draw.reset();
+
+        font.setColor(Color.white);
+        font.draw(text, px + 9f, py + cardH - 7f, cardW - 18f, Align.left, true);
+        font.setUseIntegerPositions(prevInts);
+        Draw.reset();
+    }
+
     private Element borderElement(){
         return borderElement(null);
     }
@@ -1444,15 +2004,97 @@ public class UnitAbilityPanel extends Table{
         };
     }
 
+    private AbilityInfo makeAbilityInfo(String key, String name, String description){
+        AbilityInfo info = new AbilityInfo();
+        info.key = key == null ? "" : key;
+        info.name = name == null ? "技能" : name;
+        info.description = description == null ? "" : description;
+        return info;
+    }
+
+    private AbilityInfo defaultAbilityInfo(String key){
+        String name = key == null || key.isEmpty() ? "技能" : ("技能键 " + key);
+        return makeAbilityInfo(key, name, "左键点击效果等同于快捷键。");
+    }
+
+    private void bindAbilityHover(Button button, @Nullable AbilityInfo info){
+        if(button == null || info == null) return;
+        button.update(() -> {
+            if(button.isOver()){
+                hoverAbilityInfo = info;
+            }else if(hoverAbilityInfo == info){
+                hoverAbilityInfo = null;
+            }
+        });
+    }
+
     private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action){
-        return addIconButton(grid, key, icon, enabled, action, null, null);
+        return addIconButton(grid, key, icon, enabled, action, null, null, null);
+    }
+
+    private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, @Nullable AbilityInfo info){
+        return addIconButton(grid, key, icon, enabled, action, null, null, info);
     }
 
     private Button addAutoCastIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Boolp autoEnabled, Runnable toggleAuto){
-        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto);
+        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto, null);
+    }
+
+    private Button addCountedIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Intp count){
+        Boolp allowed = enabled == null ? () -> true : enabled;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(allowed.get()) action.run();
+        });
+        button.update(() -> button.setDisabled(!allowed.get()));
+
+        Stack stack = new Stack();
+        stack.add(borderElement());
+
+        Image image = new Image(icon);
+        image.setScaling(Scaling.fit);
+        image.update(() -> image.setColor(allowed.get() ? Color.white : Color.gray));
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        if(key != null && !key.isEmpty()){
+            Table keyTable = new Table();
+            keyTable.top().left();
+            Label keyLabel = new Label(key);
+            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
+            keyTable.add(keyLabel).pad(3f);
+            stack.add(keyTable);
+        }
+
+        if(count != null){
+            Table countTable = new Table();
+            countTable.bottom().right();
+            Label countLabel = new Label("0");
+            countLabel.setAlignment(Align.right);
+            countLabel.setFontScale(0.62f);
+            countLabel.update(() -> {
+                int value = Math.max(count.get(), 0);
+                countLabel.setText(Integer.toString(value));
+                countLabel.setColor(allowed.get() ? Color.white : Color.gray);
+            });
+            countTable.add(countLabel).padRight(5f).padBottom(3f);
+            stack.add(countTable);
+        }
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, defaultAbilityInfo(key));
+        return button;
     }
 
     private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, @Nullable Boolp autoEnabled, @Nullable Runnable toggleAuto){
+        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto, null);
+    }
+
+    private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, @Nullable Boolp autoEnabled, @Nullable Runnable toggleAuto, @Nullable AbilityInfo info){
         Boolp allowed = enabled == null ? () -> true : enabled;
         Button button = new Button(Styles.clearNoneTogglei);
         button.clicked(() -> {
@@ -1496,6 +2138,62 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info);
+        return button;
+    }
+
+    private Button addBattlecruiserCooldownButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Floatp cooldownValue, Floatp cooldownTotal){
+        Boolp allowed = enabled == null ? () -> true : enabled;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(allowed.get()) action.run();
+        });
+        button.update(() -> button.setDisabled(!allowed.get()));
+
+        Stack stack = new Stack();
+        stack.add(borderElement());
+
+        Image image = new Image(icon);
+        image.setScaling(Scaling.fit);
+        image.update(() -> image.setColor(allowed.get() ? Color.white : Color.gray));
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        Table keyTable = new Table();
+        keyTable.top().left();
+        Label keyLabel = new Label(key);
+        keyLabel.setFontScale(abilityKeyScale);
+        keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
+        keyTable.add(keyLabel).pad(3f);
+        stack.add(keyTable);
+
+        stack.add(new Element(){
+            @Override
+            public void draw(){
+                float cooldown = cooldownValue == null ? 0f : cooldownValue.get();
+                if(cooldown > 0.001f){
+                    float total = cooldownTotal == null ? 1f : Math.max(cooldownTotal.get(), 0.001f);
+                    float cx = x + width / 2f;
+                    float cy = y + height / 2f;
+                    float fixedAngle = 90f; //12 o'clock
+                    float progress = 1f - Mathf.clamp(cooldown / total);
+                    float movingAngle = fixedAngle - progress * 360f;
+                    float handLen = width * 0.20f;
+
+                    Draw.color(Color.valueOf("b6bcc5"));
+                    Lines.stroke(1.25f);
+                    Lines.line(cx, cy, cx + Angles.trnsx(fixedAngle, handLen), cy + Angles.trnsy(fixedAngle, handLen));
+                    Lines.line(cx, cy, cx + Angles.trnsx(movingAngle, handLen), cy + Angles.trnsy(movingAngle, handLen));
+                    Draw.reset();
+                }
+            }
+        });
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, makeAbilityInfo(key, "技能冷却", "左键点击效果等同于快捷键。"));
         return button;
     }
 
@@ -1602,6 +2300,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, makeAbilityInfo("c", "飓风锁定", "左键锁定目标，右键切换自动施法。"));
         return button;
     }
 
@@ -1635,6 +2334,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, defaultAbilityInfo(key));
         return button;
     }
 
@@ -1790,6 +2490,267 @@ public class UnitAbilityPanel extends Table{
 
     private BuildInfo makeFortressUpgradeInfo(CoreBuild core, String key){
         return makeUpgradeInfo(Blocks.corePlanetaryFortress, key, CoreBlock.fortressUpgradeCost, CoreBlock.fortressUpgradeGasCost, CoreBlock.fortressUpgradeTime, core::fortressUpgradeFraction, core::isUpgradingFortress);
+    }
+
+    private BuildInfo makeVehicleWeaponUpgradeInfo(String key, int level){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.name = "Vehicle Weapons Lv." + level;
+        info.crystalCost = UnitTypes.vehicleWeaponCrystalCost(level);
+        info.gasCost = UnitTypes.vehicleWeaponGasCost(level);
+        info.timeSeconds = Math.round(UnitTypes.vehicleWeaponResearchDuration(level) / 60f);
+        return info;
+    }
+
+    private BuildInfo makeVehicleWeaponResearchInfo(String key){
+        int level = UnitTypes.vehicleWeaponResearchingLevel(player.team());
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.name = level > 0 ? "Vehicle Weapons Lv." + level : "Vehicle Weapons";
+        info.crystalCost = level > 0 ? UnitTypes.vehicleWeaponCrystalCost(level) : 0;
+        info.gasCost = level > 0 ? UnitTypes.vehicleWeaponGasCost(level) : 0;
+        info.timeSeconds = level > 0 ? Math.round(UnitTypes.vehicleWeaponResearchDuration(level) / 60f) : 0;
+        info.progress = () -> UnitTypes.vehicleWeaponResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.vehicleWeaponResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeVehicleArmorUpgradeInfo(String key, int level){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.name = "Vehicle/Ship Plating Lv." + level;
+        info.crystalCost = UnitTypes.vehicleArmorCrystalCost(level);
+        info.gasCost = UnitTypes.vehicleArmorGasCost(level);
+        info.timeSeconds = Math.round(UnitTypes.vehicleArmorResearchDuration(level) / 60f);
+        return info;
+    }
+
+    private BuildInfo makeVehicleArmorResearchInfo(String key){
+        int level = UnitTypes.vehicleArmorResearchingLevel(player.team());
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.name = level > 0 ? "Vehicle/Ship Plating Lv." + level : "Vehicle/Ship Plating";
+        info.crystalCost = level > 0 ? UnitTypes.vehicleArmorCrystalCost(level) : 0;
+        info.gasCost = level > 0 ? UnitTypes.vehicleArmorGasCost(level) : 0;
+        info.timeSeconds = level > 0 ? Math.round(UnitTypes.vehicleArmorResearchDuration(level) / 60f) : 0;
+        info.progress = () -> UnitTypes.vehicleArmorResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.vehicleArmorResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeShipWeaponUpgradeInfo(String key, int level){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.shipFabricator;
+        info.key = key;
+        info.name = "Ship Weapons Lv." + level;
+        info.crystalCost = UnitTypes.shipWeaponCrystalCost(level);
+        info.gasCost = UnitTypes.shipWeaponGasCost(level);
+        info.timeSeconds = Math.round(UnitTypes.shipWeaponResearchDuration(level) / 60f);
+        return info;
+    }
+
+    private BuildInfo makeShipWeaponResearchInfo(String key){
+        int level = UnitTypes.shipWeaponResearchingLevel(player.team());
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.shipFabricator;
+        info.key = key;
+        info.name = level > 0 ? "Ship Weapons Lv." + level : "Ship Weapons";
+        info.crystalCost = level > 0 ? UnitTypes.shipWeaponCrystalCost(level) : 0;
+        info.gasCost = level > 0 ? UnitTypes.shipWeaponGasCost(level) : 0;
+        info.timeSeconds = level > 0 ? Math.round(UnitTypes.shipWeaponResearchDuration(level) / 60f) : 0;
+        info.progress = () -> UnitTypes.shipWeaponResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.shipWeaponResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.shipFabricator.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeArmoryAnyResearchInfo(String key){
+        if(UnitTypes.vehicleWeaponResearching(player.team())){
+            return makeVehicleWeaponResearchInfo(key);
+        }
+        if(UnitTypes.shipWeaponResearching(player.team())){
+            return makeShipWeaponResearchInfo(key);
+        }
+        if(UnitTypes.vehicleArmorResearching(player.team())){
+            return makeVehicleArmorResearchInfo(key);
+        }
+
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.name = "Armory Upgrade";
+        info.crystalCost = 0;
+        info.gasCost = 0;
+        info.timeSeconds = 0;
+        info.progress = () -> 0f;
+        info.progressVisible = () -> false;
+        return info;
+    }
+
+    private BuildInfo makeInfantryWeaponUpgradeInfo(String key, int level){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.multiPress;
+        info.key = key;
+        info.name = "步兵武器等级" + level;
+        info.crystalCost = UnitTypes.infantryWeaponCrystalCost(level);
+        info.gasCost = UnitTypes.infantryWeaponGasCost(level);
+        info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f);
+        return info;
+    }
+
+    private BuildInfo makeInfantryWeaponResearchInfo(String key){
+        int level = UnitTypes.infantryWeaponResearchingLevel(player.team());
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.multiPress;
+        info.key = key;
+        info.name = level > 0 ? "步兵武器等级" + level : "步兵武器";
+        info.crystalCost = level > 0 ? UnitTypes.infantryWeaponCrystalCost(level) : 0;
+        info.gasCost = level > 0 ? UnitTypes.infantryWeaponGasCost(level) : 0;
+        info.timeSeconds = level > 0 ? Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f) : 0;
+        info.progress = () -> UnitTypes.infantryWeaponResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.infantryWeaponResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeInfantryArmorUpgradeInfo(String key, int level){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.multiPress;
+        info.key = key;
+        info.name = "Infantry Armor Lv." + level;
+        info.crystalCost = UnitTypes.infantryWeaponCrystalCost(level);
+        info.gasCost = UnitTypes.infantryWeaponGasCost(level);
+        info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f);
+        return info;
+    }
+
+    private BuildInfo makeInstantTrackingUpgradeInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.swarmer;
+        info.key = key;
+        info.name = "瞬时自动追踪";
+        info.crystalCost = UnitTypes.instantTrackingCrystalCost();
+        info.gasCost = UnitTypes.instantTrackingGasCost();
+        info.timeSeconds = Math.round(UnitTypes.instantTrackingResearchDuration() / 60f);
+        return info;
+    }
+
+    private BuildInfo makeSteelArmorUpgradeInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.atmosphericConcentrator;
+        info.key = key;
+        info.name = "精钢护甲";
+        info.crystalCost = UnitTypes.steelArmorCrystalCost();
+        info.gasCost = UnitTypes.steelArmorGasCost();
+        info.timeSeconds = Math.round(UnitTypes.steelArmorResearchDuration() / 60f);
+        return info;
+    }
+
+    private BuildInfo makeGhostCamoUpgradeInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.launchPad;
+        info.key = key;
+        info.name = "隐形迷彩";
+        info.crystalCost = UnitTypes.ghostCamoCrystalCost();
+        info.gasCost = UnitTypes.ghostCamoGasCost();
+        info.timeSeconds = Math.round(UnitTypes.ghostCamoResearchDuration() / 60f);
+        return info;
+    }
+
+    private BuildInfo makeGhostCamoResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.launchPad;
+        info.key = key;
+        info.name = "隐形迷彩";
+        info.crystalCost = UnitTypes.ghostCamoCrystalCost();
+        info.gasCost = UnitTypes.ghostCamoGasCost();
+        info.timeSeconds = Math.round(UnitTypes.ghostCamoResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.ghostCamoResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.ghostCamoAnyResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.launchPad.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeGhostWarheadBuildInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.launchPad;
+        info.key = key;
+        info.name = "部署聚变弹头";
+        info.crystalCost = UnitTypes.ghostWarheadCrystalCost();
+        info.gasCost = UnitTypes.ghostWarheadGasCost();
+        info.timeSeconds = Math.round(UnitTypes.ghostWarheadBuildDuration() / 60f);
+        info.progress = this::selectedGhostWarheadBuildProgress;
+        info.progressVisible = this::anyGhostAcademyProducingWarhead;
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(Blocks.launchPad.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeInfantryAnyResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.multiPress;
+        info.key = key;
+
+        int weaponLevel = UnitTypes.infantryWeaponResearchingLevel(player.team());
+        int armorLevel = UnitTypes.infantryArmorResearchingLevel(player.team());
+        boolean weaponResearch = weaponLevel > 0;
+        boolean armorResearch = armorLevel > 0;
+        boolean instantResearch = UnitTypes.instantTrackingResearching(player.team());
+        boolean steelResearch = UnitTypes.steelArmorResearching(player.team());
+
+        if(steelResearch){
+            info.name = "精钢护甲";
+            info.crystalCost = UnitTypes.steelArmorCrystalCost();
+            info.gasCost = UnitTypes.steelArmorGasCost();
+            info.timeSeconds = Math.round(UnitTypes.steelArmorResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(Blocks.atmosphericConcentrator.uiIcon);
+        }else if(weaponResearch){
+            info.name = "Infantry Weapons Lv." + weaponLevel;
+            info.crystalCost = UnitTypes.infantryWeaponCrystalCost(weaponLevel);
+            info.gasCost = UnitTypes.infantryWeaponGasCost(weaponLevel);
+            info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(weaponLevel) / 60f);
+            info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
+        }else if(armorResearch){
+            info.name = "Infantry Armor Lv." + armorLevel;
+            info.crystalCost = UnitTypes.infantryWeaponCrystalCost(armorLevel);
+            info.gasCost = UnitTypes.infantryWeaponGasCost(armorLevel);
+            info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(armorLevel) / 60f);
+            info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
+        }else if(instantResearch){
+            info.name = "瞬时自动追踪";
+            info.crystalCost = UnitTypes.instantTrackingCrystalCost();
+            info.gasCost = UnitTypes.instantTrackingGasCost();
+            info.timeSeconds = Math.round(UnitTypes.instantTrackingResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(Blocks.swarmer.uiIcon);
+        }else{
+            info.name = "Engineering Upgrade";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
+        }
+
+        info.progress = () -> {
+            if(UnitTypes.steelArmorResearching(player.team())) return UnitTypes.steelArmorResearchProgress(player.team());
+            if(UnitTypes.infantryWeaponResearching(player.team())) return UnitTypes.infantryWeaponResearchProgress(player.team());
+            if(UnitTypes.infantryArmorResearching(player.team())) return UnitTypes.infantryArmorResearchProgress(player.team());
+            if(UnitTypes.instantTrackingResearching(player.team())) return UnitTypes.instantTrackingResearchProgress(player.team());
+            return 0f;
+        };
+        info.progressVisible = () -> UnitTypes.infantryAnyResearching(player.team());
+        info.progressColor = Color.cyan;
+        return info;
     }
 
     private BuildInfo makeBuildInfo(Block block, String key){
@@ -2232,6 +3193,146 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private boolean anyVikingCanSwitchToMech(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
+            if(UnitTypes.vikingCanTransformToMech(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyVikingCanSwitchToFighter(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
+            if(UnitTypes.vikingCanTransformToFighter(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueVikingModeCommand(boolean mechMode){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
+            if(mechMode){
+                if(!UnitTypes.vikingCanTransformToMech(unit)) continue;
+            }else{
+                if(!UnitTypes.vikingCanTransformToFighter(unit)) continue;
+            }
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandVikingMode(player, ids.toArray(), mechMode);
+        }
+    }
+
+    private boolean anyGhostCanToggleCloak(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostCanToggleCloak(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostCanUseStableAim(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostCanUseStableAim(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostCanUseEmp(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostCanUseEmp(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostStableAimPending(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostStableAimPending(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostEmpPending(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostEmpPending(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueGhostCloakCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(!UnitTypes.ghostCanToggleCloak(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandGhostCloak(player, ids.toArray());
+        }
+    }
+
+    private void issueGhostStableAimCancelCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(!UnitTypes.ghostStableAimPending(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandGhostStableAimCancel(player, ids.toArray());
+        }
+    }
+
+    private void issueGhostEmpCancelCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(!UnitTypes.ghostEmpPending(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandGhostEmpCancel(player, ids.toArray());
+        }
+    }
+
+    private boolean anyGhostCanUseTacticalNuke(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostCanUseTacticalNuke(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostTacticalNukePending(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(UnitTypes.ghostTacticalNukePending(unit)) return true;
+        }
+        return false;
+    }
+
+    private int selectedGhostWarheadCount(){
+        return UnitTypes.ghostWarheadCount(player.team());
+    }
+
+    private void issueGhostTacticalNukeCancelCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
+            if(!UnitTypes.ghostTacticalNukePending(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandGhostTacticalNukeCancel(player, ids.toArray());
+        }
+    }
+
     private boolean anyRavenCanDeployTurret(){
         for(Unit unit : control.input.selectedUnits){
             if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
@@ -2262,6 +3363,24 @@ public class UnitAbilityPanel extends Table{
             if(UnitTypes.battlecruiserCanUseWarp(unit)) return true;
         }
         return false;
+    }
+
+    private float selectedBattlecruiserYamatoCooldown(){
+        float result = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
+            result = Math.max(result, UnitTypes.battlecruiserYamatoCooldown(unit));
+        }
+        return result;
+    }
+
+    private float selectedBattlecruiserWarpCooldown(){
+        float result = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
+            result = Math.max(result, UnitTypes.battlecruiserWarpCooldown(unit));
+        }
+        return result;
     }
 
     private void issueBansheeCloakCommand(){
@@ -2468,6 +3587,22 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyGhostSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyVikingSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyBattlecruiserSelected(){
         if(control.input.selectedUnits.isEmpty()) return false;
         for(Unit unit : control.input.selectedUnits){
@@ -2530,6 +3665,82 @@ public class UnitAbilityPanel extends Table{
             if(!isSupplyDoor(build)) return false;
         }
         return true;
+    }
+
+    private boolean isOnlyBunkerSelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof BunkerBlock.BunkerBuild)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyRadarSelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof Radar.RadarBuild)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyEngineeringSelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.multiPress) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyArmorySelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.siliconCrucible) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyGhostAcademySelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad) return false;
+        }
+        return true;
+    }
+
+    private boolean anyRadarCanStartRecycle(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof Radar.RadarBuild radar && !radar.recycling){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyBunkerHasGarrison(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild bunker && bunker.hasGarrison()){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyBunkerHasSpace(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild bunker && bunker.freeSlots() > 0 && !bunker.recycling){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean anyBunkerCanStartRecycle(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild bunker && !bunker.recycling){
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isSupplyDoor(@Nullable Building build){
@@ -2693,6 +3904,68 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private void handleVikingHotkeys(){
+        if(Core.input.keyTap(KeyCode.e) && anyVikingCanSwitchToFighter()){
+            issueVikingModeCommand(false);
+        }else if(Core.input.keyTap(KeyCode.d) && anyVikingCanSwitchToMech()){
+            issueVikingModeCommand(true);
+        }
+    }
+
+    private void handleGhostHotkeys(){
+        if(activeCommand == CommandMode.GHOST_TACTICAL_NUKE || activeCommand == CommandMode.GHOST_STABLE_AIM || activeCommand == CommandMode.GHOST_EMP){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.n)){
+            if(anyGhostCanUseTacticalNuke()){
+                enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE);
+            }else{
+                ui.hudfrag.setHudText("No available warhead");
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.r)){
+            if(anyGhostCanUseStableAim()){
+                enterCommandMode(CommandMode.GHOST_STABLE_AIM);
+            }else{
+                ui.hudfrag.setHudText("Cannot use Stable Aim");
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.e)){
+            if(anyGhostCanUseEmp()){
+                enterCommandMode(CommandMode.GHOST_EMP);
+            }else{
+                ui.hudfrag.setHudText("Cannot use EMP");
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.c)){
+            if(anyGhostCanToggleCloak()){
+                issueGhostCloakCommand();
+            }else if(UnitTypes.ghostCamoLevel(player.team()) <= 0){
+                ui.hudfrag.setHudText("Requires Ghost Camouflage");
+            }
+        }else if(Core.input.keyTap(KeyCode.escape)){
+            if(anyGhostTacticalNukePending()){
+                issueGhostTacticalNukeCancelCommand();
+            }
+            if(anyGhostStableAimPending()){
+                issueGhostStableAimCancelCommand();
+            }
+            if(anyGhostEmpPending()){
+                issueGhostEmpCancelCommand();
+            }
+        }
+    }
+
     private void handleBattlecruiserHotkeys(){
         if(activeCommand == CommandMode.BATTLECRUISER_YAMATO || activeCommand == CommandMode.BATTLECRUISER_WARP){
             if(Core.input.keyTap(KeyCode.escape)){
@@ -2836,15 +4109,293 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private void issueBunkerStopAttack(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild){
+                build.configure(BunkerBlock.configStopAttack);
+            }
+        }
+    }
+
+    private void issueRadarRecycle(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof Radar.RadarBuild){
+                build.configure(Radar.configRecycle);
+            }
+        }
+    }
+
+    private void issueBunkerUnloadAll(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild){
+                build.configure(BunkerBlock.configUnloadAll);
+            }
+        }
+    }
+
+    private void issueBunkerRecycle(){
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof BunkerBlock.BunkerBuild){
+                build.configure(BunkerBlock.configRecycle);
+            }
+        }
+    }
+
+    private boolean anyGhostAcademyCanBuildWarhead(){
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
+            if(UnitTypes.ghostWarheadCanStartProduction(build)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyGhostAcademyProducingWarhead(){
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
+            if(UnitTypes.ghostWarheadProducing(build)) return true;
+        }
+        return false;
+    }
+
+    private float selectedGhostWarheadBuildProgress(){
+        float result = 0f;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
+            result = Math.max(result, UnitTypes.ghostWarheadProductionProgress(build));
+        }
+        return result;
+    }
+
+    private void tryStartGhostWarheadProduction(){
+        int started = 0;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
+            if(UnitTypes.ghostWarheadStartProduction(build)){
+                started++;
+            }
+        }
+        if(started <= 0){
+            ui.hudfrag.setHudText("Cannot deploy warhead");
+        }
+    }
+
+    private void tryStartVehicleWeaponResearch(){
+        int level = UnitTypes.vehicleWeaponLevel(player.team()) + 1;
+        if(level > 3){
+            ui.hudfrag.setHudText("Already fully upgraded");
+            return;
+        }
+        if(UnitTypes.armoryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(UnitTypes.infantryWeaponLevel(player.team()) < level){
+            ui.hudfrag.setHudText("Requires Infantry Weapons Lv." + level);
+            return;
+        }
+        if(!UnitTypes.vehicleWeaponStartResearch(player.team(), level)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartVehicleArmorResearch(){
+        int level = UnitTypes.vehicleArmorLevel(player.team()) + 1;
+        if(level > 3){
+            ui.hudfrag.setHudText("Already fully upgraded");
+            return;
+        }
+        if(UnitTypes.armoryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.vehicleArmorStartResearch(player.team(), level)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartShipWeaponResearch(){
+        int level = UnitTypes.shipWeaponLevel(player.team()) + 1;
+        if(level > 3){
+            ui.hudfrag.setHudText("Already fully upgraded");
+            return;
+        }
+        if(UnitTypes.armoryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.shipWeaponStartResearch(player.team(), level)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void cancelArmoryResearch(){
+        if(UnitTypes.vehicleWeaponCancelResearch(player.team()) || UnitTypes.shipWeaponCancelResearch(player.team()) || UnitTypes.vehicleArmorCancelResearch(player.team())){
+            ui.hudfrag.setHudText("Research cancelled");
+        }
+    }
+
+    private void tryStartInfantryWeaponResearch(){
+        int level = UnitTypes.infantryWeaponLevel(player.team()) + 1;
+        if(level > 3){
+            ui.hudfrag.setHudText("Already fully upgraded");
+            return;
+        }
+        if(UnitTypes.infantryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+            ui.hudfrag.setHudText("Requires Armory");
+            return;
+        }
+        if(!UnitTypes.infantryWeaponStartResearch(player.team(), level)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartInfantryArmorResearch(){
+        int level = UnitTypes.infantryArmorLevel(player.team()) + 1;
+        if(level > 3){
+            ui.hudfrag.setHudText("Already fully upgraded");
+            return;
+        }
+        if(UnitTypes.infantryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+            ui.hudfrag.setHudText("Requires Armory");
+            return;
+        }
+        if(!UnitTypes.infantryArmorStartResearch(player.team(), level)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartInstantTrackingResearch(){
+        if(UnitTypes.instantTrackingLevel(player.team()) > 0){
+            ui.hudfrag.setHudText("Already researched");
+            return;
+        }
+        if(UnitTypes.infantryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.instantTrackingStartResearch(player.team())){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartSteelArmorResearch(){
+        if(UnitTypes.steelArmorLevel(player.team()) > 0){
+            ui.hudfrag.setHudText("Already researched");
+            return;
+        }
+        if(UnitTypes.infantryAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.steelArmorStartResearch(player.team())){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartGhostCamoResearch(){
+        if(UnitTypes.ghostCamoLevel(player.team()) > 0){
+            ui.hudfrag.setHudText("Already researched");
+            return;
+        }
+        if(UnitTypes.ghostCamoAnyResearching(player.team())){
+            ui.hudfrag.setHudText("Research already in progress");
+            return;
+        }
+        if(!UnitTypes.ghostCamoStartResearch(player.team())){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void cancelGhostCamoResearch(){
+        if(UnitTypes.ghostCamoCancelAnyResearch(player.team())){
+            ui.hudfrag.setHudText("Research cancelled");
+        }
+    }
+
+    private void cancelInfantryResearch(){
+        if(UnitTypes.infantryCancelAnyResearch(player.team())){
+            ui.hudfrag.setHudText("Research cancelled");
+        }
+    }
+
     private void handleBuildingHotkeys(){
         if(control.input.commandBuildings.isEmpty()) return;
-        if(activeCommand == CommandMode.RALLY){
+        if(activeCommand == CommandMode.RALLY || activeCommand == CommandMode.BUNKER_ATTACK || activeCommand == CommandMode.BUNKER_LOAD){
             if(Core.input.keyTap(KeyCode.escape)){
                 exitCommandMode();
             }
             return;
         }
         Building build = control.input.commandBuildings.first();
+        if(isOnlyRadarSelected()){
+            if(Core.input.keyTap(KeyCode.v) && anyRadarCanStartRecycle()){
+                issueRadarRecycle();
+            }
+            return;
+        }
+        if(isOnlyBunkerSelected()){
+            if(Core.input.keyTap(KeyCode.s) && anyBunkerHasGarrison()){
+                issueBunkerStopAttack();
+            }else if(Core.input.keyTap(KeyCode.a) && anyBunkerHasGarrison()){
+                enterCommandMode(CommandMode.BUNKER_ATTACK);
+            }else if(Core.input.keyTap(KeyCode.y)){
+                enterCommandMode(CommandMode.RALLY);
+            }else if(Core.input.keyTap(KeyCode.l) && anyBunkerHasSpace()){
+                enterCommandMode(CommandMode.BUNKER_LOAD);
+            }else if(Core.input.keyTap(KeyCode.d) && anyBunkerHasGarrison()){
+                issueBunkerUnloadAll();
+            }else if(Core.input.keyTap(KeyCode.v) && anyBunkerCanStartRecycle()){
+                issueBunkerRecycle();
+            }
+            return;
+        }
+        if(isOnlyArmorySelected()){
+            if(Core.input.keyTap(KeyCode.e)){
+                tryStartVehicleWeaponResearch();
+            }else if(Core.input.keyTap(KeyCode.a)){
+                tryStartVehicleArmorResearch();
+            }else if(Core.input.keyTap(KeyCode.h)){
+                tryStartShipWeaponResearch();
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                cancelArmoryResearch();
+            }
+            return;
+        }
+        if(isOnlyEngineeringSelected()){
+            if(Core.input.keyTap(KeyCode.e)){
+                tryStartInfantryWeaponResearch();
+            }else if(Core.input.keyTap(KeyCode.a)){
+                tryStartInfantryArmorResearch();
+            }else if(Core.input.keyTap(KeyCode.h)){
+                tryStartInstantTrackingResearch();
+            }else if(Core.input.keyTap(KeyCode.b)){
+                tryStartSteelArmorResearch();
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                cancelInfantryResearch();
+            }
+            return;
+        }
+        if(isOnlyGhostAcademySelected()){
+            if(Core.input.keyTap(KeyCode.c)){
+                tryStartGhostCamoResearch();
+            }else if(Core.input.keyTap(KeyCode.n)){
+                tryStartGhostWarheadProduction();
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                cancelGhostCamoResearch();
+            }
+            return;
+        }
         if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
             UnitFactory block = (UnitFactory)factory.block;
             if(block == Blocks.groundFactory){

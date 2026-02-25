@@ -18,7 +18,7 @@ public class StatusEffects{
     widowBurrowing, widowBuried, widowUnburrowing, widowReloading,
     preceptSieging, preceptSieged, preceptUnsieging, scepterSwitching,
     liberatorDeploying, liberatorDefending, liberatorUndeploying,
-    medivacAfterburner, ravenAntiArmor, ravenMatrixLock, ravenTurretLifetime, bansheeCloak;
+    medivacAfterburner, ravenAntiArmor, ravenMatrixLock, ravenTurretLifetime, bansheeCloak, ghostEmpReveal;
 
     public static void load(){
 
@@ -201,6 +201,11 @@ public class StatusEffects{
             show = false;
             color = Color.valueOf("3d4c66");
             permanent = true;
+        }};
+
+        ghostEmpReveal = new StatusEffect("ghost-emp-reveal"){{
+            show = false;
+            color = Color.valueOf("7dd3ff");
         }};
 
         slow = new StatusEffect("slow"){{

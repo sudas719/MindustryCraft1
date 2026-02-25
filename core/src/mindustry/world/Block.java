@@ -189,6 +189,8 @@ public class Block extends UnlockableContent implements Senseable{
     public int health = -1;
     /** damage absorption, similar to unit armor */
     public float armor = 0f;
+    /** Range in world units at which this block reveals stealthed enemy units. 0 to disable. */
+    public float stealthDetectionRange = 0f;
     /** base block explosiveness */
     public float baseExplosiveness = 0f;
     /** scaling of explosiveness based on items/liquids */

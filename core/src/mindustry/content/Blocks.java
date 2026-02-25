@@ -1060,6 +1060,8 @@ public class Blocks{
             craftTime = 30f;
             itemCapacity = 20;
             size = 3;
+            armor = 1f;
+            health = 850;
             hasItems = true;
             hasLiquids = true;
             hasPower = false;
@@ -1091,6 +1093,8 @@ public class Blocks{
             outputItem = new ItemStack(Items.silicon, 8);
             craftTime = 90f;
             size = 3;
+            armor = 1f;
+            health = 750;
             hasPower = false;
             hasLiquids = false;
             itemCapacity = 30;
@@ -1397,34 +1401,29 @@ public class Blocks{
             liquidOutputDirections = new int[]{1, 3};
         }};
 
-        atmosphericConcentrator = new HeatCrafter("atmospheric-concentrator"){{
-            requirements(Category.crafting, with(Items.graphite, 100));
+        atmosphericConcentrator = new BunkerBlock("atmospheric-concentrator"){{
+            requirements(Category.effect, with(Items.graphite, 100));
             buildTime = 29f * 60f;
             size = 3;
-            hasLiquids = true;
+            armor = 1f;
+            health = 400;
+            researchCostMultiplier = 1.1f;
+            researchCost = with(Items.silicon, 2000, Items.oxide, 900, Items.beryllium, 2400);
+            slotCapacity = 4;
+            recycleTime = 4f * 60f;
+            recycleCrystalRefund = 75;
+            rangeBonus = 1f * tilesize;
+            turnSpeed = 6f;
 
-            drawer = new DrawMulti(new DrawRegion("-bottom"), new DrawLiquidTile(Liquids.nitrogen, 4.1f), new DrawDefault(), new DrawHeatInput(),
+            drawer = new DrawMulti(new DrawRegion("-bottom"), new DrawDefault(),
             new DrawParticles(){{
                 color = Color.valueOf("d4f0ff");
-                alpha = 0.6f;
-                particleSize = 4f;
-                particles = 10;
-                particleRad = 12f;
-                particleLife = 140f;
+                alpha = 0.45f;
+                particleSize = 3f;
+                particles = 8;
+                particleRad = 10f;
+                particleLife = 100f;
             }});
-
-            researchCostMultiplier = 1.1f;
-            itemCapacity = 0;
-            liquidCapacity = 60f;
-            consumePower(2f);
-            ambientSound = Sounds.loopExtract;
-            ambientSoundVolume = 0.06f;
-
-            maxEfficiency = 1f;
-            heatRequirement = 24f;
-            outputLiquid = new LiquidStack(Liquids.nitrogen, 16f / 60f);
-
-            researchCost = with(Items.silicon, 2000, Items.oxide, 900, Items.beryllium, 2400);
         }};
 
         oxidationChamber = new HeatProducer("oxidation-chamber"){{
@@ -1590,6 +1589,8 @@ public class Blocks{
             buildTime = 46f * 60f;
 
             size = 3;
+            armor = 1f;
+            health = 750;
             envEnabled = Env.any;
             envDisabled = Env.none;
 
@@ -1804,7 +1805,7 @@ public class Blocks{
             buildCostMultiplier = 1f;
             openfx = Fx.dooropenlarge;
             closefx = Fx.doorcloselarge;
-            health = 500;
+            health = 400;
             armor = 1f;
             size = 2;
             unitCapModifier = 8;
@@ -2031,6 +2032,8 @@ public class Blocks{
             requirements(Category.effect, BuildVisibility.shown, with(Items.graphite, 100, Items.highEnergyGas, 50));
             outlineColor = Color.valueOf("4a4b53");
             fogRadius = 34;
+            armor = 0f;
+            health = 200;
             researchCost = with(Items.graphite, 120, Items.highEnergyGas, 60);
             envEnabled = Env.any;
             envDisabled = Env.none;
@@ -2366,9 +2369,12 @@ public class Blocks{
         }};
 
         rotaryPump = new Pump("rotary-pump"){{
+            localizedName = "反应堆";
             requirements(Category.liquid, with(Items.graphite, 50, Items.highEnergyGas, 50));
             buildTime = 36f * 60f;
             pumpAmount = 0.2f;
+            armor = 1f;
+            health = 400;
             consumePower(0.3f);
             liquidCapacity = 80f;
             hasPower = true;
@@ -3058,6 +3064,7 @@ public class Blocks{
             drawer = new DrawMulti(new DrawRegion("-bottom"), new DrawBlurSpin("-rotator", 6f), new DrawRegion("-mid"), new DrawLiquidTile(Liquids.water, 38f / 4f), new DrawDefault());
             craftTime = 120f;
             size = 3;
+            armor = 1f;
             ambientSound = Sounds.loopHum;
             ambientSoundVolume = 0.06f;
             hasLiquids = true;
@@ -3249,7 +3256,8 @@ public class Blocks{
             buildTime = 71f * 60f;
 
             unitType = UnitTypes.gamma;
-            health = 1000;
+            health = 1500;
+            armor = 1f;
             itemCapacity = 13000;
             size = 5;
             thrusterLength = 40/4f;
@@ -3262,12 +3270,13 @@ public class Blocks{
             TextureRegion topRegion;
             boolean topFound;
         {
+            localizedName = "轨道控制基地";
             requirements(Category.effect, with(Items.graphite, 400));
             buildVisibility = BuildVisibility.hidden;
             buildTime = 71f * 60f;
 
             unitType = UnitTypes.gamma;
-            health = 1000;
+            health = 1500;
             armor = 1f;
             itemCapacity = 13000;
             size = 5;
@@ -3355,7 +3364,7 @@ public class Blocks{
                 }
 
                 private void updateTurret(){
-                    float range = 6f * tilesize;
+                    float range = (6f + UnitTypes.instantTrackingRangeBonusTiles(team)) * tilesize;
                     float sourceRadius = hitSize() / 2f;
                     if(Units.invalidateTarget(turretTarget, team, x, y, range, sourceRadius)){
                         turretTarget = Units.closestTarget(team, x, y, range, sourceRadius, u -> !u.isFlying(), b -> true);
@@ -3422,7 +3431,7 @@ public class Blocks{
                 @Override
                 public void drawSelect(){
                     super.drawSelect();
-                    Drawf.dashCircle(x, y, 6f * tilesize, team.color);
+                    Drawf.dashCircle(x, y, (6f + UnitTypes.instantTrackingRangeBonusTiles(team)) * tilesize, team.color);
                 }
             };
         }
@@ -3807,6 +3816,7 @@ public class Blocks{
                 }}
             );
             targetAir = false;
+            armor = 0f;
             reload = 60f;
             recoil = 2f;
             range = 235f;
@@ -3949,77 +3959,105 @@ public class Blocks{
         swarmer = new ItemTurret("swarmer"){{
             requirements(Category.turret, with(Items.graphite, 100));
             buildTime = 18f * 60f;
-            ammo(
-                Items.blastCompound, new MissileBulletType(3.7f, 10){{
+
+            BulletType longArrowMissile = new MissileBulletType(4.2f, 12f){
+                {
                     width = 8f;
-                    height = 8f;
-                    shrinkY = 0f;
-                    splashDamageRadius = 30f;
-                    splashDamage = 30f * 1.5f;
-                    ammoMultiplier = 5f;
-                    hitEffect = Fx.blastExplosion;
-                    despawnEffect = Fx.blastExplosion;
-
-                    status = StatusEffects.blasted;
-
-                    hitColor = backColor = trailColor = Pal.blastAmmoBack;
-                    frontColor = Pal.blastAmmoFront;
-                }},
-                Items.pyratite, new MissileBulletType(3.7f, 12){{
-                    frontColor = Pal.lightishOrange;
-                    backColor = Pal.lightOrange;
-                    width = 7f;
-                    height = 8f;
+                    height = 10f;
                     shrinkY = 0f;
                     homingPower = 0.08f;
-                    splashDamageRadius = 20f;
-                    splashDamage = 30f * 1.5f;
-                    makeFire = true;
-                    ammoMultiplier = 5f;
-                    hitEffect = Fx.blastExplosion;
-                    status = StatusEffects.burning;
-                }},
-                Items.surgeAlloy, new MissileBulletType(3.7f, 18){{
-                    width = 8f;
-                    height = 8f;
-                    shrinkY = 0f;
-                    splashDamageRadius = 25f;
-                    splashDamage = 25f * 1.4f;
+                    homingRange = 7f * tilesize;
+                    collidesGround = false;
+                    collidesAir = true;
+                    pierce = true;
+                    removeAfterPierce = false;
+                    splashDamage = 0f;
+                    splashDamageRadius = 0f;
                     hitEffect = Fx.blastExplosion;
                     despawnEffect = Fx.blastExplosion;
-                    ammoMultiplier = 4f;
-                    lightningDamage = 10;
-                    lightning = 2;
-                    lightningLength = 10;
+                    hitColor = backColor = trailColor = Pal.missileYellowBack;
+                    frontColor = Pal.missileYellow;
+                }
 
-                    hitColor = backColor = trailColor = Pal.surgeAmmoBack;
-                    frontColor = Pal.surgeAmmoFront;
-                }}
-            );
+                @Override
+                public void hitEntity(Bullet b, Hitboxc entity, float health){
+                    Teamc target = b.data instanceof Teamc t ? t : null;
+                    if(target != null){
+                        if(!(entity instanceof Teamc teamc) || teamc != target){
+                            return;
+                        }
+                    }
+                    super.hitEntity(b, entity, health);
+                    if(target != null){
+                        b.hit = true;
+                        b.remove();
+                    }
+                }
+            };
+            ammo(Items.graphite, longArrowMissile);
 
             shoot = new ShootBarrel(){{
                 barrels = new float[]{
-                    -4, -1.25f, 0,
-                    0, 0, 0,
-                    4, -1.25f, 0
+                    -2f, -1f, 0f,
+                    2f, -1f, 0f
                 };
-                shots = 4;
-                shotDelay = 5f;
+                shots = 2;
+                shotDelay = 4f;
             }};
 
-            shootY = 4.5f;
-            reload = 60f * 4f / 7f;
-            inaccuracy = 10f;
-            range = 240f;
-            consumeAmmoOnce = false;
+            targetAir = true;
+            targetGround = false;
+            shootY = 4f;
+            reload = 0.61f * 60f;
+            inaccuracy = 0f;
+            range = 7f * tilesize;
+            consumeAmmoOnce = true;
+            rotateSpeed = 8f;
             size = 2;
-            scaledHealth = 300;
+            armor = 0f;
+            health = 250;
+            stealthDetectionRange = 9f * tilesize;
             shootSound = Sounds.shootMissile;
             envEnabled |= Env.space;
 
-            limitRange(5f);
-            coolant = consumeCoolant(0.3f);
-            depositCooldown = 2.0f;
+            limitRange(0f);
+
+            buildType = () -> new ItemTurretBuild(){
+                @Override
+                public void updateTile(){
+                    super.updateTile();
+                    if(target == null && !isControlled() && !logicControlled()){
+                        rotation = Mathf.mod(rotation + 360f / (5f * 60f) * Time.delta, 360f);
+                    }
+                }
+
+                @Override
+                public BulletType useAmmo(){
+                    return longArrowMissile;
+                }
+
+                @Override
+                public @Nullable BulletType peekAmmo(){
+                    return longArrowMissile;
+                }
+
+                @Override
+                public boolean hasAmmo(){
+                    return true;
+                }
+
+                @Override
+                public float range(){
+                    return super.range() + UnitTypes.instantTrackingRangeBonus(team);
+                }
+
+                @Override
+                protected void handleBullet(@Nullable Bullet bullet, float offsetX, float offsetY, float angleOffset){
+                    if(bullet != null){
+                        bullet.data = target instanceof Teamc t ? t : null;
+                    }
+                }
+            };
         }};
 
         salvo = new ItemTurret("salvo"){{
@@ -6500,9 +6538,11 @@ public class Blocks{
             requirements(Category.units, with(Items.graphite, 150));
             buildTime = 46f * 60f;
             hasPower = false;
+            armor = 1f;
+            health = 1000;
             sc2Queue = true;
             sc2AddonSupport = true;
-            sc2QueueSlots = 6;
+            sc2QueueSlots = 5;
             sc2QueueSlotsAddon = 8;
             plans = Seq.with(
                 new UnitPlan(UnitTypes.dagger, 60f * 18f, with(Items.graphite, 50)),
@@ -6652,13 +6692,15 @@ public class Blocks{
             requirements(Category.units, with(Items.graphite, 150, Items.highEnergyGas, 100));
             buildTime = 43f * 60f;
             size = 3;
+            armor = 1f;
+            health = 1250;
             envEnabled = Env.any;
             envDisabled = Env.none;
             configurable = true;
             hasPower = false;
             sc2Queue = true;
             sc2AddonSupport = true;
-            sc2QueueSlots = 6;
+            sc2QueueSlots = 5;
             sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.locus, 60f * 21f, with(Items.graphite, 100)));
             plans.add(new UnitPlan(UnitTypes.crawler, 60f * 21f, with(Items.graphite, 75, Items.highEnergyGas, 25)));
@@ -6682,13 +6724,15 @@ public class Blocks{
             buildTime = 36f * 60f;
 
             size = 3;
+            armor = 1f;
+            health = 1300;
             envEnabled = Env.any;
             envDisabled = Env.none;
             configurable = true;
             hasPower = false;
             sc2Queue = true;
             sc2AddonSupport = true;
-            sc2QueueSlots = 6;
+            sc2QueueSlots = 5;
             sc2QueueSlotsAddon = 8;
             plans.add(new UnitPlan(UnitTypes.flare, 60f * 30f, with(Items.graphite, 125, Items.highEnergyGas, 75)));
             plans.add(new UnitPlan(UnitTypes.mega, 60f * 30f, with(Items.graphite, 100, Items.highEnergyGas, 100)));
@@ -7064,6 +7108,8 @@ public class Blocks{
             requirements(Category.effect, with(Items.graphite, 150, Items.highEnergyGas, 50));
             buildTime = 29f * 60f;
             size = 3;
+            armor = 1f;
+            health = 1250;
             itemCapacity = 100;
             launchTime = 60f * 20;
             hasPower = false;
@@ -7148,10 +7194,13 @@ public class Blocks{
         }};
 
         memoryBank = new MemoryBlock("memory-bank"){{
+            localizedName = "科技实验室";
             requirements(Category.logic, with(Items.graphite, 50, Items.highEnergyGas, 25));
             buildTime = 18f * 60f;
 
             memoryCapacity = 512;
+            armor = 1f;
+            health = 400;
             size = 2;
         }};
 

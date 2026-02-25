@@ -20,6 +20,8 @@ import mindustry.gen.*;
 import mindustry.input.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
+import mindustry.world.blocks.defense.BunkerBlock;
+import mindustry.world.blocks.defense.Radar;
 import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.UnitFactory.*;
@@ -27,6 +29,14 @@ import mindustry.world.blocks.units.UnitFactory.*;
 import static mindustry.Vars.*;
 
 public class OverlayRenderer{
+    private static final float radarIntelRange = 23f * tilesize;
+    private static final float radarDotRadius = 1.9f;
+    private static final float radarCircleStroke = 1.15f;
+    private static final float radarEnemyDashStroke = 1.45f;
+    private static final float radarEnemyDashArc = 10f;
+    private static final float radarEnemyDashStep = 20f;
+    private static final int radarEnemyDashSegments = 18;
+
     private static final float indicatorLength = 14f;
     private static final float spawnerMargin = tilesize*11f;
     private static final Rect rect = new Rect();
@@ -291,6 +301,56 @@ public class OverlayRenderer{
         }
     }
 
+    public void drawRadarIntelPostFog(){
+        if(player == null || player.team() == null || state == null || state.isMenu()){
+            return;
+        }
+
+        Team viewer = player.team();
+        float pulse = 0.68f + Mathf.absin(Time.time, 8f, 0.12f);
+
+        Draw.z(Layer.fogOfWar + 0.01f);
+
+        //All players see a white radar range circle.
+        Lines.stroke(radarCircleStroke);
+        Draw.color(1f, 1f, 1f, 0.72f * pulse);
+        Groups.build.each(build -> {
+            if(build == null || !build.isValid() || build.block != Blocks.radar) return;
+            Lines.circle(build.x, build.y, radarIntelRange);
+        });
+
+        //Enemy radars additionally show an arc-dashed ring to the viewer.
+        Lines.stroke(radarEnemyDashStroke);
+        Draw.color(Pal.remove, 0.78f);
+        Groups.build.each(build -> {
+            if(build == null || !build.isValid() || build.block != Blocks.radar || build.team == viewer) return;
+            for(int i = 0; i < radarEnemyDashSegments; i++){
+                Lines.arc(build.x, build.y, radarIntelRange, radarEnemyDashArc / 360f, i * radarEnemyDashStep);
+            }
+        });
+
+        //Friendly radars mark fogged enemy units with red dots; this does not reveal fog.
+        Draw.color(Pal.remove, 0.95f);
+        Groups.unit.each(unit -> {
+            if(unit == null || !unit.isValid() || unit.team == viewer) return;
+            if(fogControl.isVisible(viewer, unit.x, unit.y)) return;
+
+            boolean inRadar = false;
+            for(Building build : viewer.data().buildings){
+                if(build == null || !build.isValid() || build.block != Blocks.radar) continue;
+                if(build.within(unit, radarIntelRange)){
+                    inRadar = true;
+                    break;
+                }
+            }
+            if(inRadar){
+                Fill.circle(unit.x, unit.y, radarDotRadius);
+            }
+        });
+
+        Draw.reset();
+    }
+
     private void drawProgressBars(){
         InputHandler input = control.input;
         if(input == null) return;
@@ -312,6 +372,14 @@ public class OverlayRenderer{
                         }
                         if(core.block == Blocks.coreOrbital && core.orbitalEnergy >= 0f){
                             drawEnergyBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.orbitalEnergy / CoreBlock.orbitalEnergyCap);
+                        }
+                    }else if(hoverBuild instanceof BunkerBlock.BunkerBuild bunker){
+                        if(bunker.isRecycling()){
+                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), bunker.recycleRemainingFraction(), Color.orange);
+                        }
+                    }else if(hoverBuild instanceof Radar.RadarBuild radar){
+                        if(radar.isRecycling()){
+                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), radar.recycleRemainingFraction(), Color.orange);
                         }
                     }else if(hoverBuild instanceof UnitFactoryBuild factory){
                         if(factory.currentPlan != -1){

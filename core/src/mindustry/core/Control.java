@@ -88,10 +88,10 @@ public class Control implements ApplicationListener, Loadable{
                 dialog.show();
             }
 
-            //show StarCraft II keybinding migration warning
+            //show first-run mod notice
             if(!Core.settings.getBool("sc2_migration_shown", false)){
                 Time.runTask(6f, () -> {
-                    ui.showInfo("Keybindings updated to StarCraft II style.\nPress F10 for menu (was ESC).\nCamera uses edge scrolling (WASD disabled).\nCommand grid uses Q/W/E/R/T, A/S/D/F/G, Z/X/C/V/B.");
+                    ui.showInfo("请在设置中查看较详细的改动说明\nPlease check Settings for a more detailed changelog.");
                     Core.settings.put("sc2_migration_shown", true);
                 });
             }
