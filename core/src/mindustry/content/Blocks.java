@@ -101,7 +101,7 @@ public class Blocks{
     carbideCrucible, slagCentrifuge, surgeCrucible, cyanogenSynthesizer, phaseSynthesizer, heatReactor,
 
     //sandbox
-    powerSource, powerVoid, itemSource, itemVoid, liquidSource, liquidVoid, payloadSource, payloadVoid, illuminator, heatSource,
+    powerSource, powerVoid, itemSource, itemVoid, liquidSource, liquidVoid, payloadSource, payloadVoid, illuminator, heatSource, targetDummy,
 
     //defense
     copperWall, copperWallLarge, titaniumWall, titaniumWallLarge, plastaniumWall, plastaniumWallLarge, thoriumWall, thoriumWallLarge, door, doorLarge, doorLargeErekir,
@@ -7311,6 +7311,60 @@ public class Blocks{
         cliffLayerDiagTrBl = new CliffLayerMarker("cliff-layer-diag-tr-bl", "Cliff-topRightToBottomLeft", CliffLayerData.topRightToBottomLeft);
 
         ventSpout = new VentSpout("vent-spout");
+
+        targetDummy = new Wall("target-dummy"){
+            {
+            requirements(Category.effect, BuildVisibility.editorOnly, with());
+            health = 50000;
+            size = 2;
+            targetableAir = true;
+            targetableAllTeams = true;
+            forceTeam = Team.derelict;
+            priority = 3f;
+            update = true;
+
+            buildType = TargetDummyBuild::new;
+        }
+
+            public class TargetDummyBuild extends WallBuild{
+                public float noDamageTime;
+
+                @Override
+                public void changeTeam(Team next){
+                    super.changeTeam(Team.derelict);
+                }
+
+                @Override
+                public void updateTile(){
+                    super.updateTile();
+
+                    noDamageTime += delta();
+                    if(noDamageTime >= 60f * 10f && health < maxHealth){
+                        heal(1000f / 60f * delta());
+                    }
+                }
+
+                @Override
+                public void damage(float damage){
+                    noDamageTime = 0f;
+                    float before = health;
+                    super.damage(damage);
+
+                    float dealt = Math.max(before - health, 0f);
+                    if(dealt <= 0.001f || headless) return;
+
+                    float wx = x + Mathf.range(block.size * tilesize * 0.2f);
+                    float wy = y + block.size * tilesize * 0.35f + Mathf.range(2f);
+                    String text = "-" + Mathf.round(dealt);
+
+                    if(net.server()){
+                        Call.label(text, 1f, wx, wy);
+                    }else if(!net.client()){
+                        mindustry.ui.Menus.label(text, 1f, wx, wy);
+                    }
+                }
+            }
+        };
 
         //endregion
     }

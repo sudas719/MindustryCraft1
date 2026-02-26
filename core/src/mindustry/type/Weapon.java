@@ -450,7 +450,10 @@ public class Weapon implements Cloneable{
     }
 
     protected Teamc findTarget(Unit unit, float x, float y, float range, boolean air, boolean ground){
-        return Units.closestTarget(unit.team, unit.x, unit.y, range + Math.abs(shootY), unit.hitSize / 2f, u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
+        return Units.closestTarget(unit.team, unit.x, unit.y, range + Math.abs(shootY), unit.hitSize / 2f, u -> u.checkTarget(air, ground), t ->
+            Units.canTargetBuilding(air, ground, t) &&
+            !Units.preferGroundWeapons(unit, air, ground, t) &&
+            (unit.type.targetUnderBlocks || !t.block.underBullets));
     }
 
     protected boolean checkTarget(Unit unit, Teamc target, float x, float y, float range){

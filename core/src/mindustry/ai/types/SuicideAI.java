@@ -53,7 +53,7 @@ public class SuicideAI extends GroundAI{
                     for(Point2 p : Geometry.d4c){
                         Tile tile = Vars.world.tile(x + p.x, y + p.y);
                         if(tile != null && tile.build == target) return false;
-                        if(tile != null && tile.build != null && tile.build.team != unit.team()){
+                        if(tile != null && tile.build != null && (tile.build.team != unit.team() || Units.targetableAllTeams(tile.build))){
                             blockedByBlock = true;
                             return true;
                         }else{
@@ -99,7 +99,9 @@ public class SuicideAI extends GroundAI{
 
     @Override
     public Teamc target(float x, float y, float range, boolean air, boolean ground){
-        return Units.closestTarget(unit.team, x, y, range, unit.hitSize / 2f, u -> u.checkTarget(air, ground), t -> ground &&
+        return Units.closestTarget(unit.team, x, y, range, unit.hitSize / 2f, u -> u.checkTarget(air, ground), t ->
+            Units.canTargetBuilding(air, ground, t) &&
+            !Units.preferGroundWeapons(unit, air, ground, t) &&
             !(t.block instanceof Conveyor || t.block instanceof Conduit)); //do not target conveyors/conduits
     }
 }

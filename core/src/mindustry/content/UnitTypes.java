@@ -366,9 +366,20 @@ public class UnitTypes{
 
     public static class HurricaneLockData{
         public int targetId = -1;
+        public int targetBuildPos = -1;
         public float activeTime = 0f;
         public float cooldown = 0f;
         public float flash = 0f;
+    }
+
+    public static class HurricaneMissileData{
+        public Teamc target;
+        public boolean lockedShot;
+
+        public HurricaneMissileData(@Nullable Teamc target, boolean lockedShot){
+            this.target = target;
+            this.lockedShot = lockedShot;
+        }
     }
 
     public static class PreceptSiegeData{
@@ -1429,9 +1440,9 @@ public class UnitTypes{
     public static @Nullable Teamc hurricaneTarget(@Nullable Unit unit){
         if(!isHurricane(unit)) return null;
         HurricaneLockData data = getHurricaneLockData(unit);
-        if(data.activeTime <= 0.001f || data.targetId < 0) return null;
-        Teamc target = resolveTarget(data.targetId);
-        if(target == null || Units.invalidateTarget(target, unit, hurricaneLockRange())) return null;
+        if(data.activeTime <= 0.001f) return null;
+        Teamc target = hurricaneResolveLockedTarget(data);
+        if(target == null || target.inFogTo(unit.team) || Units.invalidateTarget(target, unit, Float.MAX_VALUE) || !hurricaneWithinLockRange(unit, target)) return null;
         return target;
     }
 
@@ -1455,11 +1466,74 @@ public class UnitTypes{
         return data.cooldown <= 0.001f && data.activeTime <= 0.001f;
     }
 
+    private static boolean hurricaneWithinLockRange(@Nullable Unit unit, @Nullable Teamc target){
+        return unit != null
+            && target != null
+            && Mathf.within(unit.x, unit.y, target.getX(), target.getY(), hurricaneLockRange());
+    }
+
+    private static @Nullable Teamc hurricaneResolveLockedTarget(HurricaneLockData data){
+        if(data == null) return null;
+
+        if(data.targetId >= 0){
+            Unit unit = Groups.unit.getByID(data.targetId);
+            if(unit != null && unit.isValid()){
+                return unit;
+            }
+        }
+
+        if(data.targetBuildPos >= 0){
+            Building build = world.build(data.targetBuildPos);
+            if(build != null && build.isValid()){
+                return build;
+            }
+        }
+
+        return null;
+    }
+
     public static @Nullable Teamc hurricaneFindTarget(@Nullable Unit unit){
         if(!isHurricane(unit)) return null;
-        return Units.closestTarget(unit.team, unit.x, unit.y, hurricaneLockRange(), unit.hitSize / 2f,
-        u -> u.checkTarget(true, true) && u.hittable(),
-        b -> true);
+
+        Team team = unit.team;
+        float range = hurricaneLockRange();
+        Teamc[] unitResult = {null};
+        float[] unitDst2 = {Float.MAX_VALUE};
+
+        Units.nearbyEnemies(team, unit.x, unit.y, range, other -> {
+            if(other == null || other.dead() || !other.isValid() || other.team == Team.derelict) return;
+            if(!other.checkTarget(true, true) || !other.hittable() || !other.targetable(team) || other.inFogTo(team)) return;
+            if(!hurricaneWithinLockRange(unit, other)) return;
+
+            float dst2 = Mathf.dst2(unit.x, unit.y, other.x, other.y);
+            if(unitResult[0] == null || dst2 < unitDst2[0]){
+                unitResult[0] = other;
+                unitDst2[0] = dst2;
+            }
+        });
+
+        if(unitResult[0] != null){
+            return unitResult[0];
+        }
+
+        Building[] buildResult = {null};
+        float[] buildDst2 = {Float.MAX_VALUE};
+
+        Units.nearbyBuildings(unit.x, unit.y, range, build -> {
+            if(build == null || !build.isValid() || build.inFogTo(team)) return;
+
+            boolean enemy = build.team != team && (build.team != Team.derelict || state.rules.coreCapture);
+            if(!enemy && !Units.targetableAllTeams(build)) return;
+            if(!Units.canTargetBuilding(true, true, build) || !hurricaneWithinLockRange(unit, build)) return;
+
+            float dst2 = Mathf.dst2(unit.x, unit.y, build.x, build.y);
+            if(buildResult[0] == null || dst2 < buildDst2[0]){
+                buildResult[0] = build;
+                buildDst2[0] = dst2;
+            }
+        });
+
+        return buildResult[0];
     }
 
     public static boolean hurricaneHasTarget(@Nullable Unit unit){
@@ -1472,43 +1546,60 @@ public class UnitTypes{
         if(target == null) return false;
 
         HurricaneLockData data = getHurricaneLockData(unit);
-        data.targetId = target.id();
+        if(target instanceof Unit u){
+            data.targetId = u.id;
+            data.targetBuildPos = -1;
+        }else if(target instanceof Building b){
+            data.targetId = -1;
+            data.targetBuildPos = b.pos();
+        }else{
+            return false;
+        }
         data.activeTime = hurricaneLockTime;
-        data.cooldown = hurricaneLockCooldown;
+        data.cooldown = 0f;
         data.flash = 0f;
         return true;
+    }
+
+    private static void finishHurricaneLock(HurricaneLockData data, boolean startCooldown){
+        data.activeTime = 0f;
+        data.targetId = -1;
+        data.targetBuildPos = -1;
+        if(startCooldown){
+            data.cooldown = hurricaneLockCooldown;
+            data.flash = 0f;
+        }
     }
 
     public static void updateHurricaneLock(@Nullable Unit unit){
         if(!isHurricane(unit)) return;
 
         HurricaneLockData data = getHurricaneLockData(unit);
-        float prevCooldown = data.cooldown;
-        if(data.cooldown > 0f){
-            data.cooldown = Math.max(0f, data.cooldown - Time.delta);
-        }
-        if(prevCooldown > 0.001f && data.cooldown <= 0.001f){
-            data.flash = hurricaneLockFlashDuration;
-        }
-        if(data.flash > 0f){
-            data.flash = Math.max(0f, data.flash - Time.delta);
-        }
-
         if(data.activeTime > 0f){
             data.activeTime = Math.max(0f, data.activeTime - Time.delta);
-            Teamc target = resolveTarget(data.targetId);
-            if(target == null || Units.invalidateTarget(target, unit, hurricaneLockRange())){
-                data.activeTime = 0f;
-                data.targetId = -1;
+            Teamc target = hurricaneResolveLockedTarget(data);
+            if(target == null || target.inFogTo(unit.team) || Units.invalidateTarget(target, unit, Float.MAX_VALUE) || !hurricaneWithinLockRange(unit, target)){
+                finishHurricaneLock(data, true);
                 return;
             }
 
-            if(!Units.withinTargetRange(target, unit.x, unit.y, hurricaneLockRange(), unit.hitSize / 2f) || data.activeTime <= 0.001f){
-                data.activeTime = 0f;
-                data.targetId = -1;
+            if(data.activeTime <= 0.001f){
+                finishHurricaneLock(data, true);
             }
         }else{
             data.targetId = -1;
+            data.targetBuildPos = -1;
+
+            float prevCooldown = data.cooldown;
+            if(data.cooldown > 0f){
+                data.cooldown = Math.max(0f, data.cooldown - Time.delta);
+            }
+            if(prevCooldown > 0.001f && data.cooldown <= 0.001f){
+                data.flash = hurricaneLockFlashDuration;
+            }
+            if(data.flash > 0f){
+                data.flash = Math.max(0f, data.flash - Time.delta);
+            }
         }
     }
 
@@ -2318,10 +2409,7 @@ public class UnitTypes{
                 return;
             }
 
-            for(WeaponMount mount : unit.mounts){
-                mount.shoot = false;
-                mount.target = null;
-            }
+            rotateBattlecruiserWeapons(unit, yamatoTarget);
             unit.isShooting = false;
             unit.vel.setZero();
             unit.lookAt(yamatoTarget);
@@ -2362,6 +2450,27 @@ public class UnitTypes{
                 ai.command(UnitCommand.moveCommand);
                 ai.commandTarget(yamatoTarget, false);
             }
+        }
+    }
+
+    private static void rotateBattlecruiserWeapons(Unit unit, Teamc target){
+        for(WeaponMount mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            mount.shoot = false;
+            mount.target = null;
+            if(!weapon.rotate){
+                mount.rotate = false;
+                continue;
+            }
+
+            mount.rotate = true;
+            float mountX = unit.x + Angles.trnsx(unit.rotation - 90f, weapon.x, weapon.y);
+            float mountY = unit.y + Angles.trnsy(unit.rotation - 90f, weapon.x, weapon.y);
+            Units.aimPoint(target, mountX, mountY, target.getX(), target.getY(), Tmp.v1);
+            mount.aimX = Tmp.v1.x;
+            mount.aimY = Tmp.v1.y;
+            mount.targetRotation = Angles.angle(mountX, mountY, mount.aimX, mount.aimY) - unit.rotation;
+            mount.rotation = Angles.moveToward(mount.rotation, mount.targetRotation, weapon.rotateSpeed * Time.delta);
         }
     }
 
@@ -5108,7 +5217,7 @@ public class UnitTypes{
                 recoil = 26f;
                 recoilTime = 14f;
                 shake = 1.1f;
-                bullet = new ArtilleryBulletType(3f, 20f, "shell"){
+                bullet = new ArtilleryBulletType(3f, 10f, "shell"){
                     {
                         hitEffect = Fx.none;
                         despawnEffect = Fx.none;
@@ -5118,10 +5227,45 @@ public class UnitTypes{
                         rangeOverride = 6f * tilesize;
                         width = height = 8f;
                         collidesTiles = false;
-                        splashDamageRadius = 30f * 0.75f;
-                        splashDamage = 40f;
+                        splashDamageRadius = 0f;
+                        splashDamage = 0f;
                         trailEffect = Fx.none;
                         trailMult = 0f;
+                    }
+
+                    @Override
+                    public void hitEntity(Bullet b, Hitboxc entity, float health){
+                        float prev = b.damage;
+                        b.damage = prev + infantryWeaponBaseDamageBonus(b.team);
+                        if(entity instanceof Unit u && u.type.armorType == ArmorType.heavy){
+                            b.damage = prev + 10f + infantryWeaponFortressHeavyBonus(b.team);
+                        }
+                        super.hitEntity(b, entity, health);
+                        b.damage = prev;
+                    }
+
+                    @Override
+                    public float buildingDamage(Bullet b){
+                        return b.damage + infantryWeaponBaseDamageBonus(b.team);
+                    }
+
+                    private void applyImpactTargetDamage(Bullet b, FortressShellData data, float x, float y){
+                        Teamc target = data.target;
+                        if(target == null || target.team() == b.team || !(target instanceof Healthc h) || !h.isValid()) return;
+
+                        if(target instanceof Unit unit){
+                            if(!unit.hittable() || !unit.checkTarget(collidesAir, collidesGround)) return;
+                            if(!unit.within(x, y, unit.hitSize / 2f + 3f)) return;
+                            unit.collision(b, x, y);
+                            hitEntity(b, unit, unit.health());
+                            return;
+                        }
+
+                        if(target instanceof Building build){
+                            if(!build.isValid() || !build.collide(b)) return;
+                            if(!build.within(x, y, build.hitSize() / 2f + 3f)) return;
+                            build.collision(b);
+                        }
                     }
 
                     @Override
@@ -5176,6 +5320,7 @@ public class UnitTypes{
 
                         float hitRange = Math.max(0.65f, b.vel.len() * Time.delta * 0.85f);
                         if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
+                            applyImpactTargetDamage(b, data, tx, ty);
                             hit(b, tx, ty);
                             b.remove();
                         }
@@ -6972,7 +7117,9 @@ public class UnitTypes{
                     @Override
                     protected void handleBullet(Unit unit, WeaponMount mount, Bullet bullet){
                         super.handleBullet(unit, mount, bullet);
-                        bullet.data = mount.target;
+                        Teamc lockedTarget = hurricaneTarget(unit);
+                        Teamc trackedTarget = mount.target != null ? mount.target : lockedTarget;
+                        bullet.data = new HurricaneMissileData(trackedTarget, lockedTarget != null);
                     }
 
                     {
@@ -9657,10 +9804,7 @@ public class UnitTypes{
                             if(!b.checkUnderBuild(build, build.x, build.y)) return;
                             if(!intersectsCircle(x1, y1, x2, y2, build.x, build.y, build.hitSize() / 2f + radius)) return;
 
-                            float health = build.health;
                             build.collision(b);
-                            hit(b, build.x, build.y);
-                            hitTile(b, build, build.x, build.y, health, false);
                         });
                     }
 
@@ -10158,6 +10302,13 @@ public class UnitTypes{
                     public void update(Unit unit, WeaponMount mount){
                         Teamc target = hurricaneTarget(unit);
                         boolean locked = target != null;
+
+                        float dynamicRange = locked ? hurricaneLockRange() : hurricaneBaseRange();
+                        float prevRange = bullet.range;
+                        float prevOverride = bullet.rangeOverride;
+                        bullet.range = dynamicRange;
+                        bullet.rangeOverride = dynamicRange;
+
                         if(locked){
                             mount.target = target;
                             mount.aimX = target.getX();
@@ -10172,6 +10323,9 @@ public class UnitTypes{
                         }
 
                         super.update(unit, mount);
+
+                        bullet.range = prevRange;
+                        bullet.rangeOverride = prevOverride;
                         unit.type.alwaysShootWhenMoving = previous;
                     }
 
@@ -10213,7 +10367,7 @@ public class UnitTypes{
                         bullet = new MissileBulletType(8f, 18f, "missile-large"){
                             {
                                 damage = 18f;
-                                rangeOverride = hurricaneLockRange();
+                                rangeOverride = hurricaneBaseRange();
                                 width = 12f;
                                 height = 20f;
                                 lifetime = 35f;
@@ -10246,7 +10400,14 @@ public class UnitTypes{
 
                             @Override
                             public void update(Bullet b){
-                                Teamc target = b.data instanceof Teamc t ? t : null;
+                                Teamc target = null;
+                                boolean lockedShot = false;
+                                if(b.data instanceof HurricaneMissileData d){
+                                    target = d.target;
+                                    lockedShot = d.lockedShot;
+                                }else if(b.data instanceof Teamc t){
+                                    target = t;
+                                }
 
                                 if(target instanceof Healthc h && !h.isValid()) target = null;
                                 if(target != null && target.team() == b.team) target = null;
@@ -10269,7 +10430,7 @@ public class UnitTypes{
 
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                     hit(b, tx, ty);
-                                    float amount = b.damage + vehicleWeaponHurricaneBaseBonus(b.team);
+                                    float amount = lockedShot ? 20f : 18f;
                                     if(target instanceof Unit u){
                                         u.damage(amount);
                                     }else if(target instanceof Building build && build.team != b.team){
@@ -10292,11 +10453,6 @@ public class UnitTypes{
             public void update(Unit unit){
                 super.update(unit);
                 updateHurricaneLock(unit);
-
-                Teamc target = hurricaneTarget(unit);
-                if(target != null){
-                    unit.rotation(Angles.moveToward(unit.rotation(), unit.angleTo(target), unit.type.rotateSpeed * Time.delta * unit.speedMultiplier()));
-                }
             }
 
             @Override

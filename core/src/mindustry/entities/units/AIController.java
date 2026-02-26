@@ -251,7 +251,11 @@ public class AIController implements UnitController{
         if(target instanceof Unit u){
             return u.isFlying() ? weapon.bullet.collidesAir : weapon.bullet.collidesGround;
         }
-        return weapon.bullet.collidesGround;
+        if(target instanceof Building b){
+            return Units.canTargetBuilding(weapon.bullet.collidesAir, weapon.bullet.collidesGround, b) &&
+                !Units.preferGroundWeapons(unit, weapon.bullet.collidesAir, weapon.bullet.collidesGround, b);
+        }
+        return false;
     }
 
     public boolean checkTarget(Teamc target, float x, float y, float range){
@@ -278,7 +282,10 @@ public class AIController implements UnitController{
     }
 
     public Teamc target(float x, float y, float range, boolean air, boolean ground){
-        return Units.closestTarget(unit.team, x, y, range, unit.hitSize / 2f, u -> u.checkTarget(air, ground), t -> ground && (unit.type.targetUnderBlocks || !t.block.underBullets));
+        return Units.closestTarget(unit.team, x, y, range, unit.hitSize / 2f, u -> u.checkTarget(air, ground), t ->
+            Units.canTargetBuilding(air, ground, t) &&
+            !Units.preferGroundWeapons(unit, air, ground, t) &&
+            (unit.type.targetUnderBlocks || !t.block.underBullets));
     }
 
     public boolean retarget(){

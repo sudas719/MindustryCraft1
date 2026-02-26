@@ -430,9 +430,15 @@ public class BlockIndexer{
 
         for(int i = 0; i < activeTeams.size; i++){
             Team enemy = activeTeams.items[i];
-            if(enemy == team || (enemy == Team.derelict && !state.rules.coreCapture)) continue;
 
-            Building candidate = indexer.findTile(enemy, x, y, range, b -> pred.get(b) && b.isDiscovered(team), true);
+            boolean sameTeam = enemy == team;
+            boolean derelictBlocked = enemy == Team.derelict && !state.rules.coreCapture;
+
+            Building candidate = indexer.findTile(enemy, x, y, range, b ->
+                pred.get(b) &&
+                b.isDiscovered(team) &&
+                (!derelictBlocked || b.block.targetableAllTeams) &&
+                (!sameTeam || b.block.targetableAllTeams), true);
             if(candidate == null) continue;
 
             //if a block has the same priority, the closer one should be targeted

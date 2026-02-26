@@ -200,7 +200,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 this.rotation = rotate + stickyRotationOffset;
                 vel.setAngle(this.rotation);
             }
-        }else if(type.collidesTiles && type.collides && type.collidesGround){
+        }else if(type.collidesTiles && type.collides && (type.collidesGround || type.collidesAir)){
             tileRaycast(World.toTile(lastX), World.toTile(lastY), tileX(), tileY());
         }
 
@@ -252,7 +252,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
         while(x >= 0 && y >= 0 && x < ww && y < wh){
             Building build = world.build(x, y);
 
-            if(type.collideFloor || type.collideTerrain){
+            if(type.collidesGround && (type.collideFloor || type.collideTerrain)){
                 Tile tile = world.tile(x, y);
                 if(
                     type.collideFloor && (tile == null || tile.floor().hasSurface() || tile.block() != Blocks.air) ||
@@ -267,11 +267,12 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
             if(build != null && isAdded()
                 && checkUnderBuild(build, x * tilesize, y * tilesize)
                 && intersectsBuildingCircle(build, lastX, lastY, this.x, this.y)
+                && Units.canTargetBuilding(type.collidesAir, type.collidesGround, build)
                 && build.collide(self()) && type.testCollision(self(), build)
-                && !build.dead() && ((type.collidesTeam || build.team != team) || canHitForcedFriendly(build)) && !(type.pierceBuilding && hasCollided(build.id))){
+                && !build.dead() && ((type.collidesTeam || build.team != team || Units.targetableAllTeams(build)) || canHitForcedFriendly(build)) && !(type.pierceBuilding && hasCollided(build.id))){
 
                 if(type.sticky){
-                    if(build.team != team || canHitForcedFriendly(build)){
+                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build)){
                         //stick to edge of block
                         Vec2 hit = Geometry.raycastRect(lastX, lastY, x, y, Tmp.r1.setCentered(x * tilesize, y * tilesize, tilesize, tilesize));
                         if(hit != null){
@@ -287,7 +288,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                     boolean remove = false;
                     float health = build.health;
 
-                    if(build.team != team || canHitForcedFriendly(build)){
+                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build)){
                         remove = build.collision(self());
                     }
 

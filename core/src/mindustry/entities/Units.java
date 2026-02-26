@@ -136,8 +136,36 @@ public class Units{
         return player == null || tile == null || tile.interactable(player.team()) || state.rules.editor;
     }
 
+    /** @return whether a building is targetable by all teams, including its own team. */
+    public static boolean targetableAllTeams(@Nullable Building build){
+        return build != null && build.block.targetableAllTeams;
+    }
+
+    /** @return whether a building can be targeted by a weapon/AI with the provided air/ground flags. */
+    public static boolean canTargetBuilding(boolean air, boolean ground, @Nullable Building build){
+        return build != null && (ground || (air && build.block.targetableAir));
+    }
+
+    /** @return whether this unit has at least one controllable weapon that can hit ground targets. */
+    public static boolean unitHasGroundWeapon(@Nullable Unit unit){
+        if(unit == null) return false;
+
+        for(var mount : unit.mounts){
+            var weapon = mount.weapon;
+            if(!weapon.controllable || weapon.noAttack) continue;
+            if(weapon.bullet.collidesGround) return true;
+        }
+        return false;
+    }
+
+    /** @return whether air-only weapon targeting should yield to ground weapons for this building target. */
+    public static boolean preferGroundWeapons(Unit unit, boolean air, boolean ground, @Nullable Building build){
+        return build != null && build.block.targetableAir && air && !ground && unitHasGroundWeapon(unit);
+    }
+
     public static boolean isHittable(@Nullable Posc target, boolean air, boolean ground){
-        return target != null && (target instanceof Buildingc ? ground : (target instanceof Unit u && u.checkTarget(air, ground)));
+        return target != null &&
+            (target instanceof Building b ? canTargetBuilding(air, ground, b) : (target instanceof Unit u && u.checkTarget(air, ground)));
     }
 
     /** @return hitbox radius of this target, or 0 when no sized hitbox exists. */
@@ -184,7 +212,7 @@ public class Units{
     public static boolean invalidateTarget(Posc target, Team team, float x, float y, float range, float sourceRadius){
         return target == null ||
             (range != Float.MAX_VALUE && !withinTargetRange(target, x, y, range, sourceRadius)) ||
-            (target instanceof Teamc t && t.team() == team) ||
+            (target instanceof Teamc t && t.team() == team && !(target instanceof Building b && targetableAllTeams(b))) ||
             (target instanceof Healthc h && !h.isValid()) ||
             (target instanceof Unit u && !u.targetable(team));
     }
@@ -253,7 +281,9 @@ public class Units{
 
     /** Returns the nearest enemy tile in a range. */
     public static Building findEnemyTile(Team team, float x, float y, float range, Boolf<Building> pred){
-        if(team == Team.derelict) return null;
+        if(team == Team.derelict){
+            return indexer.findEnemyTile(team, x, y, range, b -> targetableAllTeams(b) && pred.get(b));
+        }
 
         return indexer.findEnemyTile(team, x, y, range, pred);
     }
@@ -313,8 +343,6 @@ public class Units{
 
     /** Returns the closest target enemy. First, units are checked, then tile entities. */
     public static Teamc closestTarget(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> unitPred, Boolf<Building> tilePred){
-        if(team == Team.derelict) return null;
-
         Unit unit = closestEnemy(team, x, y, range, sourceRadius, unitPred);
         if(unit != null){
             return unit;
@@ -330,8 +358,6 @@ public class Units{
 
     /** Returns the closest target enemy. First, units are checked, then buildings. */
     public static Teamc bestTarget(Team team, float x, float y, float range, float sourceRadius, Boolf<Unit> unitPred, Boolf<Building> tilePred, Sortf sort){
-        if(team == Team.derelict) return null;
-
         Unit unit = bestEnemy(team, x, y, range, sourceRadius, unitPred, sort);
         if(unit != null){
             return unit;

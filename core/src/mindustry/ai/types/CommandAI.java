@@ -923,7 +923,11 @@ public class CommandAI extends AIController{
         if(target instanceof Unit u){
             return u.isFlying() ? weapon.bullet.collidesAir : weapon.bullet.collidesGround;
         }
-        return weapon.bullet.collidesGround;
+        if(target instanceof Building b){
+            return Units.canTargetBuilding(weapon.bullet.collidesAir, weapon.bullet.collidesGround, b) &&
+                !Units.preferGroundWeapons(unit, weapon.bullet.collidesAir, weapon.bullet.collidesGround, b);
+        }
+        return false;
     }
 
     private boolean forcedFriendlyAttackInWeaponRange(@Nullable Teamc target){

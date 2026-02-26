@@ -2169,32 +2169,36 @@ public class UnitAbilityPanel extends Table{
         keyTable.add(keyLabel).pad(3f);
         stack.add(keyTable);
 
-        stack.add(new Element(){
-            @Override
-            public void draw(){
-                float cooldown = cooldownValue == null ? 0f : cooldownValue.get();
-                if(cooldown > 0.001f){
-                    float total = cooldownTotal == null ? 1f : Math.max(cooldownTotal.get(), 0.001f);
-                    float cx = x + width / 2f;
-                    float cy = y + height / 2f;
-                    float fixedAngle = 90f; //12 o'clock
-                    float progress = 1f - Mathf.clamp(cooldown / total);
-                    float movingAngle = fixedAngle - progress * 360f;
-                    float handLen = width * 0.20f;
-
-                    Draw.color(Color.valueOf("b6bcc5"));
-                    Lines.stroke(1.25f);
-                    Lines.line(cx, cy, cx + Angles.trnsx(fixedAngle, handLen), cy + Angles.trnsy(fixedAngle, handLen));
-                    Lines.line(cx, cy, cx + Angles.trnsx(movingAngle, handLen), cy + Angles.trnsy(movingAngle, handLen));
-                    Draw.reset();
-                }
-            }
-        });
+        stack.add(yamatoCooldownOverlay(cooldownValue, cooldownTotal));
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
         bindAbilityHover(button, makeAbilityInfo(key, "技能冷却", "左键点击效果等同于快捷键。"));
         return button;
+    }
+
+    private Element yamatoCooldownOverlay(@Nullable Floatp cooldownValue, @Nullable Floatp cooldownTotal){
+        return new Element(){
+            @Override
+            public void draw(){
+                float cooldown = cooldownValue == null ? 0f : cooldownValue.get();
+                if(cooldown <= 0.001f) return;
+
+                float total = cooldownTotal == null ? 1f : Math.max(cooldownTotal.get(), 0.001f);
+                float cx = x + width / 2f;
+                float cy = y + height / 2f;
+                float fixedAngle = 90f;
+                float progress = 1f - Mathf.clamp(cooldown / total);
+                float movingAngle = fixedAngle - progress * 360f;
+                float handLen = width * 0.20f;
+
+                Draw.color(Color.valueOf("b6bcc5"));
+                Lines.stroke(1.25f);
+                Lines.line(cx, cy, cx + Angles.trnsx(fixedAngle, handLen), cy + Angles.trnsy(fixedAngle, handLen));
+                Lines.line(cx, cy, cx + Angles.trnsx(movingAngle, handLen), cy + Angles.trnsy(movingAngle, handLen));
+                Draw.reset();
+            }
+        };
     }
 
     private void drawPerimeterDot(float x, float y, float width, float height, float distance, float radius){
@@ -2267,36 +2271,7 @@ public class UnitAbilityPanel extends Table{
         keyTable.add(keyLabel).pad(3f);
         stack.add(keyTable);
 
-        stack.add(new Element(){
-            @Override
-            public void draw(){
-                float cooldown = selectedHurricaneLockCooldown();
-                float flash = selectedHurricaneLockFlash();
-                float cx = x + width / 2f;
-                float cy = y + height / 2f;
-
-                if(cooldown > 0.001f){
-                    float total = UnitTypes.hurricaneLockCooldownDuration();
-                    float fastAngle = -(Time.time / (4f * 60f)) * 360f;
-                    float slowAngle = -((1f - Mathf.clamp(cooldown / total)) * 360f);
-                    float fastLen = width * 0.20f;
-                    float slowLen = width * 0.14f;
-
-                    Draw.color(Color.valueOf("b6bcc5"));
-                    Lines.stroke(1.25f);
-                    Lines.line(cx, cy, cx + Angles.trnsx(fastAngle, fastLen), cy + Angles.trnsy(fastAngle, fastLen));
-                    Lines.line(cx, cy, cx + Angles.trnsx(slowAngle, slowLen), cy + Angles.trnsy(slowAngle, slowLen));
-                }
-
-                if(flash > 0.001f){
-                    float alpha = Mathf.clamp(flash / UnitTypes.hurricaneLockFlashDuration());
-                    Draw.color(Color.white, alpha * 0.75f);
-                    Fill.circle(cx, cy, width * 0.22f + (1f - alpha) * 3f);
-                }
-
-                Draw.reset();
-            }
-        });
+        stack.add(yamatoCooldownOverlay(this::selectedHurricaneLockCooldown, UnitTypes::hurricaneLockCooldownDuration));
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
@@ -2894,15 +2869,6 @@ public class UnitAbilityPanel extends Table{
         for(Unit unit : control.input.selectedUnits){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             result = Math.max(result, UnitTypes.hurricaneLockCooldown(unit));
-        }
-        return result;
-    }
-
-    private float selectedHurricaneLockFlash(){
-        float result = 0f;
-        for(Unit unit : control.input.selectedUnits){
-            if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
-            result = Math.max(result, UnitTypes.hurricaneLockFlash(unit));
         }
         return result;
     }

@@ -1076,7 +1076,10 @@ public class MobileInput extends InputHandler implements GestureListener{
                 player.shooting = false;
                 if(Core.settings.getBool("autotarget") && !(player.unit() instanceof BlockUnitUnit u && u.tile() instanceof ControlBlock c && !c.shouldAutoTarget())){
                     if(unit.type.canAttack){
-                        target = Units.closestTarget(unit.team, unit.x, unit.y, range, unit.hitSize / 2f, u -> u.checkTarget(type.targetAir, type.targetGround), u -> type.targetGround && type.targetBuildingsMobile);
+                        target = Units.closestTarget(unit.team, unit.x, unit.y, range, unit.hitSize / 2f, u -> u.checkTarget(type.targetAir, type.targetGround), u ->
+                            type.targetBuildingsMobile &&
+                            Units.canTargetBuilding(type.targetAir, type.targetGround, u) &&
+                            !Units.preferGroundWeapons(unit, type.targetAir, type.targetGround, u));
                     }
 
                     if(allowHealing && target == null){

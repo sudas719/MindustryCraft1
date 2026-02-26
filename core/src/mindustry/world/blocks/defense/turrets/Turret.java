@@ -602,14 +602,17 @@ public class Turret extends ReloadTurret{
         }
 
         protected Posc findEnemy(float range){
+            var ammo = peekAmmo();
+            boolean buildings = targetBlocks && (ammo == null || ammo.targetBlocks), missiles = ammo == null || ammo.targetMissiles;
+
             if(targetAir && !targetGround){
-                return Units.bestEnemy(team, x, y, range, hitSize() / 2f, e -> !e.dead() && !e.isGrounded() && unitFilter.get(e), unitSort);
+                return Units.bestTarget(team, x, y, range, hitSize() / 2f,
+                    e -> !e.dead() && !e.isGrounded() && unitFilter.get(e) && (missiles || !(e instanceof TimedKillc)),
+                    b -> buildings && b.block.targetableAir && buildingFilter.get(b), unitSort);
             }else{
-                var ammo = peekAmmo();
-                boolean buildings = targetGround && targetBlocks && (ammo == null || ammo.targetBlocks), missiles = ammo == null || ammo.targetMissiles;
                 return Units.bestTarget(team, x, y, range, hitSize() / 2f,
                     e -> !e.dead() && unitFilter.get(e) && (e.isGrounded() || targetAir) && (!e.isGrounded() || targetGround) && (missiles || !(e instanceof TimedKillc)),
-                    b -> buildings && buildingFilter.get(b), unitSort);
+                    b -> buildings && Units.canTargetBuilding(targetAir, targetGround, b) && buildingFilter.get(b), unitSort);
             }
         }
 

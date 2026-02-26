@@ -700,28 +700,24 @@ public class UnitSelectionGrid extends Table{
                         }));
                     });
 
-                    //Weapon icon (single icon if unit has weapons)
-                    if(unit.type.weapons.size > 0){
-                        //Determine if unit can attack both air and ground
-                        boolean hasAntiAir = false;
-                        boolean hasAntiGround = false;
+                    Seq<Weapon> shownWeapons = displayedWeapons(unit);
+                    for(Weapon shownWeapon : shownWeapons){
+                        if(shownWeapon == null || shownWeapon.bullet == null) continue;
 
-                        for(var weapon : unit.type.weapons){
-                            if(weapon.bullet != null){
-                                if(weapon.bullet.collidesAir) hasAntiAir = true;
-                                if(weapon.bullet.collidesGround) hasAntiGround = true;
-                            }
-                        }
-
-                        final boolean canAttackAir = hasAntiAir;
-                        final boolean canAttackGround = hasAntiGround;
-                        final boolean showSiegeClock = UnitTypes.isSiegeTank(unit);
+                        boolean weaponTargetsAir = shownWeapon.bullet.collidesAir;
+                        boolean weaponTargetsGround = shownWeapon.bullet.collidesGround;
+                        boolean showSiegeClock = UnitTypes.isSiegeTank(unit)
+                        && "precept-siege-weapon".equals(shownWeapon.name)
+                        && UnitTypes.preceptIsSieged(unit);
 
                         iconsRow.table(weaponIcon -> {
                             Stack iconStack = new Stack();
                             iconStack.add(portraitBorderElement());
 
-                            Image weaponImage = new Image(canAttackAir && canAttackGround ? Icon.units : Icon.defense);
+                            Image weaponImage = new Image(weaponTargetsGround ? Icon.defense : Icon.units);
+                            if(weaponTargetsAir && weaponTargetsGround){
+                                weaponImage = new Image(Icon.units);
+                            }
                             weaponImage.setScaling(Scaling.fit);
                             Table iconInner = new Table();
                             iconInner.add(weaponImage).size(20f);
@@ -731,31 +727,21 @@ public class UnitSelectionGrid extends Table{
                                 iconStack.add(new Element(){
                                     @Override
                                     public void draw(){
-                                        if(!UnitTypes.preceptIsSieged(unit)) return;
-
                                         float cooldown = UnitTypes.preceptSiegeCooldown(unit);
-                                        float flash = UnitTypes.preceptSiegeFlash(unit);
-                                        float total = UnitTypes.preceptSiegeShotCooldownDuration();
+                                        if(cooldown <= 0.001f) return;
+
+                                        float total = Math.max(UnitTypes.preceptSiegeShotCooldownDuration(), 0.001f);
                                         float cx = x + width / 2f;
                                         float cy = y + height / 2f;
+                                        float fixedAngle = 90f;
+                                        float progress = 1f - Mathf.clamp(cooldown / total);
+                                        float movingAngle = fixedAngle - progress * 360f;
+                                        float handLen = width * 0.20f;
 
-                                        if(cooldown > 0.001f && total > 0.001f){
-                                            float fastAngle = -(Time.time / total) * 360f;
-                                            float slowAngle = -((1f - Mathf.clamp(cooldown / total)) * 360f);
-                                            float fastLen = width * 0.20f;
-                                            float slowLen = width * 0.14f;
-
-                                            Draw.color(Color.valueOf("b6bcc5"));
-                                            Lines.stroke(1.25f);
-                                            Lines.line(cx, cy, cx + Angles.trnsx(fastAngle, fastLen), cy + Angles.trnsy(fastAngle, fastLen));
-                                            Lines.line(cx, cy, cx + Angles.trnsx(slowAngle, slowLen), cy + Angles.trnsy(slowAngle, slowLen));
-                                        }
-
-                                        if(flash > 0.001f){
-                                            float alpha = Mathf.clamp(flash / UnitTypes.preceptSiegeFlashDuration());
-                                            Draw.color(Color.white, alpha * 0.75f);
-                                            Fill.circle(cx, cy, width * 0.22f + (1f - alpha) * 3f);
-                                        }
+                                        Draw.color(Color.valueOf("b6bcc5"));
+                                        Lines.stroke(1.25f);
+                                        Lines.line(cx, cy, cx + Angles.trnsx(fixedAngle, handLen), cy + Angles.trnsy(fixedAngle, handLen));
+                                        Lines.line(cx, cy, cx + Angles.trnsx(movingAngle, handLen), cy + Angles.trnsy(movingAngle, handLen));
 
                                         Draw.reset();
                                     }
@@ -768,22 +754,14 @@ public class UnitSelectionGrid extends Table{
                                 t.add(weaponLabel).color(Color.yellow).row();
                                 t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
 
-                                Weapon shownWeapon = null;
-                                if(UnitTypes.isSiegeTank(unit) && UnitTypes.preceptIsSieged(unit)){
-                                    shownWeapon = unit.type.weapons.find(w -> "precept-siege-weapon".equals(w.name));
-                                }else{
-                                    shownWeapon = unit.type.weapons.find(w -> !"precept-siege-weapon".equals(w.name));
-                                }
-
-                                if(shownWeapon == null){
-                                    shownWeapon = unit.type.weapons.find(w -> w.bullet != null);
-                                }
-                                if(shownWeapon == null || shownWeapon.bullet == null) return;
-
                                 float damage = displayedWeaponDamage(unit, shownWeapon);
                                 float range = displayedWeaponRange(unit, shownWeapon);
+                                Seq<String> bonusLines = displayedDamageBonusLines(unit, shownWeapon);
 
                                 t.add(damageLabel + ": " + fixed2(damage)).left().row();
+                                for(String line : bonusLines){
+                                    t.add(line).left().row();
+                                }
                                 t.add(rangeLabel + ": " + fixed2(range / 8f) + " tiles").left().row();
 
                                 if(shownWeapon.reload > 0){
@@ -795,8 +773,8 @@ public class UnitSelectionGrid extends Table{
                                     t.add(multiAttackLabel + ": " + multiAttack + "x").left().row();
                                 }
 
-                                String target = canAttackAir && canAttackGround ? targetGroundAir :
-                                               canAttackAir ? targetAir : targetGround;
+                                String target = weaponTargetsAir && weaponTargetsGround ? targetGroundAir :
+                                weaponTargetsAir ? targetAir : targetGround;
                                 t.add(targetLabel + ": " + target).left().row();
                             }));
                         });
@@ -1455,15 +1433,233 @@ public class UnitSelectionGrid extends Table{
         return Strings.autoFixed(value, 2);
     }
 
+    private void addDisplayedWeapon(Seq<Weapon> shown, @Nullable Weapon weapon){
+        if(weapon == null || weapon.bullet == null) return;
+        if(!shown.contains(weapon, true)) shown.add(weapon);
+    }
+
+    private Seq<Weapon> displayedWeapons(Unit unit){
+        Seq<Weapon> shown = new Seq<>(2);
+        if(unit == null || unit.type == null || unit.type.weapons == null || unit.type.weapons.isEmpty()) return shown;
+
+        if(UnitTypes.isSiegeTank(unit)){
+            if(UnitTypes.preceptIsSieged(unit)){
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> "precept-siege-weapon".equals(w.name) && w.bullet != null));
+            }else{
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> !"precept-siege-weapon".equals(w.name) && w.bullet != null));
+            }
+            return shown;
+        }
+
+        if(UnitTypes.isThor(unit)){
+            addDisplayedWeapon(shown, unit.type.weapons.find(w -> "scepter-weapon".equals(w.name) && w.bullet != null));
+            if(UnitTypes.scepterDisplayImpactMode(unit)){
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> "disperse-mid".equals(w.name) && w.bullet != null));
+            }else{
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> "scepter-mount".equals(w.name) && w.bullet != null));
+            }
+            if(!shown.isEmpty()) return shown;
+        }
+
+        if(UnitTypes.isViking(unit)){
+            if(UnitTypes.vikingIsMechMode(unit)){
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> "viking-gatling".equals(w.name) && w.bullet != null));
+            }else{
+                addDisplayedWeapon(shown, unit.type.weapons.find(w -> w.bullet != null && w.bullet.collidesAir && !w.bullet.collidesGround));
+            }
+            if(!shown.isEmpty()) return shown;
+        }
+
+        Weapon battlecruiserGround = unit.type.weapons.find(w -> "battlecruiser-ground-laser".equals(w.name) && w.bullet != null);
+        Weapon battlecruiserAir = unit.type.weapons.find(w -> "battlecruiser-air-laser".equals(w.name) && w.bullet != null);
+        if(battlecruiserGround != null || battlecruiserAir != null){
+            addDisplayedWeapon(shown, battlecruiserGround);
+            addDisplayedWeapon(shown, battlecruiserAir);
+            if(!shown.isEmpty()) return shown;
+        }
+
+        Weapon ground = unit.type.weapons.find(w -> w.bullet != null && w.bullet.collidesGround && !w.bullet.collidesAir);
+        Weapon air = unit.type.weapons.find(w -> w.bullet != null && w.bullet.collidesAir && !w.bullet.collidesGround);
+        if(ground == null){
+            ground = unit.type.weapons.find(w -> w.bullet != null && w.bullet.collidesGround);
+        }
+        if(air == null){
+            Weapon finalGround = ground;
+            air = unit.type.weapons.find(w -> w.bullet != null && w.bullet.collidesAir && w != finalGround);
+        }
+
+        addDisplayedWeapon(shown, ground);
+        addDisplayedWeapon(shown, air);
+        if(shown.isEmpty()){
+            addDisplayedWeapon(shown, unit.type.weapons.find(w -> w.bullet != null));
+        }
+        if(shown.size > 2){
+            shown.truncate(2);
+        }
+        return shown;
+    }
+
+    private @Nullable Weapon displayedWeapon(Unit unit){
+        Seq<Weapon> shown = displayedWeapons(unit);
+        return shown.isEmpty() ? null : shown.first();
+    }
+
     private float displayedWeaponDamage(Unit unit, Weapon weapon){
         if(weapon == null || weapon.bullet == null) return 0f;
-        if(UnitTypes.isHurricane(unit)) return 18f;
+
+        if(unit.type == UnitTypes.mace){
+            return weapon.bullet.damage + UnitTypes.vehicleWeaponMaceBaseBonus(unit.team);
+        }
+        if(unit.type == UnitTypes.locus){
+            return weapon.bullet.damage + UnitTypes.vehicleWeaponLocusBaseBonus(unit.team);
+        }
+        if(UnitTypes.isGhost(unit)){
+            return weapon.bullet.damage + UnitTypes.infantryWeaponBaseDamageBonus(unit.team);
+        }
+        if(unit.type == UnitTypes.fortress){
+            return weapon.bullet.damage + UnitTypes.infantryWeaponBaseDamageBonus(unit.team);
+        }
+
+        if(UnitTypes.isHurricane(unit)){
+            return UnitTypes.hurricaneLockActive(unit) ? 20f : 18f;
+        }
+        if(UnitTypes.isSiegeTank(unit)){
+            if("precept-siege-weapon".equals(weapon.name)){
+                return weapon.bullet.damage + UnitTypes.vehicleWeaponPreceptSiegeBaseBonus(unit.team);
+            }
+            return weapon.bullet.damage + UnitTypes.vehicleWeaponPreceptMobileBaseBonus(unit.team);
+        }
+
+        if(UnitTypes.isThor(unit)){
+            if("scepter-mount".equals(weapon.name)){
+                return weapon.bullet.damage + UnitTypes.vehicleWeaponScepterBurstBaseBonus(unit.team);
+            }
+            if("disperse-mid".equals(weapon.name)){
+                return weapon.bullet.damage + UnitTypes.vehicleWeaponScepterImpactBaseBonus(unit.team);
+            }
+            if("scepter-weapon".equals(weapon.name)){
+                return weapon.bullet.damage + UnitTypes.vehicleWeaponScepterGroundBaseBonus(unit.team);
+            }
+        }
+
+        if(UnitTypes.isViking(unit)){
+            if("viking-gatling".equals(weapon.name)){
+                return weapon.bullet.damage + UnitTypes.shipWeaponVikingMechBaseBonus(unit.team);
+            }
+            return weapon.bullet.damage + UnitTypes.shipWeaponVikingFighterBaseBonus(unit.team);
+        }
+
         return Math.max(weapon.bullet.damage, weapon.bullet.splashDamage);
+    }
+
+    private Seq<String> displayedDamageBonusLines(Unit unit, Weapon weapon){
+        Seq<String> lines = new Seq<>();
+        if(unit == null || weapon == null || weapon.bullet == null) return lines;
+
+        if(unit.type == UnitTypes.locus && "locus-weapon".equals(weapon.name)){
+            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team);
+            lines.add("对" + armorTypeName(ArmorType.light) + ": " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isGhost(unit)){
+            float special = weapon.bullet.damage + 10f + UnitTypes.infantryWeaponGhostLightBonus(unit.team);
+            lines.add("对" + armorTypeName(ArmorType.light) + ": " + fixed2(special));
+            return lines;
+        }
+
+        if(unit.type == UnitTypes.fortress){
+            float special = weapon.bullet.damage + 10f + UnitTypes.infantryWeaponFortressHeavyBonus(unit.team);
+            lines.add("对" + armorTypeName(ArmorType.heavy) + ": " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isSiegeTank(unit)){
+            float special;
+            if("precept-siege-weapon".equals(weapon.name)){
+                special = weapon.bullet.damage + 30f + UnitTypes.vehicleWeaponPreceptSiegeHeavyBonus(unit.team);
+            }else{
+                special = weapon.bullet.damage + 10f + UnitTypes.vehicleWeaponPreceptMobileHeavyBonus(unit.team);
+            }
+            lines.add("对" + armorTypeName(ArmorType.heavy) + ": " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isThor(unit)){
+            if("scepter-mount".equals(weapon.name)){
+                float special = weapon.bullet.damage + 6f + UnitTypes.vehicleWeaponScepterBurstLightBonus(unit.team);
+                lines.add("对" + armorTypeName(ArmorType.light) + ": " + fixed2(special));
+            }else if("disperse-mid".equals(weapon.name)){
+                float special = weapon.bullet.damage + 10f + UnitTypes.vehicleWeaponScepterImpactHeavyBonus(unit.team);
+                lines.add("对" + unitClassName(UnitClass.heavy) + "单位: " + fixed2(special));
+            }
+            return lines;
+        }
+
+        if(UnitTypes.isViking(unit)){
+            if("viking-gatling".equals(weapon.name)){
+                float special = 20f + UnitTypes.shipWeaponVikingMechMechanicalBonus(unit.team);
+                lines.add("对" + unitClassName(UnitClass.mechanical) + "单位: " + fixed2(special));
+            }else{
+                float special = 14f + UnitTypes.shipWeaponVikingFighterHeavyBonus(unit.team);
+                lines.add("对" + armorTypeName(ArmorType.heavy) + ": " + fixed2(special));
+            }
+            return lines;
+        }
+
+        if(unit.type == UnitTypes.locus && "locus-weapon".equals(weapon.name)){
+            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team);
+            lines.add("对" + armorTypeName(ArmorType.light) + "(护甲): " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isGhost(unit)){
+            float special = weapon.bullet.damage + UnitTypes.infantryWeaponGhostLightBonus(unit.team);
+            lines.add("对" + armorTypeName(ArmorType.light) + "(护甲): " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isSiegeTank(unit)){
+            float special;
+            if("precept-siege-weapon".equals(weapon.name)){
+                special = weapon.bullet.damage + 30f + UnitTypes.vehicleWeaponPreceptSiegeHeavyBonus(unit.team);
+            }else{
+                special = weapon.bullet.damage + 10f + UnitTypes.vehicleWeaponPreceptMobileHeavyBonus(unit.team);
+            }
+            lines.add("对" + armorTypeName(ArmorType.heavy) + "(护甲): " + fixed2(special));
+            return lines;
+        }
+
+        if(UnitTypes.isThor(unit)){
+            if("scepter-mount".equals(weapon.name)){
+                float special = weapon.bullet.damage + 6f + UnitTypes.vehicleWeaponScepterBurstLightBonus(unit.team);
+                lines.add("对" + armorTypeName(ArmorType.light) + "(护甲): " + fixed2(special));
+            }else if("disperse-mid".equals(weapon.name)){
+                float special = weapon.bullet.damage + 10f + UnitTypes.vehicleWeaponScepterImpactHeavyBonus(unit.team);
+                lines.add("对" + unitClassName(UnitClass.heavy) + "(单位): " + fixed2(special));
+            }
+            return lines;
+        }
+
+        if(UnitTypes.isViking(unit)){
+            if("viking-gatling".equals(weapon.name)){
+                float special = 20f + UnitTypes.shipWeaponVikingMechMechanicalBonus(unit.team);
+                lines.add("对" + unitClassName(UnitClass.mechanical) + "(单位): " + fixed2(special));
+            }else{
+                float special = 14f + UnitTypes.shipWeaponVikingFighterHeavyBonus(unit.team);
+                lines.add("对" + armorTypeName(ArmorType.heavy) + "(护甲): " + fixed2(special));
+            }
+            return lines;
+        }
+
+        return lines;
     }
 
     private float displayedWeaponRange(Unit unit, Weapon weapon){
         if(weapon == null || weapon.bullet == null) return 0f;
-        if(UnitTypes.isHurricane(unit)) return UnitTypes.hurricaneBaseRange();
+        if(UnitTypes.isHurricane(unit)){
+            return UnitTypes.hurricaneLockActive(unit) ? UnitTypes.hurricaneLockRange() : UnitTypes.hurricaneBaseRange();
+        }
         return weapon.range();
     }
 
