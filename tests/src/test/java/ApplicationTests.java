@@ -195,6 +195,7 @@ public class ApplicationTests{
         Rules rules = new Rules();
         rules.attackMode = true;
         rules.buildSpeedMultiplier = 99f;
+        rules.setTeamAlliance(Team.sharded, Team.crux, true);
 
         TypeIO.writeRules(new Writes(new ByteBufferOutput(buffer)), rules);
         buffer.position(0);
@@ -202,6 +203,7 @@ public class ApplicationTests{
 
         assertEquals(rules.buildSpeedMultiplier, res.buildSpeedMultiplier);
         assertEquals(rules.attackMode, res.attackMode);
+        assertTrue(res.teamsAllied(Team.sharded, Team.crux));
     }
 
     @Test
@@ -210,6 +212,7 @@ public class ApplicationTests{
         rules.attackMode = true;
         rules.tags.put("blah", "bleh");
         rules.buildSpeedMultiplier = 99.1f;
+        rules.setTeamAlliance(Team.sharded, Team.crux, true);
 
         String str = JsonIO.write(rules);
         Rules res = JsonIO.read(Rules.class, str);
@@ -217,10 +220,27 @@ public class ApplicationTests{
         assertEquals(rules.buildSpeedMultiplier, res.buildSpeedMultiplier);
         assertEquals(rules.attackMode, res.attackMode);
         assertEquals(rules.tags.get("blah"), res.tags.get("blah"));
+        assertTrue(res.teamsAllied(Team.sharded, Team.crux));
 
         String str2 = JsonIO.write(new Rules(){{
             attackMode = true;
         }});
+    }
+
+    @Test
+    void teamAllianceTargeting(){
+        Rules rules = new Rules();
+        assertTrue(rules.teamsHostile(Team.sharded, Team.crux));
+        assertFalse(rules.teamsAllied(Team.sharded, Team.crux));
+
+        rules.setTeamAlliance(Team.sharded, Team.crux, true);
+        assertTrue(rules.teamsAllied(Team.sharded, Team.crux));
+        assertTrue(rules.teamsAllied(Team.crux, Team.sharded));
+        assertFalse(rules.teamsHostile(Team.sharded, Team.crux));
+
+        rules.setTeamAlliance(Team.sharded, Team.crux, false);
+        assertFalse(rules.teamsAllied(Team.sharded, Team.crux));
+        assertTrue(rules.teamsHostile(Team.sharded, Team.crux));
     }
 
     @Test

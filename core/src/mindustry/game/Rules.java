@@ -26,6 +26,8 @@ public class Rules{
     public boolean infiniteResources;
     /** Team-specific rules. */
     public TeamRules teams = new TeamRules();
+    /** Team alliance pairs stored as compact unordered team IDs (min << 8 | max). */
+    public IntSet teamAlliances = new IntSet();
     /** Whether the waves come automatically on a timer. If not, waves come when the play button is pressed. */
     public boolean waveTimer = true;
     /** Whether the waves can be manually summoned with the play button. */
@@ -179,9 +181,9 @@ public class Rules{
     /** If fog = true, this is whether static (black) fog is enabled. */
     public boolean staticFog = true;
     /** Color for static, undiscovered fog of war areas. */
-    public Color staticColor = new Color(0f, 0f, 0f, 1f);
+    public Color staticColor = new Color(0f, 0f, 0f, 0.6f);
     /** Color for discovered but un-monitored fog of war areas. */
-    public Color dynamicColor = new Color(0f, 0f, 0f, 0.5f);
+    public Color dynamicColor = new Color(0f, 0f, 0f, 0.3f);
     /** Whether ambient lighting is enabled. */
     public boolean lighting = false;
     /** Ambient light color, used when lighting is enabled. */
@@ -287,6 +289,43 @@ public class Rules{
 
     public float buildSpeed(Team team){
         return buildSpeedMultiplier * teams.get(team).buildSpeedMultiplier;
+    }
+
+    /** @return whether two teams are allied for targeting/AI purposes. */
+    public boolean teamsAllied(Team first, Team second){
+        if(first == second) return true;
+        return teamAlliances.contains(allianceKey(first, second));
+    }
+
+    /** @return whether two teams are hostile for targeting/AI purposes. */
+    public boolean teamsHostile(Team first, Team second){
+        return first != second && !teamsAllied(first, second);
+    }
+
+    /** Configures whether two teams are allied for targeting/AI purposes. */
+    public void setTeamAlliance(Team first, Team second, boolean allied){
+        if(first == null || second == null || first == second) return;
+
+        int key = allianceKey(first, second);
+        if(allied){
+            teamAlliances.add(key);
+        }else{
+            teamAlliances.remove(key);
+        }
+
+        if(Vars.state != null && Vars.state.teams != null){
+            Vars.state.teams.refreshEnemies();
+        }
+    }
+
+    private int allianceKey(Team first, Team second){
+        int a = first.id & 0xff, b = second.id & 0xff;
+        if(a > b){
+            int temp = a;
+            a = b;
+            b = temp;
+        }
+        return (a << 8) | b;
     }
 
     public boolean isBanned(Block block){

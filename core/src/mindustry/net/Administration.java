@@ -2,6 +2,7 @@ package mindustry.net;
 
 import arc.*;
 import arc.func.*;
+import arc.math.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.util.Log.*;
@@ -13,6 +14,9 @@ import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
 
+import java.nio.charset.*;
+import java.security.*;
+import java.util.*;
 import java.util.regex.*;
 
 import static mindustry.Vars.*;
@@ -31,7 +35,6 @@ public class Administration{
     private boolean modified, loaded;
     /** All player info. Maps UUIDs to info. This persists throughout restarts. Do not modify directly. */
     public ObjectMap<String, PlayerInfo> playerInfo = new ObjectMap<>();
-
     public Administration(){
         load();
 
@@ -209,6 +212,92 @@ public class Administration{
         info.timesJoined++;
         if(!info.names.contains(name, false)) info.names.add(name);
         if(!info.ips.contains(ip, false)) info.ips.add(ip);
+    }
+
+    public String bindDeviceIdentity(String id, String deviceHash){
+        boolean changed = false;
+        PlayerInfo info = getCreateInfo(id);
+        if(deviceHash != null && !deviceHash.equals(info.deviceHash)){
+            info.deviceHash = deviceHash;
+            changed = true;
+        }
+
+        String mergedUid = generateWayzerBoundShortUid(id);
+        if(!mergedUid.equals(info.shortUid)){
+            info.shortUid = mergedUid;
+            changed = true;
+        }
+
+        if(changed) save();
+        return info.shortUid;
+    }
+
+    private String generateWayzerBoundShortUid(String id){
+        String uid = wayzerShortUid(id);
+        if(isShortUidUniqueFor(uid, id)){
+            return uid;
+        }
+
+        for(int i = 1; i <= 1000000; i++){
+            uid = wayzerShortUid(id + "#" + i);
+            if(isShortUidUniqueFor(uid, id)){
+                return uid;
+            }
+        }
+
+        throw new ArcRuntimeException("No available 3-character identity UID slots for this hash.");
+    }
+
+    private String wayzerShortUid(String str){
+        try{
+            byte[] raw = str.getBytes(StandardCharsets.UTF_8);
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+
+            byte[] first = md5.digest(raw);
+            md5.reset();
+            md5.update(first);
+            byte[] second = md5.digest(raw);
+
+            String encoded = Base64.getEncoder().encodeToString(second);
+            if(encoded.length() < 3) throw new ArcRuntimeException("Encoded UID length too short.");
+
+            char[] out = new char[3];
+            for(int i = 0; i < out.length; i++){
+                out[i] = mapWayzerUidChar(encoded.charAt(i));
+            }
+            return new String(out);
+        }catch(Exception e){
+            throw new ArcRuntimeException("Failed to generate WayZer-style UID.", e);
+        }
+    }
+
+    private char mapWayzerUidChar(char c){
+        return switch(c){
+            case 'k' -> 'K';
+            case 'S' -> 's';
+            case 'l' -> 'L';
+            case '+' -> 'A';
+            case '/' -> 'B';
+            default -> c;
+        };
+    }
+
+    private boolean isShortUidUniqueFor(String uid, @Nullable String selfId){
+        for(PlayerInfo info : playerInfo.values()){
+            if(info.shortUid != null && uid.equalsIgnoreCase(info.shortUid) && (selfId == null || !selfId.equals(info.id))){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isValidShortUid(String uid){
+        if(uid == null || uid.length() != 3) return false;
+        for(int i = 0; i < uid.length(); i++){
+            char c = uid.charAt(i);
+            if(!Character.isLetterOrDigit(c)) return false;
+        }
+        return true;
     }
 
     public boolean banPlayer(String uuid){
@@ -450,6 +539,16 @@ public class Administration{
         return null;
     }
 
+    public @Nullable PlayerInfo findByShortUid(String shortUid){
+        if(shortUid == null) return null;
+        for(PlayerInfo info : playerInfo.values()){
+            if(info.shortUid != null && info.shortUid.equalsIgnoreCase(shortUid)){
+                return info;
+            }
+        }
+        return null;
+    }
+
     public Seq<PlayerInfo> getWhitelisted(){
         return playerInfo.values().toSeq().select(p -> isWhitelisted(p.id, p.adminUsid));
     }
@@ -536,7 +635,11 @@ public class Administration{
         autosaveAmount = new Config("autosaveAmount", "The maximum amount of autosaves. Older ones get replaced.", 10),
         autosaveSpacing = new Config("autosaveSpacing", "Spacing between autosaves in seconds.", 60 * 5),
         debug = new Config("debug", "Enable debug logging.", false, () -> Log.level = debug() ? LogLevel.debug : LogLevel.info),
-        snapshotInterval = new Config("snapshotInterval", "Client entity snapshot interval in ms.", 200),
+        snapshotInterval = new Config("snapshotInterval", "Client entity snapshot interval in ms.", 100),
+        snapshotIntervalActive = new Config("snapshotIntervalActive", "Client entity snapshot interval in ms while player is active.", 50),
+        spectatorSnapshotInterval = new Config("spectatorSnapshotInterval", "Observer entity snapshot interval in ms. Set to 0 to disable.", 3000),
+        spectatorCull = new Config("spectatorCull", "Whether observer entity snapshots are culled outside observer camera.", true),
+        spectatorCullMargin = new Config("spectatorCullMargin", "Observer camera culling margin in world units.", 96),
         autoPause = new Config("autoPause", "Whether the game should pause when nobody is online.", false),
         roundExtraTime = new Config("roundExtraTime", "Time before loading a new map after the gameover, in seconds.", 12),
         maxLogLength = new Config("maxLogLength", "The Maximum log file size, in bytes.", 1024 * 1024 * 5),
@@ -617,6 +720,8 @@ public class Administration{
         public Seq<String> ips = new Seq<>();
         public Seq<String> names = new Seq<>();
         public String adminUsid;
+        public String deviceHash;
+        public String shortUid;
         public int timesKicked;
         public int timesJoined;
         public boolean banned, admin;

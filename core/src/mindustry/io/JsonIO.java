@@ -2,6 +2,7 @@ package mindustry.io;
 
 import arc.graphics.*;
 import arc.math.geom.*;
+import arc.struct.*;
 import arc.util.*;
 import arc.util.serialization.*;
 import arc.util.serialization.Json.*;
@@ -179,6 +180,31 @@ public class JsonIO{
             @Override
             public Team read(Json json, JsonValue jsonData, Class type){
                 return Team.get(jsonData.asInt());
+            }
+        });
+
+        json.setSerializer(IntSet.class, new Serializer<>(){
+            @Override
+            public void write(Json json, IntSet object, Class knownType){
+                json.writeArrayStart();
+                var iter = object.iterator();
+                while(iter.hasNext){
+                    json.writeValue(iter.next());
+                }
+                json.writeArrayEnd();
+            }
+
+            @Override
+            public IntSet read(Json json, JsonValue jsonData, Class type){
+                IntSet out = new IntSet();
+                if(jsonData.isArray()){
+                    for(var value = jsonData.child; value != null; value = value.next){
+                        out.add(value.asInt());
+                    }
+                }else{
+                    json.readFields(out, jsonData);
+                }
+                return out;
             }
         });
 

@@ -412,7 +412,8 @@ public class Renderer implements ApplicationListener{
         Draw.reset();
 
         Draw.draw(Layer.overlayUI, overlays::drawTop);
-        if(state.rules.fog){
+        boolean spectatorView = net.active() && player != null && player.team() != null && (player.team() == mindustry.game.Team.derelict || !player.team().data().isAlive());
+        if(state.rules.fog && !spectatorView){
             Draw.draw(Layer.fogOfWar, fog::drawFog);
             Draw.draw(Layer.fogOfWar + 0.01f, overlays::drawRadarIntelPostFog);
         }

@@ -287,6 +287,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Replace
     public boolean inFogTo(Team viewer){
         if(UnitTypes.widowHiddenFrom(self(), viewer)) return true;
+        if(viewer == Team.derelict || !viewer.data().isAlive()) return false;
         if(this.team == viewer || !state.rules.fog) return false;
 
         if(hitSize <= 16f){

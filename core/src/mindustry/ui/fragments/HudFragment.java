@@ -33,6 +33,8 @@ import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
+import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
+import mindustry.world.blocks.units.UnitFactory.UnitFactoryBuild;
 import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
@@ -40,6 +42,14 @@ import static mindustry.gen.Tex.*;
 
 public class HudFragment{
     private static final float dsize = 65f, pauseHeight = 36f;
+    private static final int spectatorRefreshFrames = 20;
+    private static final int spectatorMaxQueueIcons = 10;
+    private static final int spectatorApmWindowFrames = 60 * 60;
+    private static final int spectatorAllFocusId = -1;
+    private static final KeyCode[] spectatorNumberKeys = {
+        KeyCode.num1, KeyCode.num2, KeyCode.num3, KeyCode.num4, KeyCode.num5,
+        KeyCode.num6, KeyCode.num7, KeyCode.num8, KeyCode.num9, KeyCode.num0
+    };
 
     public PlacementFragment blockfrag = new PlacementFragment();
     public CoreItemsDisplay coreItems = new CoreItemsDisplay();
@@ -71,6 +81,38 @@ public class HudFragment{
 
     private Seq<Block> blocksOut = new Seq<>();
     private Table hudLabel;
+
+    private enum SpectatorView{
+        none, queue, units, upgrades, apm
+    }
+
+    private boolean spectatorExpanded = false;
+    private SpectatorView spectatorView = SpectatorView.none;
+    private int spectatorFocusPlayer = -1;
+    private final Seq<Player> spectatorPlayers = new Seq<>();
+    private boolean spectatorCameraExpanded = false;
+    private int spectatorCameraFocusPlayer = spectatorAllFocusId;
+    private boolean spectatorDefaultsApplied = false;
+    private final Seq<Player> spectatorCameraPlayers = new Seq<>();
+
+    private static class SpectatorApm{
+        int totalActions = 0;
+        int lastFrame = 0;
+        int startFrame = 0;
+        IntSeq actionFrames = new IntSeq();
+    }
+
+    private static class SpectatorQueueEntry{
+        UnitType unit;
+        float progress;
+    }
+
+    private static class SpectatorUpgradeEntry{
+        String name;
+        float progress;
+    }
+
+    private static final IntMap<SpectatorApm> spectatorApmData = new IntMap<>();
 
     private static ObjectSet<String> favoriteBlocks = new ObjectSet<>();
     private static String lastFavorited = null;
@@ -295,6 +337,15 @@ public class HudFragment{
                 hudLabel.color.a = 0f;
             }
             showHudText = false;
+            spectatorExpanded = false;
+            spectatorView = SpectatorView.none;
+            spectatorFocusPlayer = -1;
+            spectatorPlayers.clear();
+            spectatorCameraExpanded = false;
+            spectatorCameraFocusPlayer = spectatorAllFocusId;
+            spectatorDefaultsApplied = false;
+            spectatorCameraPlayers.clear();
+            spectatorApmData.clear();
         });
 
         //paused table
@@ -599,36 +650,155 @@ public class HudFragment{
                 .with(p -> p.visible(() -> (p.color.a = Mathf.lerpDelta(p.color.a, Mathf.num(showHudText), 0.2f)) >= 0.001f));
         });
 
-        //SC2-style resource + population display
+        //SC2-style resource + population display (spectator shows all active players)
         parent.fill(t -> {
             t.name = "sc2-resources";
             t.top().right();
             t.visible(() -> shown);
             t.table(Styles.black6, table -> {
-                table.left().defaults().padLeft(4f).padRight(6f);
+                table.left();
+                float[] timer = {0f};
+                table.update(() -> {
+                    timer[0] += Time.delta;
+                    if(timer[0] < spectatorRefreshFrames) return;
+                    timer[0] = 0f;
 
-                table.label(() -> {
-                    var core = player.team().core();
-                    if(core == null) return "0";
-                    return Integer.toString(core.items.get(Items.graphite));
-                });
-                table.image(Items.graphite.uiIcon).size(16f);
+                    table.clearChildren();
+                    if(!isSpectatorMode()){
+                        table.defaults().padLeft(4f).padRight(6f);
+                        table.label(() -> {
+                            var core = player.team().core();
+                            if(core == null) return "0";
+                            return Integer.toString(core.items.get(Items.graphite));
+                        });
+                        table.image(Items.graphite.uiIcon).size(16f);
 
-                table.label(() -> {
-                    var core = player.team().core();
-                    if(core == null) return "0";
-                    return Integer.toString(core.items.get(Items.highEnergyGas));
-                });
-                table.image(Items.highEnergyGas.uiIcon).size(16f);
+                        table.label(() -> {
+                            var core = player.team().core();
+                            if(core == null) return "0";
+                            return Integer.toString(core.items.get(Items.highEnergyGas));
+                        });
+                        table.image(Items.highEnergyGas.uiIcon).size(16f);
 
-                table.label(() -> {
-                    var data = player.team().data();
-                    if(!data.hasCore()) return "0/0";
-                    int cap = Units.getCap(player.team());
-                    return data.popCount + "/" + cap;
+                        table.label(() -> {
+                            var data = player.team().data();
+                            if(!data.hasCore()) return "0/0";
+                            int cap = Units.getCap(player.team());
+                            return data.popCount + "/" + cap;
+                        });
+                        table.image(Blocks.doorLarge.uiIcon).size(16f);
+                    }else{
+                        rebuildSpectatorPlayers();
+                        table.defaults().left().pad(2f);
+                        for(Player sp : spectatorPlayers){
+                            if(sp == null) continue;
+                            Team team = sp.team();
+                            if(team == null) continue;
+                            var data = team.data();
+                            var core = team.core();
+                            int crystal = core == null ? 0 : core.items.get(Items.graphite);
+                            int gas = core == null ? 0 : core.items.get(Items.highEnergyGas);
+                            int cap = data.hasCore() ? Units.getCap(team) : 0;
+                            String line = "[#" + team.color.toString() + "]" + Strings.stripColors(sp.name) + "[]  "
+                                + crystal + " / " + gas + "  "
+                                + data.popCount + "/" + cap;
+
+                            TextButton button = table.button(line, Styles.flatTogglet, () -> spectatorFocusPlayer = sp.id).left().growX().get();
+                            button.getLabel().setAlignment(Align.left);
+                            button.setChecked(sp.id == spectatorFocusPlayer);
+                            table.row();
+                        }
+                    }
                 });
-                table.image(Blocks.doorLarge.uiIcon).size(16f);
             }).margin(6f);
+        });
+
+        //Spectator options panel
+        parent.fill(t -> {
+            t.name = "spectator-options";
+            t.top().left();
+            t.visible(() -> shown && isSpectatorMode());
+            t.table(Styles.black6, panel -> {
+                float[] timer = {0f};
+                panel.margin(6f);
+                panel.defaults().left().pad(2f);
+                panel.update(() -> {
+                    if(!isSpectatorMode()) return;
+                    updateSpectatorHotkeys();
+
+                    timer[0] += Time.delta;
+                    if(timer[0] < spectatorRefreshFrames) return;
+                    timer[0] = 0f;
+
+                    panel.clearChildren();
+
+                    String expandIcon = spectatorExpanded ? "▼" : "▶";
+                    panel.button(expandIcon + " 观战选项", Styles.flatTogglet, () -> spectatorExpanded = !spectatorExpanded).left().growX();
+                    panel.row();
+
+                    if(!spectatorExpanded) return;
+
+                    panel.add("D 队列/升级" + (spectatorView == SpectatorView.queue ? " [已选]" : "")).left().row();
+                    panel.add("U 总单位" + (spectatorView == SpectatorView.units ? " [已选]" : "")).left().row();
+                    panel.add("G 已完成升级" + (spectatorView == SpectatorView.upgrades ? " [已选]" : "")).left().row();
+                    panel.add("M APM" + (spectatorView == SpectatorView.apm ? " [已选]" : "")).left().row();
+
+                    buildSpectatorModeBody(panel);
+                });
+            }).marginTop(mobile ? dsize + 10f : 132f).width(420f);
+        });
+
+        //Spectator camera perspective panel (above ability panel)
+        parent.fill(t -> {
+            t.name = "spectator-camera-options";
+            t.bottom().right();
+            t.visible(() -> shown && isSpectatorMode());
+            t.table(Styles.black6, panel -> {
+                float[] timer = {0f};
+                panel.margin(6f);
+                panel.defaults().left().pad(2f);
+                panel.update(() -> {
+                    if(!isSpectatorMode()) return;
+                    timer[0] += Time.delta;
+                    if(timer[0] < spectatorRefreshFrames) return;
+                    timer[0] = 0f;
+
+                    panel.clearChildren();
+                    rebuildSpectatorCameraPlayers();
+
+                    Player focus = spectatorCameraFocusedPlayer();
+                    String current = focus == null ? "E: 全部视角" : "视角: " + Strings.stripColors(focus.name);
+                    panel.add(current).left().row();
+
+                    String expandIcon = spectatorCameraExpanded ? "▼" : "▶";
+                    panel.button(expandIcon + " 视角切换", Styles.flatTogglet, () -> spectatorCameraExpanded = !spectatorCameraExpanded).left().growX().row();
+                    if(!spectatorCameraExpanded) return;
+
+                    panel.button("E 全部", Styles.flatt, () -> setSpectatorCameraFocus(spectatorAllFocusId)).left().growX().row();
+
+                    Table list = new Table();
+                    list.left();
+                    for(int i = 0; i < spectatorCameraPlayers.size; i++){
+                        Player sp = spectatorCameraPlayers.get(i);
+                        if(sp == null || sp.team() == null) continue;
+                        String key = i < 10 ? (i == 9 ? "0" : Integer.toString(i + 1)) : "-";
+                        String role = isObserverPlayer(sp) ? "观战" : "在场";
+                        String line = key + " " + role + " [#" + sp.team().color.toString() + "]" + Strings.stripColors(sp.name) + "[]";
+                        list.button(line, Styles.flatt, () -> setSpectatorCameraFocus(sp.id)).left().growX().row();
+                    }
+
+                    ScrollPane pane = new ScrollPane(list, Styles.smallPane);
+                    pane.setFadeScrollBars(false);
+                    pane.setScrollingDisabled(true, false);
+                    panel.add(pane).width(330f).maxHeight(220f).left().growX();
+                });
+            }).width(350f);
+            t.update(() -> {
+                float size = Core.settings.getInt("minimapsize", 200);
+                float offset = Core.settings.getInt("bottomuioffset", 0);
+                float uiHeight = size + 10f;
+                t.marginBottom(uiHeight + offset + 6f);
+            });
         });
 
         leftNoticeGroup = new Table();
@@ -1357,6 +1527,370 @@ public class HudFragment{
                 }
             }
         }).left();
+    }
+
+    public static void recordPlayerAction(@Nullable Player player){
+        if(player == null) return;
+        int id = player.id;
+        SpectatorApm data = spectatorApmData.get(id);
+        if(data == null){
+            data = new SpectatorApm();
+            data.startFrame = (int)Time.time;
+            spectatorApmData.put(id, data);
+        }
+
+        int now = (int)Time.time;
+        data.totalActions++;
+        data.lastFrame = now;
+        data.actionFrames.add(now);
+
+        int cutoff = now - spectatorApmWindowFrames;
+        while(data.actionFrames.size > 0 && data.actionFrames.first() < cutoff){
+            data.actionFrames.removeIndex(0);
+        }
+    }
+
+    public static boolean isObserverPlayer(@Nullable Player target){
+        return target != null && target.team() != null && (target.team() == Team.derelict || !target.team().data().isAlive());
+    }
+
+    public static boolean isLocalPlayerSpectator(){
+        return player != null && net.active() && isObserverPlayer(player) && state != null && !state.isMenu();
+    }
+
+    public boolean isSpectatorCameraAll(){
+        return spectatorCameraFocusPlayer == spectatorAllFocusId;
+    }
+
+    public int getSpectatorCameraFocusPlayer(){
+        return spectatorCameraFocusPlayer;
+    }
+
+    public @Nullable Player spectatorCameraFocusedPlayer(){
+        if(spectatorCameraFocusPlayer == spectatorAllFocusId) return null;
+        Player found = Groups.player.getByID(spectatorCameraFocusPlayer);
+        if(found == null){
+            spectatorCameraFocusPlayer = spectatorAllFocusId;
+            return null;
+        }
+        return found;
+    }
+
+    private boolean isSpectatorMode(){
+        return isLocalPlayerSpectator();
+    }
+
+    private void setSpectatorCameraFocus(int playerId){
+        if(playerId == spectatorAllFocusId){
+            spectatorCameraFocusPlayer = spectatorAllFocusId;
+            control.input.spectatePlayer(null);
+            return;
+        }
+
+        Player target = Groups.player.getByID(playerId);
+        if(target == null){
+            spectatorCameraFocusPlayer = spectatorAllFocusId;
+            control.input.spectatePlayer(null);
+            return;
+        }
+
+        spectatorCameraFocusPlayer = target.id;
+        control.input.spectatePlayer(target);
+    }
+
+    private void rebuildSpectatorCameraPlayers(){
+        spectatorCameraPlayers.clear();
+        for(Player other : Groups.player){
+            if(other == null || other.team() == null) continue;
+            spectatorCameraPlayers.add(other);
+        }
+        spectatorCameraPlayers.sort((a, b) -> {
+            boolean ao = isObserverPlayer(a), bo = isObserverPlayer(b);
+            if(ao != bo) return ao ? 1 : -1;
+            int cmp = Integer.compare(a.team().id, b.team().id);
+            if(cmp != 0) return cmp;
+            return Strings.stripColors(a.name).compareToIgnoreCase(Strings.stripColors(b.name));
+        });
+    }
+
+    private void updateSpectatorHotkeys(){
+        if(!isSpectatorMode()){
+            spectatorDefaultsApplied = false;
+            return;
+        }
+
+        if(!spectatorDefaultsApplied){
+            spectatorDefaultsApplied = true;
+            spectatorView = SpectatorView.queue;
+            spectatorExpanded = true;
+            setSpectatorCameraFocus(spectatorAllFocusId);
+        }
+
+        if(ui.chatfrag.shown() || Core.scene.hasDialog() || Core.scene.hasField()) return;
+
+        rebuildSpectatorCameraPlayers();
+
+        if(Core.input.keyTap(KeyCode.e)){
+            spectatorView = SpectatorView.queue;
+            spectatorExpanded = true;
+            setSpectatorCameraFocus(spectatorAllFocusId);
+            return;
+        }
+
+        for(int i = 0; i < spectatorNumberKeys.length && i < spectatorCameraPlayers.size; i++){
+            if(Core.input.keyTap(spectatorNumberKeys[i])){
+                setSpectatorCameraFocus(spectatorCameraPlayers.get(i).id);
+                return;
+            }
+        }
+
+        if(Core.input.keyTap(KeyCode.d)){
+            spectatorView = SpectatorView.queue;
+            spectatorExpanded = true;
+        }else if(Core.input.keyTap(KeyCode.u)){
+            spectatorView = SpectatorView.units;
+            spectatorExpanded = true;
+        }else if(Core.input.keyTap(KeyCode.g)){
+            spectatorView = SpectatorView.upgrades;
+            spectatorExpanded = true;
+        }else if(Core.input.keyTap(KeyCode.m)){
+            spectatorView = SpectatorView.apm;
+            spectatorExpanded = true;
+        }
+    }
+
+    private void rebuildSpectatorPlayers(){
+        spectatorPlayers.clear();
+        for(Player other : Groups.player){
+            if(other == null || other.team() == null || other.team() == Team.derelict) continue;
+            if(!other.team().data().isAlive()) continue;
+            spectatorPlayers.add(other);
+        }
+        spectatorPlayers.sort((a, b) -> {
+            int cmp = Integer.compare(a.team().id, b.team().id);
+            if(cmp != 0) return cmp;
+            return Strings.stripColors(a.name).compareToIgnoreCase(Strings.stripColors(b.name));
+        });
+
+        if(spectatorPlayers.isEmpty()){
+            spectatorFocusPlayer = -1;
+            return;
+        }
+        if(spectatorFocusPlayer == -1 || spectatorPlayers.find(p -> p.id == spectatorFocusPlayer) == null){
+            spectatorFocusPlayer = spectatorPlayers.first().id;
+        }
+    }
+
+    private @Nullable Player focusedSpectatorPlayer(){
+        rebuildSpectatorPlayers();
+        if(spectatorPlayers.isEmpty()) return null;
+        Player found = spectatorPlayers.find(p -> p.id == spectatorFocusPlayer);
+        return found != null ? found : spectatorPlayers.first();
+    }
+
+    private void buildSpectatorModeBody(Table panel){
+        Player focused = focusedSpectatorPlayer();
+        if(focused == null){
+            panel.add("无在场玩家").left().row();
+            return;
+        }
+
+        panel.image().growX().height(2f).color(Pal.gray).padTop(2f).padBottom(4f).row();
+        panel.add("当前玩家: " + Strings.stripColors(focused.name)).left().row();
+
+        if(spectatorView == SpectatorView.queue){
+            buildSpectatorQueueInfo(panel, focused.team());
+        }else if(spectatorView == SpectatorView.units){
+            buildSpectatorUnitInfo(panel);
+        }else if(spectatorView == SpectatorView.upgrades){
+            buildSpectatorCompletedUpgradeInfo(panel, focused.team());
+        }else if(spectatorView == SpectatorView.apm){
+            buildSpectatorApmInfo(panel, focused);
+        }else{
+            panel.add("按 D/U/G/M 切换面板").left().row();
+        }
+    }
+
+    private void buildSpectatorQueueInfo(Table panel, Team focusedTeam){
+        for(Player sp : spectatorPlayers){
+            if(sp == null || sp.team() == null) continue;
+            Team team = sp.team();
+            String name = Strings.stripColors(sp.name);
+            panel.add("[#" + team.color.toString() + "]" + name + "[]").left().row();
+
+            Seq<SpectatorQueueEntry> queue = collectSpectatorQueue(team);
+            if(queue.isEmpty()){
+                panel.add("  队列: 无").left().row();
+            }else{
+                Table iconLine = new Table();
+                iconLine.left();
+                int count = Math.min(queue.size, spectatorMaxQueueIcons);
+                for(int i = 0; i < count; i++){
+                    SpectatorQueueEntry entry = queue.get(i);
+                    iconLine.table(cell -> {
+                        cell.defaults().pad(1f).left();
+                        cell.image(entry.unit.uiIcon).size(20f).row();
+                        Bar bar = new Bar(() -> "", () -> Pal.accent, () -> entry.progress);
+                        cell.add(bar).width(20f).height(3f);
+                    }).padRight(3f);
+                }
+                panel.add(iconLine).left().row();
+            }
+
+            Seq<SpectatorUpgradeEntry> upgrades = collectResearchProgress(team);
+            if(upgrades.isEmpty()){
+                panel.add("  升级: 无").left().row();
+            }else{
+                for(SpectatorUpgradeEntry upgrade : upgrades){
+                    panel.add("  升级: " + upgrade.name + " " + Mathf.round(upgrade.progress * 100f) + "%").left().row();
+                }
+            }
+
+            if(team == focusedTeam){
+                panel.image().growX().height(1f).color(Pal.accent).padTop(2f).padBottom(2f).row();
+            }else{
+                panel.row();
+            }
+        }
+    }
+
+    private void buildSpectatorUnitInfo(Table panel){
+        for(Player sp : spectatorPlayers){
+            if(sp == null || sp.team() == null) continue;
+            Team team = sp.team();
+            var data = team.data();
+            String line = "[#" + team.color.toString() + "]" + Strings.stripColors(sp.name) + "[] : "
+                + data.unitCount + " 单位, 人口 " + data.popCount + "/" + (data.hasCore() ? Units.getCap(team) : 0);
+            panel.add(line).left().row();
+        }
+    }
+
+    private void buildSpectatorCompletedUpgradeInfo(Table panel, Team team){
+        Seq<String> done = new Seq<>();
+        int infantryWeapon = UnitTypes.infantryWeaponLevel(team);
+        int infantryArmor = UnitTypes.infantryArmorLevel(team);
+        int vehicleWeapon = UnitTypes.vehicleWeaponLevel(team);
+        int vehicleArmor = UnitTypes.vehicleArmorLevel(team);
+        int shipWeapon = UnitTypes.shipWeaponLevel(team);
+        int instantTracking = UnitTypes.instantTrackingLevel(team);
+        int steelArmor = UnitTypes.steelArmorLevel(team);
+        int ghostCamo = UnitTypes.ghostCamoLevel(team);
+
+        if(infantryWeapon > 0) done.add("步兵武器 Lv" + infantryWeapon);
+        if(infantryArmor > 0) done.add("步兵护甲 Lv" + infantryArmor);
+        if(vehicleWeapon > 0) done.add("战车武器 Lv" + vehicleWeapon);
+        if(vehicleArmor > 0) done.add("战车装甲 Lv" + vehicleArmor);
+        if(shipWeapon > 0) done.add("舰船武器 Lv" + shipWeapon);
+        if(instantTracking > 0) done.add("瞬时追踪");
+        if(steelArmor > 0) done.add("钢铁护甲");
+        if(ghostCamo > 0) done.add("幽灵隐形");
+
+        if(done.isEmpty()){
+            panel.add("已完成升级: 无").left().row();
+        }else{
+            panel.add("已完成升级:").left().row();
+            for(String entry : done){
+                panel.add("  " + entry).left().row();
+            }
+        }
+    }
+
+    private void buildSpectatorApmInfo(Table panel, Player focused){
+        SpectatorApm data = spectatorApmData.get(focused.id);
+        if(data == null){
+            panel.add("当前APM: 0").left().row();
+            panel.add("平均APM: 0").left().row();
+            return;
+        }
+
+        int now = (int)Time.time;
+        int cutoff = now - spectatorApmWindowFrames;
+        while(data.actionFrames.size > 0 && data.actionFrames.first() < cutoff){
+            data.actionFrames.removeIndex(0);
+        }
+
+        float elapsedFrames = Math.max(now - data.startFrame, 1f);
+        float elapsedMinutes = elapsedFrames / (60f * 60f);
+        float average = data.totalActions / Math.max(elapsedMinutes, 1f / 60f);
+        float current = data.actionFrames.size;
+
+        panel.add("当前APM: " + Mathf.round(current)).left().row();
+        panel.add("平均APM: " + Mathf.round(average)).left().row();
+    }
+
+    private Seq<SpectatorQueueEntry> collectSpectatorQueue(Team team){
+        ObjectFloatMap<UnitType> fastest = new ObjectFloatMap<>();
+        Seq<SpectatorQueueEntry> out = new Seq<>();
+
+        for(Building build : team.data().buildings){
+            if(build == null || !build.isValid()) continue;
+            if(build instanceof CoreBuild core){
+                UnitType queued = core.queuedUnit(0);
+                if(queued != null){
+                    float progress = Mathf.clamp(core.unitProgressFraction());
+                    fastest.put(queued, Math.max(fastest.get(queued, 0f), progress));
+                }
+            }else if(build instanceof UnitFactoryBuild factory){
+                UnitType u1 = factory.queuedUnit(0);
+                if(u1 != null){
+                    float p1 = Mathf.clamp(factory.unitProgressFraction(0));
+                    fastest.put(u1, Math.max(fastest.get(u1, 0f), p1));
+                }
+                UnitType u2 = factory.queuedUnit(1);
+                if(u2 != null){
+                    float p2 = Mathf.clamp(factory.unitProgressFraction(1));
+                    fastest.put(u2, Math.max(fastest.get(u2, 0f), p2));
+                }
+            }
+        }
+
+        for(UnitType type : fastest.keys()){
+            SpectatorQueueEntry entry = new SpectatorQueueEntry();
+            entry.unit = type;
+            entry.progress = fastest.get(type, 0f);
+            out.add(entry);
+        }
+
+        out.sort((a, b) -> Float.compare(b.progress, a.progress));
+        return out;
+    }
+
+    private Seq<SpectatorUpgradeEntry> collectResearchProgress(Team team){
+        Seq<SpectatorUpgradeEntry> out = new Seq<>();
+
+        int infantryWeapon = UnitTypes.infantryWeaponResearchingLevel(team);
+        int infantryArmor = UnitTypes.infantryArmorResearchingLevel(team);
+        int vehicleWeapon = UnitTypes.vehicleWeaponResearchingLevel(team);
+        int vehicleArmor = UnitTypes.vehicleArmorResearchingLevel(team);
+        int shipWeapon = UnitTypes.shipWeaponResearchingLevel(team);
+
+        if(infantryWeapon > 0) out.add(spectatorUpgrade("步兵武器 Lv" + infantryWeapon, UnitTypes.infantryWeaponResearchProgress(team)));
+        if(infantryArmor > 0) out.add(spectatorUpgrade("步兵护甲 Lv" + infantryArmor, UnitTypes.infantryArmorResearchProgress(team)));
+        if(vehicleWeapon > 0) out.add(spectatorUpgrade("战车武器 Lv" + vehicleWeapon, UnitTypes.vehicleWeaponResearchProgress(team)));
+        if(vehicleArmor > 0) out.add(spectatorUpgrade("战车装甲 Lv" + vehicleArmor, UnitTypes.vehicleArmorResearchProgress(team)));
+        if(shipWeapon > 0) out.add(spectatorUpgrade("舰船武器 Lv" + shipWeapon, UnitTypes.shipWeaponResearchProgress(team)));
+
+        if(UnitTypes.instantTrackingResearching(team)) out.add(spectatorUpgrade("瞬时追踪", UnitTypes.instantTrackingResearchProgress(team)));
+        if(UnitTypes.steelArmorResearching(team)) out.add(spectatorUpgrade("钢铁护甲", UnitTypes.steelArmorResearchProgress(team)));
+        if(UnitTypes.ghostCamoResearching(team)) out.add(spectatorUpgrade("幽灵隐形", UnitTypes.ghostCamoResearchProgress(team)));
+
+        float orbital = 0f, fortress = 0f;
+        for(Building build : team.data().buildings){
+            if(!(build instanceof CoreBuild core)) continue;
+            if(core.isUpgradingOrbital()) orbital = Math.max(orbital, core.orbitalUpgradeFraction());
+            if(core.isUpgradingFortress()) fortress = Math.max(fortress, core.fortressUpgradeFraction());
+        }
+        if(orbital > 0f) out.add(spectatorUpgrade("主基地升级: 轨道核心", orbital));
+        if(fortress > 0f) out.add(spectatorUpgrade("主基地升级: 星港要塞", fortress));
+
+        return out;
+    }
+
+    private SpectatorUpgradeEntry spectatorUpgrade(String name, float progress){
+        SpectatorUpgradeEntry entry = new SpectatorUpgradeEntry();
+        entry.name = name;
+        entry.progress = Mathf.clamp(progress);
+        return entry;
     }
 
     private boolean canSkipWave(){

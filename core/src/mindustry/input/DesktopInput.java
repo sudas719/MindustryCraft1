@@ -93,6 +93,8 @@ public class DesktopInput extends InputHandler{
 
     private float buildPlanMouseOffsetX, buildPlanMouseOffsetY;
     private boolean changedCursor, pressedCommandRect;
+    private boolean spectatorHighView = false;
+    private float spectatorBaseScale = -1f;
 
     private boolean abilityTargetingActive(){
         return ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
@@ -100,6 +102,21 @@ public class DesktopInput extends InputHandler{
 
     private boolean suppressSelectionTap(){
         return abilityTargetConsumeMillis > 0L && Time.timeSinceMillis(abilityTargetConsumeMillis) <= 200L;
+    }
+
+    private boolean isLocalSpectatorMode(){
+        if(player == null || player.team() == null || state == null || state.isMenu()) return false;
+        if(!net.active()) return false;
+        Team team = player.team();
+        return team == Team.derelict || !team.data().isAlive();
+    }
+
+    private void restoreSpectatorViewScale(){
+        if(spectatorHighView && spectatorBaseScale > 0f){
+            renderer.setScale(spectatorBaseScale);
+        }
+        spectatorHighView = false;
+        spectatorBaseScale = -1f;
     }
 
     boolean showHint(){
@@ -324,6 +341,10 @@ public class DesktopInput extends InputHandler{
     public void update(){
         super.update();
 
+        if(!isLocalSpectatorMode()){
+            restoreSpectatorViewScale();
+        }
+
         float frameDelta = Core.graphics.getDeltaTime();
         if(frameDelta > 0.2f){
             commandFocusGuardTime = Math.max(commandFocusGuardTime, 0.35f);
@@ -370,17 +391,20 @@ public class DesktopInput extends InputHandler{
                     panning = false;
                 }
                 spectating = null;
+                spectatingPlayer = -1;
             }
 
             if(input.keyDown(Binding.pan)){
                 panCam = true;
                 panning = true;
                 spectating = null;
+                spectatingPlayer = -1;
             }
 
             if((Math.abs(Core.input.axis(Binding.moveX)) > 0 || Math.abs(Core.input.axis(Binding.moveY)) > 0 || input.keyDown(Binding.mouseMove))){
                 panning = false;
                 spectating = null;
+                spectatingPlayer = -1;
             }
 
             if(!ui.chatfrag.shown()){
@@ -392,6 +416,7 @@ public class DesktopInput extends InputHandler{
                 if(arrowCam){
                     panning = true;
                     spectating = null;
+                    spectatingPlayer = -1;
                 }
             }
         }
@@ -410,11 +435,12 @@ public class DesktopInput extends InputHandler{
 
             if(arrowCam && !scene.hasField() && !scene.hasDialog() && !ui.chatfrag.shown()){
                 Core.camera.position.add(Tmp.v1.set(arrowCamX, arrowCamY).nor().scl(camSpeed));
-            }else if((!player.dead() || spectating != null) && !panning){
+            }else if((!player.dead() || spectating != null || spectatingPlayer() != null) && !panning){
                 //TODO do not pan
                 Team corePanTeam = state.won ? state.rules.waveTeam : player.team();
                 Position coreTarget = state.gameOver && !state.rules.pvp && corePanTeam.data().lastCore != null ? corePanTeam.data().lastCore : null;
-                Position panTarget = coreTarget != null ? coreTarget : spectating != null ? spectating : player;
+                Player spectatePlayer = spectatingPlayer();
+                Position panTarget = coreTarget != null ? coreTarget : spectating != null ? spectating : spectatePlayer != null ? spectatePlayer : player;
 
                 Core.camera.position.lerpDelta(panTarget, Core.settings.getBool("smoothcamera") ? 0.08f : 1f);
             }
@@ -458,6 +484,10 @@ public class DesktopInput extends InputHandler{
                     edgeScrolling = false;
                 }
             }
+        }
+
+        if(player.dead()){
+            player.set(Core.camera.position.x, Core.camera.position.y);
         }
 
         shouldShoot = !scene.hasMouse() && !locked && !state.isEditor();
@@ -741,6 +771,16 @@ public class DesktopInput extends InputHandler{
             if(Core.input.keyTap(Binding.planetMap) && state.isCampaign()) ui.planet.toggle();
             if(Core.input.keyTap(Binding.research) && state.isCampaign()) ui.research.toggle();
             if(Core.input.keyTap(Binding.schematicMenu)) ui.schematics.toggle();
+
+            if(!ui.chatfrag.shown() && !ui.consolefrag.shown() && Core.input.keyTap(KeyCode.z) && isLocalSpectatorMode()){
+                if(!spectatorHighView){
+                    spectatorBaseScale = renderer.getScale();
+                    renderer.setScale(spectatorBaseScale / 1.5f);
+                    spectatorHighView = true;
+                }else{
+                    restoreSpectatorViewScale();
+                }
+            }
 
             if(Core.input.keyTap(Binding.toggleBlockStatus)){
                 Core.settings.put("blockstatus", !Core.settings.getBool("blockstatus"));
@@ -1554,13 +1594,26 @@ public class DesktopInput extends InputHandler{
         if(build == null || build.team != player.team()) return false;
         if(build.block != Blocks.doorLarge && build.block != Blocks.doorLargeErekir) return false;
         if(!(build instanceof Door.DoorBuild)) return false;
+        int targetPos = build.pos();
+        Team targetTeam = build.team;
+        float fxX = build.x, fxY = build.y;
 
         int start = nextOrbitalCoreStartIndex(cores);
         for(int i = 0; i < cores.size; i++){
             CoreBlock.CoreBuild core = cores.get((start + i) % cores.size);
             if(!core.consumeOrbitalEnergy(CoreBlock.orbitalAbilityCost)) continue;
             lastOrbitalCoreId = core.id;
-            applyExtraSupply(build.tile);
+
+            Fx.sc2DropPod.at(fxX, fxY);
+            Time.run(3f * 60f, () -> {
+                Building current = world.build(targetPos);
+                if(current == null || !current.isValid() || current.team != targetTeam) return;
+                if(!(current instanceof Door.DoorBuild)) return;
+                if(current.block != Blocks.doorLarge && current.block != Blocks.doorLargeErekir) return;
+
+                applyExtraSupply(current.tile);
+                Fx.launchPod.at(current.x, current.y);
+            });
             return true;
         }
         return false;
@@ -2036,7 +2089,7 @@ public class DesktopInput extends InputHandler{
                 //Attack command: units move and attack
                 //Check if clicking on any unit or building, including allies when forced by attack command mode.
                 Building build = world.buildWorld(worldX, worldY);
-                Teamc attack = (build != null && build.within(worldX, worldY, build.hitSize() / 2f)) ? build : null;
+                Teamc attack = build;
                 if(attack == null){
                     attack = selectedAnyUnit(worldX, worldY);
                 }

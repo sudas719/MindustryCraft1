@@ -11,6 +11,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.content.*;
+import mindustry.core.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.game.Teams.*;
@@ -53,6 +54,7 @@ public class BlockRenderer{
     private BlockLightQuadtree blockLightTree = new BlockLightQuadtree(new Rect(0, 0, 1, 1));
     private OverlayQuadtree overlayTree = new OverlayQuadtree(new Rect(0, 0, 1, 1));
     private FloorQuadtree floorTree = new FloorQuadtree(new Rect(0, 0, 1, 1));
+    private TextureRegion environmentLightGlowRegion;
 
     public BlockRenderer(){
 
@@ -548,6 +550,7 @@ public class BlockRenderer{
                 }
             }
         }
+        drawEnvironmentMarkerLights();
 
         if(drawQuadtreeDebug){
             //TODO remove
@@ -569,6 +572,45 @@ public class BlockRenderer{
         for(int x = 0; x < size; x++){
             for(int y = 0; y < size; y++){
                 shadowEvents.add(world.tile(x + tx + of, y + ty + of));
+            }
+        }
+    }
+
+    private void drawEnvironmentMarkerLights(){
+        boolean lightingEnabled = renderer.lights.enabled();
+        boolean drawFallbackGlow = !lightingEnabled && renderer.drawLight;
+
+        if(environmentLightGlowRegion == null || !environmentLightGlowRegion.found()){
+            environmentLightGlowRegion = Core.atlas.find("circle-shadow");
+        }
+
+        int pad = Mathf.ceil((float)EnvironmentLightData.maxRadius / tilesize) + 2;
+        int minx = Mathf.clamp(World.toTile(camera.position.x - camera.width / 2f) - pad, 0, world.width() - 1);
+        int maxx = Mathf.clamp(World.toTile(camera.position.x + camera.width / 2f) + pad, 0, world.width() - 1);
+        int miny = Mathf.clamp(World.toTile(camera.position.y - camera.height / 2f) - pad, 0, world.height() - 1);
+        int maxy = Mathf.clamp(World.toTile(camera.position.y + camera.height / 2f) + pad, 0, world.height() - 1);
+
+        for(int x = minx; x <= maxx; x++){
+            for(int y = miny; y <= maxy; y++){
+                Tile tile = world.tile(x, y);
+                if(tile == null || !EnvironmentLightData.active(tile)) continue;
+
+                float alpha = EnvironmentLightData.alpha(tile);
+                if(alpha <= 0.001f) continue;
+
+                float radius = EnvironmentLightData.radius(tile);
+                Color color = Tmp.c1.set(EnvironmentLightData.color(tile)).a(1f);
+
+                if(lightingEnabled){
+                    Drawf.light(tile.worldx(), tile.worldy(), radius, color, alpha);
+                }
+
+                if(environmentLightGlowRegion != null && environmentLightGlowRegion.found()){
+                    //Always draw a subtle colored source point; when global lighting is off, use this as fallback glow.
+                    float glowAlpha = drawFallbackGlow ? alpha : alpha * 0.35f;
+                    float glowRadius = drawFallbackGlow ? radius : radius * 0.55f;
+                    Drawf.additive(environmentLightGlowRegion, color, glowAlpha, tile.worldx(), tile.worldy(), glowRadius * 2f, glowRadius * 2f, Layer.light - 0.001f);
+                }
             }
         }
     }

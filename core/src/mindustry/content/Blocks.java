@@ -82,6 +82,7 @@ public class Blocks{
     cliffLayerTop, cliffLayerBottom, cliffLayerLeft, cliffLayerRight,
     cliffLayerTopLeft, cliffLayerTopRight, cliffLayerBottomLeft, cliffLayerBottomRight,
     cliffLayerDiagTlBr, cliffLayerDiagTrBl,
+    environmentLightMarker,
 
     pebbles, tendrils,
 
@@ -7309,6 +7310,7 @@ public class Blocks{
         cliffLayerBottomRight = new CliffLayerMarker("cliff-layer-bottom-right", "Cliff-bottomRight", CliffLayerData.bottomRight);
         cliffLayerDiagTlBr = new CliffLayerMarker("cliff-layer-diag-tl-br", "Cliff-topLeftToBottomRight", CliffLayerData.topLeftToBottomRight);
         cliffLayerDiagTrBl = new CliffLayerMarker("cliff-layer-diag-tr-bl", "Cliff-topRightToBottomLeft", CliffLayerData.topRightToBottomLeft);
+        environmentLightMarker = new EnvironmentLightMarker("environment-light-marker");
 
         ventSpout = new VentSpout("vent-spout");
 

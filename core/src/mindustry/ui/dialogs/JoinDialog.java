@@ -137,9 +137,6 @@ public class JoinDialog extends BaseDialog{
 
         refreshLocal();
         refreshRemote();
-        if(Core.settings.getBool("communityservers", true)){
-            refreshCommunity();
-        }
     }
 
     void setupRemote(){
@@ -318,9 +315,6 @@ public class JoinDialog extends BaseDialog{
 
         section(steam ? "@servers.local.steam" : "@servers.local", local, false);
         section("@servers.remote", remote, false);
-        if(Core.settings.getBool("communityservers", true)){
-            section("@servers.global", global, true);
-        }
 
         ScrollPane pane = new ScrollPane(hosts);
         pane.setFadeScrollBars(false);
@@ -586,6 +580,12 @@ public class JoinDialog extends BaseDialog{
     }
 
     public void connect(String ip, int port){
+        if(!DeviceIdentity.canJoinServers()){
+            DeviceIdentity.showConsentDialogIfNeeded();
+            DeviceIdentity.showJoinBlockedMessage();
+            return;
+        }
+
         if(player.name.trim().isEmpty()){
             ui.showInfo("@noname");
             return;
@@ -654,25 +654,10 @@ public class JoinDialog extends BaseDialog{
             servers = LegacyIO.readServers();
             Core.settings.remove("server-list");
         }
-
-        fetchServers();
     }
 
     public static void fetchServers(){
-        var urls = Version.type.equals("bleeding-edge") || Vars.forceBeServers ? serverJsonBeURLs : serverJsonURLs;
-
-        if(Core.settings.getBool("communityservers", true)){
-            try{
-                if(!loadedServerCache && serverCacheFile.exists()){
-                    loadedServerCache = true;
-                    cachedServers.addAll(parseServerString(serverCacheFile.readString()));
-                }
-            }catch(Exception e){
-                Log.err("Failed to load cached server file", e);
-            }
-
-            fetchServers(urls, 0);
-        }
+        // community server list is disabled
     }
 
     private static void fetchServers(String[] urls, int index){

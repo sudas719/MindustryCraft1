@@ -35,6 +35,12 @@ public enum EditorTool{
                     return;
                 }
             }
+            EnvironmentLightMarker lightMarker = editor.environmentLightMarkerForTile(tile);
+            if(lightMarker != null){
+                editor.drawBlock = lightMarker;
+                editor.drawBlock.editorPicked(tile);
+                return;
+            }
             editor.drawBlock = tile.block() == Blocks.air || !tile.block().inEditor ? tile.overlay() == Blocks.air ? tile.floor() : tile.overlay() : tile.block();
             editor.drawBlock.editorPicked(tile);
         }
@@ -100,6 +106,7 @@ public enum EditorTool{
             editor.drawCircle(x, y, tile -> {
                 if(mode == -1){
                     //erase block
+                    editor.clearEnvironmentLightMarker(tile);
                     tile.remove();
                 }else if(mode == 0){
                     //erase ore
@@ -142,6 +149,18 @@ public enum EditorTool{
                 if(target == marker.cliffValue) return;
 
                 fill(x, y, mode == 0, t -> CliffLayerData.cliff(t) == target, t -> editor.applyCliffMarker(t, marker));
+                return;
+            }
+
+            if(editor.drawBlock instanceof EnvironmentLightMarker marker){
+                if(mode == 2){
+                    if(!EnvironmentLightData.has(tile)) return;
+                    fill(x, y, false, EnvironmentLightData::has, editor::clearEnvironmentLightMarker);
+                    return;
+                }
+
+                boolean target = EnvironmentLightData.has(tile);
+                fill(x, y, mode == 0, t -> EnvironmentLightData.has(t) == target, t -> editor.applyEnvironmentLightMarker(t, marker));
                 return;
             }
 

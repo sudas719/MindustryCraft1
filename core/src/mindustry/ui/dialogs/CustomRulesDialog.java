@@ -280,6 +280,11 @@ public class CustomRulesDialog extends BaseDialog{
         }
         team("@rules.playerteam", t -> rules.defaultTeam = t, () -> rules.defaultTeam);
         team("@rules.enemyteam", t -> rules.waveTeam = t, () -> rules.waveTeam);
+        if(Core.bundle.get("rules.teamalliances").toLowerCase().contains(ruleSearch)){
+            var cell = current.button("@rules.teamalliances", this::teamAllianceDialog).left().width(300f);
+            ruleInfo(cell, "@rules.teamalliances");
+            current.row();
+        }
 
         for(Team team : Team.baseTeams){
             boolean[] shown = {false};
@@ -340,6 +345,29 @@ public class CustomRulesDialog extends BaseDialog{
         for(var i = 0; i < categories.size; i++){
             addToMain(categories.get(i), Core.bundle.get("rules.title." + categoryNames.get(i)));
         }
+    }
+
+    void teamAllianceDialog(){
+        BaseDialog dialog = new BaseDialog("@rules.teamalliances");
+
+        dialog.cont.pane(t -> {
+            t.left().defaults().left().pad(4f).growX();
+
+            for(int i = 0; i < Team.baseTeams.length; i++){
+                Team first = Team.baseTeams[i];
+                for(int j = i + 1; j < Team.baseTeams.length; j++){
+                    Team second = Team.baseTeams[j];
+                    String text = first.coloredName() + " [lightgray]<->[] " + second.coloredName();
+                    t.check(text, enabled -> rules.setTeamAlliance(first, second, enabled))
+                        .checked(rules.teamsAllied(first, second))
+                        .left()
+                        .row();
+                }
+            }
+        }).grow();
+
+        dialog.addCloseButton();
+        dialog.show();
     }
 
     public void category(String name){

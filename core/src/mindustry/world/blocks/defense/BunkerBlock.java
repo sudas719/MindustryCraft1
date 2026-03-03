@@ -337,7 +337,7 @@ public class BunkerBlock extends HeatCrafter{
         }
 
         private boolean canTypeTarget(UnitType type, Teamc target){
-            if(target == null || (target.team() == team && !(target instanceof Building b && Units.targetableAllTeams(b)))) return false;
+            if(target == null || (!team.isEnemy(target.team()) && !(target instanceof Building b && Units.targetableAllTeams(b)))) return false;
             if(target instanceof Unit unit){
                 return unit.checkTarget(type.targetAir, type.targetGround);
             }
@@ -352,7 +352,7 @@ public class BunkerBlock extends HeatCrafter{
         private @Nullable Teamc resolveForcedTarget(){
             if(forcedUnitId >= 0){
                 Unit unit = Groups.unit.getByID(forcedUnitId);
-                if(unit != null && unit.isValid() && unit.team != team){
+                if(unit != null && unit.isValid() && team.isEnemy(unit.team)){
                     return unit;
                 }
                 forcedUnitId = -1;
@@ -360,7 +360,7 @@ public class BunkerBlock extends HeatCrafter{
 
             if(forcedBuildPos >= 0){
                 Building build = world.build(forcedBuildPos);
-                if(build != null && build.isValid() && (build.team != team || Units.targetableAllTeams(build))){
+                if(build != null && build.isValid() && (team.isEnemy(build.team) || Units.targetableAllTeams(build))){
                     return build;
                 }
                 forcedBuildPos = -1;
@@ -383,14 +383,14 @@ public class BunkerBlock extends HeatCrafter{
 
         private @Nullable Teamc resolveEnemyAt(float wx, float wy){
             Building build = world.buildWorld(wx, wy);
-            if(build != null && (build.team != team || Units.targetableAllTeams(build)) && build.isValid() && build.within(wx, wy, build.hitSize() * 0.6f)){
+            if(build != null && (team.isEnemy(build.team) || Units.targetableAllTeams(build)) && build.isValid() && build.within(wx, wy, build.hitSize() * 0.6f)){
                 return build;
             }
 
             Unit unit = Units.closestEnemy(team, wx, wy, 14f, u ->
                 u != null && u.isValid() && u.within(wx, wy, Math.max(8f, u.hitSize * 0.6f))
             );
-            if(unit != null && unit.team != team){
+            if(unit != null && team.isEnemy(unit.team)){
                 return unit;
             }
             return null;
@@ -413,7 +413,7 @@ public class BunkerBlock extends HeatCrafter{
 
         private void fireShot(UnitType type, Weapon weapon, Teamc target, float angle, @Nullable Mover mover){
             if(!isValid() || recycling) return;
-            if(target == null || (target.team() == team && !(target instanceof Building b && Units.targetableAllTeams(b)))) return;
+            if(target == null || (!team.isEnemy(target.team()) && !(target instanceof Building b && Units.targetableAllTeams(b)))) return;
             if(target instanceof Healthc health && !health.isValid()) return;
 
             float range = effectiveRange(type, weapon);

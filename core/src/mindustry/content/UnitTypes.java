@@ -50,6 +50,7 @@ public class UnitTypes{
     private static final IntMap<WidowLockData> widowLockData = new IntMap<>();
     private static final IntIntMap widowTargetLocks = new IntIntMap();
     private static final float hurricaneBaseRangeTiles = 5f;
+    private static final float hurricaneLockCastRangeTiles = 6f;
     private static final float hurricaneLockRangeTiles = 15f;
     private static final float hurricaneLockTime = 14f * 60f;
     private static final float hurricaneLockCooldown = 4f * 60f;
@@ -1281,6 +1282,10 @@ public class UnitTypes{
         return hurricaneLockRangeTiles * tilesize;
     }
 
+    public static float hurricaneLockCastRange(){
+        return hurricaneLockCastRangeTiles * tilesize;
+    }
+
     public static float hurricaneLockDuration(){
         return hurricaneLockTime;
     }
@@ -1472,6 +1477,12 @@ public class UnitTypes{
             && Mathf.within(unit.x, unit.y, target.getX(), target.getY(), hurricaneLockRange());
     }
 
+    private static boolean hurricaneWithinCastRange(@Nullable Unit unit, @Nullable Teamc target){
+        return unit != null
+            && target != null
+            && Mathf.within(unit.x, unit.y, target.getX(), target.getY(), hurricaneLockCastRange());
+    }
+
     private static @Nullable Teamc hurricaneResolveLockedTarget(HurricaneLockData data){
         if(data == null) return null;
 
@@ -1496,14 +1507,14 @@ public class UnitTypes{
         if(!isHurricane(unit)) return null;
 
         Team team = unit.team;
-        float range = hurricaneLockRange();
+        float range = hurricaneLockCastRange();
         Teamc[] unitResult = {null};
         float[] unitDst2 = {Float.MAX_VALUE};
 
         Units.nearbyEnemies(team, unit.x, unit.y, range, other -> {
             if(other == null || other.dead() || !other.isValid() || other.team == Team.derelict) return;
             if(!other.checkTarget(true, true) || !other.hittable() || !other.targetable(team) || other.inFogTo(team)) return;
-            if(!hurricaneWithinLockRange(unit, other)) return;
+            if(!hurricaneWithinCastRange(unit, other)) return;
 
             float dst2 = Mathf.dst2(unit.x, unit.y, other.x, other.y);
             if(unitResult[0] == null || dst2 < unitDst2[0]){
@@ -1524,7 +1535,7 @@ public class UnitTypes{
 
             boolean enemy = build.team != team && (build.team != Team.derelict || state.rules.coreCapture);
             if(!enemy && !Units.targetableAllTeams(build)) return;
-            if(!Units.canTargetBuilding(true, true, build) || !hurricaneWithinLockRange(unit, build)) return;
+            if(!Units.canTargetBuilding(true, true, build) || !hurricaneWithinCastRange(unit, build)) return;
 
             float dst2 = Mathf.dst2(unit.x, unit.y, build.x, build.y);
             if(buildResult[0] == null || dst2 < buildDst2[0]){
@@ -10105,7 +10116,14 @@ public class UnitTypes{
                                     Events.fire(unitDamageEvent.set(unit, b));
                                 }
 
+                                applySplashExcluding(b, entity.x(), entity.y(), entity instanceof Teamc t ? t : null);
                                 handlePierce(b, health, entity.x(), entity.y());
+                            }
+
+                            @Override
+                            public void hitTile(Bullet b, Building build, float x, float y, float initialHealth, boolean direct){
+                                super.hitTile(b, build, x, y, initialHealth, direct);
+                                applySplashExcluding(b, x, y, build);
                             }
 
                             @Override
@@ -10115,10 +10133,44 @@ public class UnitTypes{
 
                             @Override
                             public void createSplashDamage(Bullet b, float x, float y){
+                                //Splash is applied explicitly in hitEntity/hitTile so the primary target can be excluded.
+                            }
+
+                            private void applySplashExcluding(Bullet b, float x, float y, @Nullable Teamc primary){
                                 if(splashDamageRadius <= 0f || b.absorbed) return;
-                                Damage.damage(null, x, y, splashDamageRadius, splashDamage * b.damageMultiplier(), splashDamagePierce, collidesAir, collidesGround, scaledSplashDamage, b);
+
+                                float radius = splashDamageRadius;
+                                float rawDamage = splashDamage * b.damageMultiplier();
+                                float area = radius * 2f;
+
+                                Units.nearby(x - radius, y - radius, area, area, u -> {
+                                    if(primary == u) return;
+                                    if(!u.checkTarget(collidesAir, collidesGround) || !u.hittable()) return;
+                                    if(!u.within(x, y, radius + (scaledSplashDamage ? u.hitSize / 2f : 0f))) return;
+
+                                    float dist = scaledSplashDamage ? Math.max(0f, u.dst(x, y) - u.hitSize / 2f) : u.dst(x, y);
+                                    float scaled = radius <= 0.00001f ? 1f : Mathf.lerp(1f - dist / radius, 1f, 0.4f);
+                                    u.damage(rawDamage * scaled);
+                                });
+
+                                if(collidesGround){
+                                    Units.nearbyBuildings(x, y, radius, build -> {
+                                        if(primary == build || build == null || !build.isValid()) return;
+                                        if(!build.within(x, y, radius + (scaledSplashDamage ? build.hitSize() / 2f : 0f))) return;
+
+                                        float dist = scaledSplashDamage ? Math.max(0f, Mathf.dst(build.x, build.y, x, y) - build.hitSize() / 2f) : Mathf.dst(build.x, build.y, x, y);
+                                        float scaled = radius <= 0.00001f ? 1f : Mathf.lerp(1f - dist / radius, 1f, 0.4f);
+                                        build.damage(rawDamage * scaled * buildingDamageMultiplier);
+                                    });
+                                }
+
                                 if(status != StatusEffects.none){
-                                    Damage.status(null, x, y, splashDamageRadius, status, statusDuration, collidesAir, collidesGround);
+                                    Units.nearby(x - radius, y - radius, area, area, u -> {
+                                        if(primary == u) return;
+                                        if(!u.checkTarget(collidesAir, collidesGround) || !u.hittable()) return;
+                                        if(!u.within(x, y, radius + u.hitSize / 2f)) return;
+                                        u.apply(status, statusDuration);
+                                    });
                                 }
                             }
                         };

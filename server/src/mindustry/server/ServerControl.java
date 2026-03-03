@@ -841,7 +841,10 @@ public class ServerControl implements ApplicationListener{
                 return;
             }
 
-            Player target = Groups.player.find(p -> p.name().equals(arg[0]));
+            Player target = findPlayerByNameToken(arg[0]);
+            if(target == null){
+                target = findPlayerByShortUid(arg[0]);
+            }
 
             if(target != null){
                 Call.sendMessage("[scarlet]" + target.name() + "[scarlet] has been kicked by the server.");
@@ -909,7 +912,9 @@ public class ServerControl implements ApplicationListener{
         });
 
         handler.register("unban", "<ip/ID>", "Completely unban a person by IP or ID.", arg -> {
-            if(netServer.admins.unbanPlayerIP(arg[0]) || netServer.admins.unbanPlayerID(arg[0])){
+            boolean unbanned = netServer.admins.unbanPlayerIP(arg[0]) || netServer.admins.unbanPlayerID(arg[0]);
+            unbanned |= netServer.removeIntegrityBan(arg[0]);
+            if(unbanned){
                 info("Unbanned player: @", arg[0]);
             }else{
                 err("That IP/ID is not banned!");
@@ -982,7 +987,8 @@ public class ServerControl implements ApplicationListener{
             }else{
                 info("Players: @", Groups.player.size());
                 for(Player user : Groups.player){
-                    info(" @&lm @ / ID: @ / IP: @", user.admin ? "&r[A]&c" : "&b[P]&c", user.plainName(), user.uuid(), user.ip());
+                    String uid = shortUidOf(user);
+                    info(" @&lm @ / UID: @ / ID: @ / IP: @", user.admin ? "&r[A]&c" : "&b[P]&c", user.plainName(), uid == null ? "---" : uid, user.uuid(), user.ip());
                 }
             }
         });
@@ -1167,6 +1173,46 @@ public class ServerControl implements ApplicationListener{
         });
 
         mods.eachClass(p -> p.registerServerCommands(handler));
+    }
+
+    private Player findPlayerByShortUid(String token){
+        String uid = token.startsWith("|") ? token.substring(1) : token;
+        if(uid.length() != 3) return null;
+
+        return Groups.player.find(player -> {
+            String shortUid = shortUidOf(player);
+            return shortUid != null && shortUid.equalsIgnoreCase(uid);
+        });
+    }
+
+    private String shortUidOf(Player player){
+        PlayerInfo info = netServer.admins.getInfoOptional(player.uuid());
+        return info == null ? null : info.shortUid;
+    }
+
+    private Player findPlayerByNameToken(String token){
+        return Groups.player.find(player -> {
+            String display = Strings.stripColors(player.name());
+            String plainToken = Strings.stripColors(token);
+            if(display.equalsIgnoreCase(plainToken)) return true;
+
+            String uid = shortUidOf(player);
+            if(uid == null) return false;
+
+            String pipeSuffix = "|" + uid;
+            if(display.endsWith(pipeSuffix)){
+                String base = display.substring(0, display.length() - pipeSuffix.length()).trim();
+                if(base.equalsIgnoreCase(plainToken)) return true;
+            }
+
+            String wzSuffix = " " + uid;
+            if(display.endsWith(wzSuffix)){
+                String base = display.substring(0, display.length() - wzSuffix.length()).trim();
+                if(base.equalsIgnoreCase(plainToken)) return true;
+            }
+
+            return false;
+        });
     }
 
     public void handleCommandString(String line){

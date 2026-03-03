@@ -12,6 +12,8 @@ import arc.util.*;
 import arc.util.Log.*;
 import arc.util.io.*;
 import mindustry.*;
+import mindustry.core.*;
+import mindustry.game.*;
 import mindustry.game.EventType.*;
 import mindustry.net.Administration.*;
 import mindustry.net.Net.*;
@@ -23,12 +25,12 @@ import java.net.*;
 import java.nio.*;
 import java.nio.channels.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 import static mindustry.Vars.*;
 
 public class ArcNetProvider implements NetProvider{
     final Client client;
-    final Prov<DatagramPacket> packetSupplier = () -> new DatagramPacket(new byte[512], 512);
 
     final Server server;
     final CopyOnWriteArrayList<ArcConnection> connections = new CopyOnWriteArrayList<>();
@@ -58,7 +60,6 @@ public class ArcNetProvider implements NetProvider{
         });
 
         client = new Client(8192, 16384, new PacketSerializer());
-        client.setDiscoveryPacket(packetSupplier);
         client.addListener(new NetListener(){
             @Override
             public void connected(Connection connection){
@@ -178,16 +179,6 @@ public class ArcNetProvider implements NetProvider{
         return server.getConnectFilter();
     }
 
-    private static boolean isLocal(InetAddress addr){
-        if(addr.isAnyLocalAddress() || addr.isLoopbackAddress()) return true;
-
-        try{
-            return NetworkInterface.getByInetAddress(addr) != null;
-        }catch(Exception e){
-            return false;
-        }
-    }
-
     @Override
     public void connectClient(String ip, int port, Runnable success){
         Threads.daemon(() -> {
@@ -203,7 +194,7 @@ public class ArcNetProvider implements NetProvider{
                     }
                 });
 
-                client.connect(5000, ip, port, port);
+                connectClientTcpOnly(ip, port);
                 success.run();
             }catch(Exception e){
                 if(netClient.isConnecting()){
@@ -221,11 +212,7 @@ public class ArcNetProvider implements NetProvider{
     @Override
     public void sendClient(Object object, boolean reliable){
         try{
-            if(reliable){
-                client.sendTCP(object);
-            }else{
-                client.sendUDP(object);
-            }
+            client.sendTCP(object);
             //sending things can cause an under/overflow, catch it and disconnect instead of crashing
         }catch(BufferOverflowException | BufferUnderflowException e){
             net.showError(e);
@@ -253,43 +240,102 @@ public class ArcNetProvider implements NetProvider{
     }
 
     private Host pingHostImpl(String address, int port) throws IOException{
-        try(DatagramSocket socket = new DatagramSocket()){
-            long time = Time.millis();
+        long time = Time.millis();
+        Client probe = new Client(1024, 2048, new PacketSerializer());
+        AtomicReference<Host> result = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
 
-            socket.send(new DatagramPacket(new byte[]{-2, 1}, 2, InetAddress.getByName(address), port));
-            socket.setSoTimeout(2000);
+        probe.addListener(new NetListener(){
+            @Override
+            public void connected(Connection connection){
+                connection.sendTCP(new ServerInfoRequest());
+            }
 
-            DatagramPacket packet = packetSupplier.get();
-            socket.receive(packet);
+            @Override
+            public void received(Connection connection, Object object){
+                if(!(object instanceof ServerInfoResponse response)) return;
 
-            ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
-            Host host = NetworkIO.readServerData((int)Time.timeSinceMillis(time), packet.getAddress().getHostAddress(), buffer);
-            host.port = port;
+                try{
+                    Host host = NetworkIO.readServerData((int)Time.timeSinceMillis(time), address, ByteBuffer.wrap(response.data));
+                    host.port = port;
+                    result.set(host);
+                }catch(Throwable e){
+                    failure.set(e);
+                }finally{
+                    latch.countDown();
+                }
+            }
+
+            @Override
+            public void disconnected(Connection connection, DcReason reason){
+                latch.countDown();
+            }
+        });
+
+        Threads.daemon(() -> {
+            try{
+                probe.run();
+            }catch(Exception e){
+                if(!(e instanceof ClosedSelectorException)){
+                    failure.compareAndSet(null, e);
+                    latch.countDown();
+                }
+            }
+        });
+
+        try{
+            probe.connect(2000, address, port);
+            if(!latch.await(3000, TimeUnit.MILLISECONDS)){
+                throw new SocketTimeoutException("Timed out waiting for host data.");
+            }
+        }catch(Throwable e){
+            failure.compareAndSet(null, e);
+        }finally{
+            probe.close();
+            try{
+                probe.dispose();
+            }catch(IOException ignored){
+            }
+        }
+
+        Host host = result.get();
+        if(host != null){
             return host;
         }
+
+        Throwable err = failure.get();
+        if(err instanceof IOException io){
+            throw io;
+        }else if(err != null){
+            throw new IOException(err);
+        }
+
+        //server is reachable but does not provide probe metadata
+        return fallbackHost(address, port, (int)Time.timeSinceMillis(time));
+    }
+
+    private static Host fallbackHost(String address, int port, int ping){
+        return new Host(
+        ping,
+        address + ":" + port,
+        address,
+        port,
+        "unknown",
+        -1,
+        0,
+        -1,
+        Version.type,
+        Gamemode.survival,
+        0,
+        "",
+        null
+        );
     }
 
     @Override
     public void discoverServers(Cons<Host> callback, Runnable done){
-        Seq<InetAddress> foundAddresses = new Seq<>();
-        long time = Time.millis();
-
-        client.discoverHosts(port, multicastGroup, multicastPort, 3000, packet -> {
-            synchronized(foundAddresses){
-                try{
-                    if(foundAddresses.contains(address -> address.equals(packet.getAddress()) || (isLocal(address) && isLocal(packet.getAddress())))){
-                        return;
-                    }
-                    ByteBuffer buffer = ByteBuffer.wrap(packet.getData());
-                    Host host = NetworkIO.readServerData((int)Time.timeSinceMillis(time), packet.getAddress().getHostAddress(), buffer);
-                    Core.app.post(() -> callback.get(host));
-                    foundAddresses.add(packet.getAddress());
-                }catch(Exception e){
-                    //don't crash when there's an error pinging a server or parsing data
-                    e.printStackTrace();
-                }
-            }
-        }, () -> Core.app.post(done));
+        Core.app.post(done);
     }
 
     @Override
@@ -310,7 +356,7 @@ public class ArcNetProvider implements NetProvider{
     @Override
     public void hostServer(int port) throws IOException{
         connections.clear();
-        server.bind(port, port);
+        bindServerTcpOnly(port);
 
         serverThread = new Thread(() -> {
             try{
@@ -371,11 +417,7 @@ public class ArcNetProvider implements NetProvider{
         public void send(Object object, boolean reliable){
             try{
                 if(connection.isConnected()){
-                    if(reliable){
-                        connection.sendTCP(object);
-                    }else{
-                        connection.sendUDP(object);
-                    }
+                    connection.sendTCP(object);
                 }
             }catch(Exception e){
                 Log.err(e);
@@ -391,6 +433,31 @@ public class ArcNetProvider implements NetProvider{
         @Override
         public void close(){
             if(connection.isConnected()) connection.close(DcReason.closed);
+        }
+    }
+
+    private void connectClientTcpOnly(String ip, int port) throws Exception{
+        try{
+            Client.class.getMethod("connect", int.class, String.class, int.class).invoke(client, 5000, ip, port);
+        }catch(NoSuchMethodException ignored){
+            client.connect(5000, ip, port, port);
+        }catch(ReflectiveOperationException e){
+            Throwable cause = e.getCause();
+            if(cause instanceof Exception ex) throw ex;
+            throw e;
+        }
+    }
+
+    private void bindServerTcpOnly(int port) throws IOException{
+        try{
+            Server.class.getMethod("bind", int.class).invoke(server, port);
+        }catch(NoSuchMethodException ignored){
+            server.bind(port, port);
+        }catch(ReflectiveOperationException e){
+            Throwable cause = e.getCause();
+            if(cause instanceof IOException io) throw io;
+            if(cause instanceof RuntimeException runtime) throw runtime;
+            throw new IOException(cause == null ? e : cause);
         }
     }
 

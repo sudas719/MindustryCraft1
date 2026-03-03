@@ -271,17 +271,22 @@ public final class FogControl implements CustomChunk{
                         int tx = unit.tileX(), ty = unit.tileY(), pos = tx + ty * ww;
                         if(unit.type.fogRadius <= 0f) continue;
                         int radius = (int)unit.type.fogRadius;
-                        boolean ignoreHeight = unit.isFlying();
-                        int viewerHeight = ignoreHeight ? HeightLayerData.maxLayer : HeightLayerData.edgeLayer(unit.x, unit.y, unit.hitSize / 2f);
+                        //Fog sight height scales with unit elevation, allowing higher units to see over lower walls.
+                        int baseHeight = HeightLayerData.edgeLayer(unit.x, unit.y, unit.hitSize / 2f);
+                        int maxExtra = HeightLayerData.maxLayer - HeightLayerData.minLayer;
+                        int extraHeight = Mathf.clamp(Mathf.round(unit.elevation * maxExtra), 0, maxExtra);
+                        int viewerHeight = Mathf.clamp(baseHeight + extraHeight, HeightLayerData.minLayer, HeightLayerData.maxLayer);
+                        boolean ignoreHeight = false;
                         int encodedRadius = encodeFogRadius(radius, ignoreHeight, viewerHeight);
                         long event = FogEvent.get(tx, ty, encodedRadius, team.team.id);
+                        int fogSignature = pos * 31 + encodedRadius;
 
                         //always update the dynamic events, but only *flush* the results when necessary?
                         unitEventQueue.add(event);
 
-                        if(unit.lastFogPos != pos){
+                        if(unit.lastFogPos != fogSignature){
                             pushEvent(event, false);
-                            unit.lastFogPos = pos;
+                            unit.lastFogPos = fogSignature;
                             data.dynamicUpdated = true;
                         }
                     }
@@ -614,7 +619,8 @@ public final class FogControl implements CustomChunk{
             }
 
             Tile tile = world.tile(x, y);
-            if(HeightLayerData.fogLayer(tile) > viewerHeight || blocksVision(tile)){
+            int tileHeight = HeightLayerData.fogLayer(tile);
+            if(tileHeight > viewerHeight || (blocksVision(tile) && tileHeight >= viewerHeight)){
                 return false;
             }
         }

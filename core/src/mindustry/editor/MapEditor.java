@@ -195,6 +195,20 @@ public class MapEditor{
                 return;
             }
 
+            if(drawBlock instanceof EnvironmentLightMarker marker){
+                Cons<Tile> drawer = tile -> {
+                    if(!tester.get(tile)) return;
+                    applyEnvironmentLightMarker(tile, marker);
+                };
+
+                if(square){
+                    drawSquare(x, y, drawer);
+                }else{
+                    drawCircle(x, y, drawer);
+                }
+                return;
+            }
+
             boolean isFloor = drawBlock.isFloor() && drawBlock != Blocks.air;
 
             Cons<Tile> drawer = tile -> {
@@ -379,6 +393,25 @@ public class MapEditor{
         tile.floorData = updated;
     }
 
+    public void applyEnvironmentLightMarker(Tile tile, EnvironmentLightMarker marker){
+        if(tile == null || marker == null || !EnvironmentLightData.canPlaceOn(tile)) return;
+
+        EnvironmentLightMarker.MarkerConfig config = marker.parseConfig(marker.lastConfig);
+        if(EnvironmentLightData.same(tile, config.color, config.radius)) return;
+
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opDataExtra, tile.extraData));
+        EnvironmentLightData.set(tile, config.color, config.radius);
+    }
+
+    public void clearEnvironmentLightMarker(Tile tile){
+        if(tile == null || !EnvironmentLightData.has(tile)) return;
+
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opDataExtra, tile.extraData));
+        EnvironmentLightData.clear(tile);
+    }
+
     public HeightLayerMarker markerForTile(Tile tile){
         if(tile == null) return null;
         if(HeightLayerData.slope(tile)) return (HeightLayerMarker)Blocks.heightLayerSlope;
@@ -405,6 +438,11 @@ public class MapEditor{
             case CliffLayerData.topRightToBottomLeft -> (CliffLayerMarker)Blocks.cliffLayerDiagTrBl;
             default -> null;
         };
+    }
+
+    public EnvironmentLightMarker environmentLightMarkerForTile(Tile tile){
+        if(tile == null || !EnvironmentLightData.active(tile)) return null;
+        return (EnvironmentLightMarker)Blocks.environmentLightMarker;
     }
 
     public void resize(int width, int height, int shiftX, int shiftY){

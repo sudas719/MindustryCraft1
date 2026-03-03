@@ -95,6 +95,8 @@ public class Control implements ApplicationListener, Loadable{
                     Core.settings.put("sc2_migration_shown", true);
                 });
             }
+
+            Time.runTask(8f, DeviceIdentity::showConsentDialogIfNeeded);
         });
 
         Events.on(StateChangeEvent.class, event -> {

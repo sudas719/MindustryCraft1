@@ -284,6 +284,7 @@ public class UnitFactory extends UnitBlock{
         public float addonBuildTime = 0f;
         public int addonCrystalCost = 0;
         public int addonGasCost = 0;
+        private final Rect addonOccupancyRect = new Rect();
         public boolean hadDoubleAddon = false;
         public float liftThrusterTime = 0f;
 
@@ -887,13 +888,7 @@ public class UnitFactory extends UnitBlock{
         }
 
         public boolean isAddonBuilding(){
-            if(addonBuildPos == -1 || addonBuildBlock == -1) return false;
-            Tile tile = world.tile(addonBuildPos);
-            if(tile == null || tile.build == null) return false;
-            if(tile.build instanceof ConstructBlock.ConstructBuild cons){
-                return cons.current != null && cons.current.id == addonBuildBlock && cons.progress < 1f;
-            }
-            return false;
+            return addonBuildPos != -1 && addonBuildBlock != -1;
         }
 
         public @Nullable Block addonBuildingBlock(){
@@ -990,18 +985,15 @@ public class UnitFactory extends UnitBlock{
                 if(gasCost > 0) core.items.remove(Items.highEnergyGas, gasCost);
             }
 
-            if(!net.client()){
-                Call.beginPlace(null, addon, team, addonTile.x, addonTile.y, 0, null);
-                int pos = Point2.pack(addonTile.x, addonTile.y);
-                ConstructBlock.markPrepaid(pos);
-                ConstructBlock.markForceBuildTime(pos);
-            }
-
             addonBuildPos = Point2.pack(addonTile.x, addonTile.y);
             addonBuildBlock = addon.id;
             addonBuildTime = buildTime;
             addonCrystalCost = crystalCost;
             addonGasCost = gasCost;
+
+            if(!net.client()){
+                tryBeginAddonPlace(addonTile, addon);
+            }
             return true;
         }
 
@@ -1009,13 +1001,24 @@ public class UnitFactory extends UnitBlock{
             if(addonBuildPos == -1 || addonBuildBlock == -1) return;
             Tile tile = world.tile(addonBuildPos);
             Block addon = addonBuildingBlock();
+            boolean refunded = false;
+            if(tile != null && tile.build != null && tile.build.block.id == addonBuildBlock){
+                clearAddonBuildState();
+                return;
+            }
             if(tile != null && tile.build instanceof ConstructBlock.ConstructBuild cons && addon != null){
                 if(cons.current != null && cons.current.id == addonBuildBlock && cons.progress < 1f){
                     ConstructBlock.consumePrepaid(tile.pos());
                     ConstructBlock.clearForceBuildTime(tile.pos());
-                    if(refund) refundAddonCost();
+                    if(refund){
+                        refundAddonCost();
+                        refunded = true;
+                    }
                     ConstructBlock.deconstructFinish(tile, addon, null);
                 }
+            }
+            if(refund && !refunded){
+                refundAddonCost();
             }
             clearAddonBuildState();
         }
@@ -1135,13 +1138,20 @@ public class UnitFactory extends UnitBlock{
         private void updateAddonBuild(){
             if(addonBuildPos == -1 || addonBuildBlock == -1) return;
             if(!enabled) return;
-            Tile tile = world.tile(addonBuildPos);
-            if(tile == null || tile.build == null){
+
+            Block addon = addonBuildingBlock();
+            if(addon == null){
                 clearAddonBuildState();
                 return;
             }
 
-            if(tile.build.block.id == addonBuildBlock){
+            Tile tile = world.tile(addonBuildPos);
+            if(tile == null){
+                clearAddonBuildState();
+                return;
+            }
+
+            if(tile.build != null && tile.build.block.id == addonBuildBlock){
                 clearAddonBuildState();
                 return;
             }
@@ -1152,8 +1162,75 @@ public class UnitFactory extends UnitBlock{
                 if(cons.progress >= 1f && tile.build.block.id == addonBuildBlock){
                     clearAddonBuildState();
                 }
-            }else{
+                return;
+            }
+
+            if(tile.build != null){
                 clearAddonBuildState();
+                return;
+            }
+
+            if(!Build.validPlaceIgnoreUnits(addon, team, tile.x, tile.y, 0, true, true)){
+                clearAddonBuildState();
+                return;
+            }
+
+            if(!net.client()){
+                tryBeginAddonPlace(tile, addon);
+            }
+        }
+
+        private void tryBeginAddonPlace(Tile addonTile, Block addon){
+            if(net.client() || addonTile == null || addon == null) return;
+            if(addonTile.build != null) return;
+            if(!Build.validPlaceIgnoreUnits(addon, team, addonTile.x, addonTile.y, 0, true, true)) return;
+
+            int occupied = scanAddonOccupants(addonTile, addon, true);
+            if(occupied != 0) return;
+
+            Call.beginPlace(null, addon, team, addonTile.x, addonTile.y, 0, null);
+            int pos = Point2.pack(addonTile.x, addonTile.y);
+            ConstructBlock.markPrepaid(pos);
+            ConstructBlock.markForceBuildTime(pos);
+        }
+
+        private int scanAddonOccupants(Tile addonTile, Block addon, boolean driveFriendlies){
+            addon.bounds(addonTile.x, addonTile.y, addonOccupancyRect);
+            int[] occupied = {0};
+            Units.nearby(addonOccupancyRect, unit -> {
+                if(unit == null || !unit.isValid()) return;
+                unit.hitbox(Tmp.r1);
+                if(!Tmp.r1.overlaps(addonOccupancyRect)) return;
+
+                if(unit.team == team){
+                    occupied[0] |= 1;
+                    if(driveFriendlies){
+                        driveFriendlyUnitFromAddon(unit);
+                    }
+                }else{
+                    occupied[0] |= 2;
+                }
+            });
+            return occupied[0];
+        }
+
+        private void driveFriendlyUnitFromAddon(Unit unit){
+            float cx = addonOccupancyRect.x + addonOccupancyRect.width / 2f;
+            float cy = addonOccupancyRect.y + addonOccupancyRect.height / 2f;
+
+            Vec2 dir = Tmp.v1.set(unit.x - cx, unit.y - cy);
+            if(dir.len2() < 0.001f){
+                dir.set(Geometry.d4x[rotation], Geometry.d4y[rotation]);
+            }
+            dir.nor();
+
+            float targetDst = Math.max(addonOccupancyRect.width, addonOccupancyRect.height) / 2f + unit.hitSize / 2f + tilesize * 1.5f;
+            Vec2 target = Tmp.v2.set(cx + dir.x * targetDst, cy + dir.y * targetDst);
+
+            if(unit.isCommandable()){
+                unit.command().commandPosition(target);
+            }else{
+                unit.impulse(dir.x * 1.2f, dir.y * 1.2f);
             }
         }
 
@@ -1285,6 +1362,7 @@ public class UnitFactory extends UnitBlock{
         }
 
         private void spawnUnit(UnitPlan plan){
+            if(net.client()) return;
             Unit unit = plan.unit.create(team);
             if(unit.isCommandable()){
                 unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);

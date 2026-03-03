@@ -4,6 +4,7 @@ import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.graphics.gl.*;
+import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
@@ -27,6 +28,7 @@ public class EditorRenderer implements Disposable{
 
     private Shader shader;
     private TextureRegion firstLayerRegion, secondLayerRegion, thirdLayerRegion, fourthLayerRegion, slopeLayerRegion;
+    private TextureRegion environmentLightRegion;
 
     public void resize(int width, int height){
         dispose();
@@ -144,6 +146,13 @@ public class EditorRenderer implements Disposable{
             Draw.color();
             Draw.proj(Tmp.m2);
         }
+        Draw.proj(Core.camera.mat);
+        Draw.color();
+        Draw.blend();
+        Draw.shader();
+        drawEnvironmentLightOverlay();
+        Draw.color();
+        Draw.proj(Tmp.m2);
         renderer.animateWater = prev;
 
         if(chunks == null) return;
@@ -267,6 +276,25 @@ public class EditorRenderer implements Disposable{
         if(slopeLayerRegion == null || !slopeLayerRegion.found()){
             slopeLayerRegion = findHeightRegion("Slope", "slope", "layer-Slope", "layer-slope", "layer/Slope");
         }
+    }
+
+    private void drawEnvironmentLightOverlay(){
+        if(environmentLightRegion == null || !environmentLightRegion.found()){
+            environmentLightRegion = Core.atlas.find("blocks/light/environment-light");
+            if(!environmentLightRegion.found()) environmentLightRegion = Core.atlas.find("environment-light", environmentLightRegion);
+            if(!environmentLightRegion.found() && Blocks.environmentLightMarker != null){
+                environmentLightRegion = Blocks.environmentLightMarker.uiIcon;
+            }
+            if(environmentLightRegion == null || !environmentLightRegion.found()) return;
+        }
+
+        for(Tile tile : world.tiles){
+            if(tile == null || !EnvironmentLightData.active(tile)) continue;
+            Color color = EnvironmentLightData.color(tile, Tmp.c1);
+            Draw.color(color.r, color.g, color.b, Mathf.clamp(color.a, 0.2f, 1f));
+            Draw.rect(environmentLightRegion, tile.worldx(), tile.worldy(), tilesize, tilesize);
+        }
+        Draw.color();
     }
 
     private TextureRegion findHeightRegion(String... names){

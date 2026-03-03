@@ -530,9 +530,18 @@ public class CommandAI extends AIController{
                 attackTarget = null;
             }
 
+            boolean battlecruiser = UnitTypes.isBattlecruiser(unit);
             if(unit.isFlying()){
                 if(attackTarget != null){
-                    unit.lookAt(attackTarget);
+                    if(battlecruiser){
+                        if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
+                            unit.lookAt(vecMovePos);
+                        }else if(unit.moving()){
+                            unit.lookAt(unit.vel().angle());
+                        }
+                    }else{
+                        unit.lookAt(attackTarget);
+                    }
                 }else if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
                     unit.lookAt(vecMovePos);
                 }else{

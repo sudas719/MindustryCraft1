@@ -245,9 +245,9 @@ public class UnitAbilityPanel extends Table{
                                 handleCoreHotkeys();
                             }else if(Core.input.keyTap(KeyCode.escape)){
                                 if(core.isUpgradingOrbital()){
-                                    core.cancelOrbitalUpgrade();
+                                    cancelCoreOrbitalUpgrade(core);
                                 }else if(core.isUpgradingFortress()){
-                                    core.cancelFortressUpgrade();
+                                    cancelCoreFortressUpgrade(core);
                                 }
                             }
                         }else{
@@ -1728,7 +1728,7 @@ public class UnitAbilityPanel extends Table{
                 ui.hudfrag.setHudText("Cannot upgrade while training");
             }else if(core.isUpgrading()){
                 ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!core.startOrbitalUpgrade()){
+            }else if(!startCoreOrbitalUpgrade(core)){
                 ui.hudfrag.setHudText("Not enough crystals");
             }
         });
@@ -1750,7 +1750,7 @@ public class UnitAbilityPanel extends Table{
                 ui.hudfrag.setHudText("Upgrade already in progress");
             }else if(!core.hasEngineeringStation()){
                 ui.hudfrag.setHudText("Requires Engineering Station");
-            }else if(!core.startFortressUpgrade()){
+            }else if(!startCoreFortressUpgrade(core)){
                 ui.hudfrag.setHudText("Not enough crystals or gas");
             }
         });
@@ -1779,7 +1779,7 @@ public class UnitAbilityPanel extends Table{
             addIconButton(grid, "x", Icon.add, energyAvailable, () -> enterCommandMode(CommandMode.EXTRA_SUPPLY));
             addIconButton(grid, "c", Icon.zoom, energyAvailable, () -> enterCommandMode(CommandMode.SCAN));
             if(core.hasStoredScvs()){
-                addIconButton(grid, "d", Icon.download, () -> true, () -> core.unloadScvs());
+                addIconButton(grid, "d", Icon.download, () -> true, () -> unloadCoreScvs(core));
             }else{
                 addEmpty(grid);
             }
@@ -1787,10 +1787,10 @@ public class UnitAbilityPanel extends Table{
         }else{
             addEmpty(grid);
             if(core.hasStoredScvs()){
-                addIconButton(grid, "d", Icon.download, () -> true, () -> core.unloadScvs());
+                addIconButton(grid, "d", Icon.download, () -> true, () -> unloadCoreScvs(core));
             }else{
                 addIconButton(grid, "o", Icon.upload, () -> true, () -> {
-                    if(!core.requestLoadScvs()){
+                    if(!requestCoreLoadScvs(core)){
                         ui.hudfrag.setHudText("No available SCVs or storage full");
                     }
                 });
@@ -4004,7 +4004,7 @@ public class UnitAbilityPanel extends Table{
                 ui.hudfrag.setHudText("Cannot upgrade while training");
             }else if(core.isUpgrading()){
                 ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!core.startOrbitalUpgrade()){
+            }else if(!startCoreOrbitalUpgrade(core)){
                 ui.hudfrag.setHudText("Not enough crystals");
             }
         }else if(Core.input.keyTap(KeyCode.p)){
@@ -4016,7 +4016,7 @@ public class UnitAbilityPanel extends Table{
                 ui.hudfrag.setHudText("Upgrade already in progress");
             }else if(!core.hasEngineeringStation()){
                 ui.hudfrag.setHudText("Requires Engineering Station");
-            }else if(!core.startFortressUpgrade()){
+            }else if(!startCoreFortressUpgrade(core)){
                 ui.hudfrag.setHudText("Not enough crystals or gas");
             }
         }else if(Core.input.keyTap(KeyCode.y)){
@@ -4034,11 +4034,11 @@ public class UnitAbilityPanel extends Table{
                 enterCommandMode(CommandMode.SCAN);
             }
         }else if(Core.input.keyTap(KeyCode.o) && core.block != Blocks.coreOrbital){
-            if(!core.requestLoadScvs()){
+            if(!requestCoreLoadScvs(core)){
                 ui.hudfrag.setHudText("No available SCVs or storage full");
             }
         }else if(Core.input.keyTap(KeyCode.d)){
-            core.unloadScvs();
+            unloadCoreScvs(core);
         }else if(Core.input.keyTap(KeyCode.l)){
             if(core.canLift()){
                 queueCoreLift(core);
@@ -4049,9 +4049,9 @@ public class UnitAbilityPanel extends Table{
 
         if(Core.input.keyTap(KeyCode.escape)){
             if(core.isUpgradingOrbital()){
-                core.cancelOrbitalUpgrade();
+                cancelCoreOrbitalUpgrade(core);
             }else if(core.isUpgradingFortress()){
-                core.cancelFortressUpgrade();
+                cancelCoreFortressUpgrade(core);
             }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
                 cancelCoreUnit(core);
             }else{
@@ -4502,6 +4502,44 @@ public class UnitAbilityPanel extends Table{
     private void cancelCoreUnit(CoreBuild core){
         if(core == null || core.unitQueue == null || core.unitQueue.isEmpty()) return;
         Call.coreCancelUnit(player, core.pos());
+    }
+
+    private boolean requestCoreLoadScvs(CoreBuild core){
+        if(core == null) return false;
+        int free = core.scvStorageLimit() - core.storedScvs - core.loadingScvs.size;
+        if(free <= 0) return false;
+        if(!core.team.data().units.contains(unit -> unit != null && unit.isValid() && unit.type == UnitTypes.nova && !core.loadingScvs.contains(unit.id))){
+            return false;
+        }
+        Call.coreRequestLoadScvs(player, core.pos());
+        return true;
+    }
+
+    private void unloadCoreScvs(CoreBuild core){
+        if(core == null || core.storedScvs <= 0) return;
+        Call.coreUnloadScvs(player, core.pos());
+    }
+
+    private boolean startCoreOrbitalUpgrade(CoreBuild core){
+        if(core == null || !core.canStartOrbitalUpgrade()) return false;
+        Call.coreStartOrbitalUpgrade(player, core.pos());
+        return true;
+    }
+
+    private void cancelCoreOrbitalUpgrade(CoreBuild core){
+        if(core == null || !core.isUpgradingOrbital()) return;
+        Call.coreCancelOrbitalUpgrade(player, core.pos());
+    }
+
+    private boolean startCoreFortressUpgrade(CoreBuild core){
+        if(core == null || !core.canStartFortressUpgrade()) return false;
+        Call.coreStartFortressUpgrade(player, core.pos());
+        return true;
+    }
+
+    private void cancelCoreFortressUpgrade(CoreBuild core){
+        if(core == null || !core.isUpgradingFortress()) return;
+        Call.coreCancelFortressUpgrade(player, core.pos());
     }
 
     private void launchCore(CoreBuild core){

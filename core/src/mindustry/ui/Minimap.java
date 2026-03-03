@@ -1,6 +1,7 @@
 package mindustry.ui;
 
 import arc.*;
+import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.input.*;
 import arc.math.*;
@@ -9,7 +10,9 @@ import arc.scene.*;
 import arc.scene.event.*;
 import arc.scene.ui.layout.*;
 import arc.util.*;
+import mindustry.game.*;
 import mindustry.gen.*;
+import mindustry.ui.fragments.HudFragment;
 
 import static mindustry.Vars.*;
 
@@ -73,42 +76,51 @@ public class Minimap extends Table{
                     renderer.minimap.drawEntities(x, y, width, height, false);
                 }
 
-                //Draw camera view box
-                var region = renderer.minimap.getRegion();
-                if(region != null){
-                    //Calculate camera bounds in world coordinates
-                    float camWidth = Core.camera.width;
-                    float camHeight = Core.camera.height;
-                    float camX = Core.camera.position.x;
-                    float camY = Core.camera.position.y;
+                boolean spectator = HudFragment.isLocalPlayerSpectator() && ui.hudfrag != null;
+                boolean drawLocalCameraBox = !(spectator && ui.hudfrag.isSpectatorCameraAll());
 
-                    //Convert to minimap coordinates
-                    float worldWidth = world.width() * tilesize;
-                    float worldHeight = world.height() * tilesize;
+                if(drawLocalCameraBox){
+                    //Draw camera view box
+                    var region = renderer.minimap.getRegion();
+                    if(region != null){
+                        //Calculate camera bounds in world coordinates
+                        float camWidth = Core.camera.width;
+                        float camHeight = Core.camera.height;
+                        float camX = Core.camera.position.x;
+                        float camY = Core.camera.position.y;
 
-                    //Camera bounds in world space
-                    float camLeft = camX - camWidth / 2f;
-                    float camRight = camX + camWidth / 2f;
-                    float camBottom = camY - camHeight / 2f;
-                    float camTop = camY + camHeight / 2f;
+                        //Convert to minimap coordinates
+                        float worldWidth = world.width() * tilesize;
+                        float worldHeight = world.height() * tilesize;
 
-                    //Normalize to 0-1 range
-                    float normLeft = Mathf.clamp(camLeft / worldWidth, 0f, 1f);
-                    float normRight = Mathf.clamp(camRight / worldWidth, 0f, 1f);
-                    float normBottom = Mathf.clamp(camBottom / worldHeight, 0f, 1f);
-                    float normTop = Mathf.clamp(camTop / worldHeight, 0f, 1f);
+                        //Camera bounds in world space
+                        float camLeft = camX - camWidth / 2f;
+                        float camRight = camX + camWidth / 2f;
+                        float camBottom = camY - camHeight / 2f;
+                        float camTop = camY + camHeight / 2f;
 
-                    //Convert to minimap pixel coordinates
-                    float boxLeft = x + normLeft * width;
-                    float boxRight = x + normRight * width;
-                    float boxBottom = y + normBottom * height;
-                    float boxTop = y + normTop * height;
+                        //Normalize to 0-1 range
+                        float normLeft = Mathf.clamp(camLeft / worldWidth, 0f, 1f);
+                        float normRight = Mathf.clamp(camRight / worldWidth, 0f, 1f);
+                        float normBottom = Mathf.clamp(camBottom / worldHeight, 0f, 1f);
+                        float normTop = Mathf.clamp(camTop / worldHeight, 0f, 1f);
 
-                    //Draw the camera view box
-                    Lines.stroke(2f);
-                    Draw.color(arc.graphics.Color.white, 0.8f);
-                    Lines.rect(boxLeft, boxBottom, boxRight - boxLeft, boxTop - boxBottom);
-                    Draw.reset();
+                        //Convert to minimap pixel coordinates
+                        float boxLeft = x + normLeft * width;
+                        float boxRight = x + normRight * width;
+                        float boxBottom = y + normBottom * height;
+                        float boxTop = y + normTop * height;
+
+                        //Draw the camera view box
+                        Lines.stroke(2f);
+                        Draw.color(Color.white, 0.8f);
+                        Lines.rect(boxLeft, boxBottom, boxRight - boxLeft, boxTop - boxBottom);
+                        Draw.reset();
+                    }
+                }
+
+                if(spectator){
+                    drawSpectatorViewBoxes(x, y, width, height);
                 }
 
                 clipEnd();
@@ -201,6 +213,57 @@ public class Minimap extends Table{
                 Core.scene.setScrollFocus(null);
             }
         });
+    }
+
+    private void drawSpectatorViewBoxes(float mapX, float mapY, float mapW, float mapH){
+        if(ui.hudfrag == null) return;
+
+        if(ui.hudfrag.isSpectatorCameraAll()){
+            for(Player other : Groups.player){
+                if(other == null || other.team() == null) continue;
+                if(HudFragment.isObserverPlayer(other)) continue;
+                drawPlayerViewBox(mapX, mapY, mapW, mapH, other, other.team().color, 1.6f, 0.82f);
+            }
+        }else{
+            Player target = Groups.player.getByID(ui.hudfrag.getSpectatorCameraFocusPlayer());
+            if(target == null || target.team() == null) return;
+            Color color = HudFragment.isObserverPlayer(target) ? Color.white : target.team().color;
+            drawPlayerViewBox(mapX, mapY, mapW, mapH, target, color, 2f, 0.9f);
+        }
+    }
+
+    private void drawPlayerViewBox(float mapX, float mapY, float mapW, float mapH, Player target, Color color, float stroke, float alpha){
+        float worldW = world.width() * tilesize;
+        float worldH = world.height() * tilesize;
+        if(worldW <= 0f || worldH <= 0f) return;
+
+        float cx, cy;
+        if(!target.dead() && target.unit() != null && target.unit().isValid()){
+            cx = target.unit().x;
+            cy = target.unit().y;
+        }else{
+            cx = target.x;
+            cy = target.y;
+        }
+
+        float camW = Core.camera.width;
+        float camH = Core.camera.height;
+        float left = Mathf.clamp((cx - camW / 2f) / worldW, 0f, 1f);
+        float right = Mathf.clamp((cx + camW / 2f) / worldW, 0f, 1f);
+        float bottom = Mathf.clamp((cy - camH / 2f) / worldH, 0f, 1f);
+        float top = Mathf.clamp((cy + camH / 2f) / worldH, 0f, 1f);
+
+        float boxLeft = mapX + left * mapW;
+        float boxRight = mapX + right * mapW;
+        float boxBottom = mapY + bottom * mapH;
+        float boxTop = mapY + top * mapH;
+        float boxW = Math.max(2f, boxRight - boxLeft);
+        float boxH = Math.max(2f, boxTop - boxBottom);
+
+        Lines.stroke(stroke);
+        Draw.color(color, alpha);
+        Lines.rect(boxLeft, boxBottom, boxW, boxH);
+        Draw.reset();
     }
 
     public void setMinimapSize(float size){

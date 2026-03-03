@@ -113,7 +113,8 @@ public class PlayerListFragment{
                 }
             };
 
-            boolean clickable = !(state.rules.fog && state.rules.pvp && user.team() != player.team());
+            boolean spectator = player != null && net.active() && player.team() != null && (player.team() == Team.derelict || !player.team().data().isAlive());
+            boolean clickable = spectator || !(state.rules.fog && state.rules.pvp && user.team() != player.team());
 
             if(clickable){
                 iconTable.addListener(listener);
@@ -242,6 +243,8 @@ public class PlayerListFragment{
 
                     }).size(h);
                 }
+
+                button.button(Icon.wrench, ustyle, () -> showForceTeamDialog(user)).size(h);
             }else if(!user.isLocal() && !user.admin && net.client() && Groups.player.size() >= 3 && player.team() == user.team()){ //votekick
                 button.add().growY();
 
@@ -260,6 +263,29 @@ public class PlayerListFragment{
         }
 
         content.marginBottom(5);
+    }
+
+    private void showForceTeamDialog(Player user){
+        var teamSelect = new BaseDialog(Core.bundle.get("player.team") + ": " + user.name());
+        teamSelect.setFillParent(false);
+        teamSelect.closeOnBack();
+
+        teamSelect.cont.pane(t -> {
+            t.defaults().size(250f, 55f).pad(3f);
+
+            int i = 0;
+            for(Team team : Team.all){
+                t.button(team.coloredName() + " [lightgray](#" + team.id + ")", Styles.defaultt, () -> {
+                    Call.adminRequest(user, AdminAction.switchTeam, team);
+                    teamSelect.hide();
+                }).disabled(b -> user.team() == team);
+
+                if(i++ % 2 == 1) t.row();
+            }
+        }).maxHeight(500f).row();
+
+        teamSelect.addCloseButton();
+        teamSelect.show();
     }
 
     public void toggle(){

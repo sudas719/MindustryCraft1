@@ -44,6 +44,10 @@ import static mindustry.Vars.*;
 public class UnitType extends UnlockableContent implements Senseable{
     public static final float shadowTX = -12, shadowTY = -13;
     private static final float globalTurnSpeedMultiplier = 3f;
+    private static final float stealthCloakBurnDuration = 48f;
+    private static final Color stealthVisibleTint = Color.valueOf("66b8ff"), stealthHiddenTint = Color.valueOf("dcecff");
+    private static final IntIntMap stealthCloakState = new IntIntMap();
+    private static final IntFloatMap stealthCloakProgress = new IntFloatMap();
     private static final Vec2 legOffset = new Vec2();
     private static final Seq<UnitStance> tmpStances = new Seq<>();
     private boolean turnSpeedScaled = false;
@@ -1513,7 +1517,14 @@ public class UnitType extends UnlockableContent implements Senseable{
 
     public void draw(Unit unit){
         float scl = xscl;
-        if(unit.inFogTo(Vars.player.team())) return;
+        Team viewer = stealthViewerTeam(unit);
+        int stealthMode = stealthVisualMode(unit, viewer);
+        float stealthEnter = updateStealthCloakTransition(unit, stealthMode != 0);
+        if(stealthMode == 0){
+            if(viewer != null && unit.inFogTo(viewer)) return;
+        }else if(inFogToViewerNoStealth(unit, viewer)){
+            return;
+        }
 
         if(buildSpeed > 0f){
             unit.drawBuilding();
@@ -1533,6 +1544,13 @@ public class UnitType extends UnlockableContent implements Senseable{
             unit.elevation > 0.5f || (flying && unit.dead) ? (flyingLayer) :
             seg != null ? groundLayer + seg.segmentIndex() / 4000f * Mathf.sign(segmentLayerOrder) + (!segmentLayerOrder ? 0.01f : 0f) :
             groundLayer + Mathf.clamp(hitSize / 4000f, 0, 0.01f);
+
+        if(stealthMode != 0){
+            drawStealthVisual(unit, z, isPayload, stealthMode == 2, stealthEnter);
+            Draw.scl(scl);
+            Draw.reset();
+            return;
+        }
 
         if(!isPayload && (unit.isFlying() || shadowElevation > 0)){
             Draw.z(Math.min(Layer.darkness, z - 1f));
@@ -1632,6 +1650,133 @@ public class UnitType extends UnlockableContent implements Senseable{
         }
 
         Draw.reset();
+    }
+
+    private @Nullable Team stealthViewerTeam(Unit unit){
+        if(Vars.player != null) return Vars.player.team();
+        return unit.team;
+    }
+
+    private int stealthVisualMode(Unit unit, @Nullable Team viewer){
+        if(!isStealthedUnit(unit)) return 0;
+        if(viewer == null) return 1;
+        return UnitTypes.widowHiddenFrom(unit, viewer) ? 2 : 1;
+    }
+
+    private boolean isStealthedUnit(Unit unit){
+        return UnitTypes.widowIsStealthed(unit) || UnitTypes.bansheeCloaked(unit) || UnitTypes.ghostCloaked(unit);
+    }
+
+    private float updateStealthCloakTransition(Unit unit, boolean stealthed){
+        int id = unit.id;
+
+        if(!stealthed){
+            stealthCloakState.remove(id, 0);
+            stealthCloakProgress.remove(id, 1f);
+            return 1f;
+        }
+
+        int prev = stealthCloakState.get(id, 0);
+        float progress = prev == 1 ? stealthCloakProgress.get(id, 1f) : 0f;
+        progress = Math.min(1f, progress + Time.delta / stealthCloakBurnDuration);
+
+        stealthCloakState.put(id, 1);
+        stealthCloakProgress.put(id, progress);
+        return progress;
+    }
+
+    private boolean inFogToViewerNoStealth(Unit unit, @Nullable Team viewer){
+        if(viewer == null) return false;
+        if(unit.team == viewer) return false;
+        if(state == null || state.rules == null || !state.rules.fog || fogControl == null) return false;
+
+        float hs = unit.hitSize();
+        if(hs <= 16f){
+            return !fogControl.isVisible(viewer, unit.x, unit.y);
+        }else{
+            float trns = hs / 2f;
+            for(var p : Geometry.d8){
+                if(fogControl.isVisible(viewer, unit.x + p.x * trns, unit.y + p.y * trns)){
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    private void drawStealthVisual(Unit unit, float z, boolean isPayload, boolean hidden, float transition){
+        if(!isPayload && (unit.isFlying() || shadowElevation > 0)){
+            Draw.z(Math.min(Layer.darkness, z - 1f));
+            drawShadow(unit);
+        }
+
+        Draw.z(z - 0.02f);
+        if(drawSoftShadow){
+            drawSoftShadow(unit, hidden ? 0.3f : 0.45f);
+        }
+
+        if(transition < 0.999f){
+            drawStealthCloakBurn(unit, z, hidden, transition);
+            return;
+        }
+
+        Draw.z(z);
+        Color tint = hidden ? stealthHiddenTint : stealthVisibleTint;
+        float mode = hidden ? 2f : 0f;
+
+        if(drawBody && Core.atlas.isFound(outlineRegion)){
+            drawStealthRegion(outlineRegion, unit, tint, hidden ? 0.22f : 0.9f, hidden ? 2f : 1f, 1f);
+        }
+        if(drawBody){
+            drawStealthRegion(region, unit, tint, hidden ? 0.26f : 0.42f, mode, 1f);
+        }
+        if(drawCell && !(unit instanceof Crawlc)){
+            drawStealthRegion(cellRegion, unit, tint, hidden ? 0.14f : 0.26f, mode, 1f);
+        }
+    }
+
+    private void drawStealthCloakBurn(Unit unit, float z, boolean hidden, float progress){
+        Draw.z(z);
+        Color tint = hidden ? stealthHiddenTint : stealthVisibleTint;
+        float alphaMul = hidden ? 0.72f : 0.86f;
+
+        if(drawBody && Core.atlas.isFound(outlineRegion)){
+            drawStealthRegion(outlineRegion, unit, tint, 0.95f * alphaMul, 3f, progress);
+        }
+        if(drawBody){
+            drawStealthRegion(region, unit, tint, 0.88f * alphaMul, 3f, progress);
+        }
+        if(drawCell && !(unit instanceof Crawlc)){
+            drawStealthRegion(cellRegion, unit, tint, 0.55f * alphaMul, 3f, progress);
+        }
+    }
+
+    private void drawStealthRegion(TextureRegion source, Unit unit, Color color, float alpha, float mode, float progress){
+        if(source == null || !source.found() || alpha <= 0.001f) return;
+
+        if(Shaders.unitGhost != null){
+            float ux = unit.x, uy = unit.y, urot = unit.rotation - 90f;
+            float cr = color.r, cg = color.g, cb = color.b;
+
+            float layer = Draw.z();
+            Draw.draw(layer, () -> {
+                Shaders.unitGhost.region = source;
+                Shaders.unitGhost.mode = mode;
+                Shaders.unitGhost.progress = progress;
+                Shaders.unitGhost.color.set(cr, cg, cb, alpha);
+                Shaders.unitGhost.time = Time.time / 60f;
+                float drawH = Math.abs(source.height * source.scl() * Draw.yscl);
+                Shaders.unitGhost.lineStep = Mathf.clamp(tilesize * 0.55f / Math.max(drawH, 1f), 0.008f, 0.32f);
+                Shaders.unitGhost.lineWidth = mode >= 1.5f ? 0.085f : 0.06f;
+                Draw.shader(Shaders.unitGhost);
+                Draw.rect(source, ux, uy, urot);
+                Draw.shader();
+            });
+        }else{
+            Draw.color(color.r, color.g, color.b, alpha);
+            Draw.rect(source, unit.x, unit.y, unit.rotation - 90f);
+            Draw.color();
+        }
     }
 
     //...where do I put this

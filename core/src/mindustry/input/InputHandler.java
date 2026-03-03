@@ -63,6 +63,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     final static IntSet intSet = new IntSet();
     final static Color placementGridLine = Color.valueOf("ffffff");
     final static Color placementGridInvalid = Color.valueOf("ff9a2f");
+    public static final float selectionRingStroke = 0.75f;
+    public static final float selectionRingRadiusStep = 0.35f;
+    public static final float selectionSolidRadiusOffset = 0f;
+    public static final float selectionDashedRadiusOffset = -selectionRingRadiusStep;
+    public static final float selectionRotatingDashedRadiusOffset = -selectionRingRadiusStep * 2f;
     /** Maximum line length. */
     final static int maxLength = 100;
     final static Rect r1 = new Rect(), r2 = new Rect();
@@ -111,6 +116,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public Queue<BuildPlan> lastPlans = new Queue<>();
     public @Nullable Unit lastUnit;
     public @Nullable Unit spectating;
+    public int spectatingPlayer = -1;
 
     //for RTS controls
     public Seq<Unit> selectedUnits = new Seq<>();
@@ -326,6 +332,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return new Vec2(Mathf.clamp(target.x, 0f, maxX), Mathf.clamp(target.y, 0f, maxY));
     }
 
+    private static void recordPlayerAction(@Nullable Player player){
+        HudFragment.recordPlayerAction(player);
+    }
+
     private static boolean canScvRepairTarget(Unit unit, @Nullable Teamc target, boolean explicitRepairCommand){
         if(unit == null || unit.type != UnitTypes.nova || target == null) return false;
         if(target.team() != unit.team) return false;
@@ -392,7 +402,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         }
 
                     if(teamTarget != null){
-                        boolean forcedAllyAttack = forceAttackTarget && teamTarget.team() == player.team();
+                        boolean alliedAttackableBuilding = teamTarget instanceof Building b && Units.targetableAllTeams(b);
+                        boolean forcedAllyAttack = teamTarget.team() == player.team() && (forceAttackTarget || alliedAttackableBuilding);
                         boolean scvRepairTarget = canScvRepairTarget(unit, teamTarget, scvRepairCommandRequested);
                         if(teamTarget.team() == player.team() && scvRepairTarget){
                             ai.command(UnitCommand.repairCommand);
@@ -470,6 +481,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     group.calculateFormation(targetAsVec, i);
                 }
             }
+
+            recordPlayerAction(player);
         }
 
         if(unitIds.length > 0 && player == Vars.player && !state.isPaused()){
@@ -488,6 +501,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
@@ -524,6 +539,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit != null && unit.team == player.team() && unit.controller() instanceof CommandAI){
@@ -548,6 +565,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
@@ -574,6 +593,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isHurricane(unit)) continue;
@@ -592,6 +613,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
@@ -612,6 +635,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isThor(unit)) continue;
@@ -631,6 +656,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isViking(unit)) continue;
@@ -649,6 +676,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Vec2 safeTarget = sanitizeRemoteCommandTarget(zoneTarget);
 
@@ -676,6 +705,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit)) continue;
@@ -695,6 +726,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit)) continue;
@@ -713,6 +746,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Unit unit = Groups.unit.getByID(unitId);
         if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc pay)) return;
@@ -737,6 +772,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isBanshee(unit)) continue;
@@ -754,6 +791,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
@@ -773,6 +812,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Unit target = Groups.unit.getByID(targetId);
         if(!UnitTypes.ghostStableAimValidTarget(target)) return;
@@ -796,6 +837,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
@@ -813,6 +856,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
         if(safeTarget == null) return;
@@ -836,6 +881,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
@@ -853,6 +900,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
         if(safeTarget == null) return;
@@ -876,6 +925,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
@@ -893,6 +944,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Teamc target = null;
         if(targetId >= 0){
@@ -927,6 +980,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
         if(safeTarget == null) return;
 
@@ -949,6 +1004,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isRaven(unit)) continue;
@@ -967,6 +1024,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command units.");
         }
+
+        recordPlayerAction(player);
 
         Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
         if(safeTarget == null) return;
@@ -990,6 +1049,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         Unit target = Groups.unit.getByID(targetId);
         if(target == null || !target.isValid()) return;
 
@@ -1012,6 +1073,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        recordPlayerAction(player);
+
         Building building = world.build(bunkerPos);
         if(!(building instanceof BunkerBlock.BunkerBuild bunker) || bunker.team != player.team()) return;
         if(bunker.recycling) return;
@@ -1029,6 +1092,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         })){
             throw new ValidateException(player, "Player cannot command buildings.");
         }
+
+        recordPlayerAction(player);
 
         for(int pos : buildings){
             var build = world.build(pos);
@@ -1059,6 +1124,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot request items.");
         }
 
+        recordPlayerAction(player);
+
         Call.takeItems(build, item, Math.min(player.unit().maxAccepted(item), amount), player.unit());
         Events.fire(new WithdrawEvent(build, player, item, amount));
     }
@@ -1077,6 +1144,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }))){
             throw new ValidateException(player, "Player cannot transfer an item.");
         }
+
+        recordPlayerAction(player);
 
         var unit = player.unit();
         Item item = unit.item();
@@ -1253,6 +1322,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot rotate a block.");
         }
 
+        recordPlayerAction(player);
         if(player != null) build.updateLastAccess(player);
         int previous = build.rotation;
         build.rotation = Mathf.mod(build.rotation + Mathf.sign(direction), 4);
@@ -1285,6 +1355,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 return;
             }
         }
+        recordPlayerAction(player);
         if(player != null) build.updateLastAccess(player);
         build.configured(player == null || player.dead() ? null : player.unit(), value);
         Events.fire(new ConfigEvent(build, player, value));
@@ -1296,6 +1367,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public static void tileTap(@Nullable Player player, Tile tile){
         if(tile == null) return;
 
+        recordPlayerAction(player);
         Events.fire(new TapEvent(player, tile));
     }
 
@@ -1404,8 +1476,37 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public void spectate(Unit unit){
+        spectatingPlayer = -1;
         spectating = unit;
         camera.position.set(unit);
+    }
+
+    public void spectatePlayer(@Nullable Player target){
+        if(target == null){
+            spectatingPlayer = -1;
+            spectating = null;
+            return;
+        }
+
+        spectatingPlayer = target.id;
+        if(!target.dead() && target.unit() != null && target.unit().isValid()){
+            spectating = target.unit();
+            camera.position.set(spectating);
+        }else{
+            spectating = null;
+            camera.position.set(target.x, target.y);
+        }
+    }
+
+    public @Nullable Player spectatingPlayer(){
+        return spectatingPlayer < 0 ? null : Groups.player.getByID(spectatingPlayer);
+    }
+
+    private boolean isSpectatorMode(){
+        if(player == null || player.team() == null || state == null || state.isMenu()) return false;
+        if(!net.active()) return false;
+        Team team = player.team();
+        return team == Team.derelict || !team.data().isAlive();
     }
 
     public void reset(){
@@ -1416,13 +1517,34 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         itemDepositCooldown = 0f;
         Arrays.fill(controlGroups, null);
         lastUnit = null;
+        spectatingPlayer = -1;
+        spectating = null;
         lastPlans.clear();
         player.shooting = false;
     }
 
     public void update(){
-        if(spectating != null && (!spectating.isValid() || spectating.team != player.team())){
+        if(spectatingPlayer >= 0){
+            Player target = Groups.player.getByID(spectatingPlayer);
+            if(target == null || !target.isAdded() || target.team() == null || (!isSpectatorMode() && target.team() != player.team())){
+                spectatingPlayer = -1;
+                spectating = null;
+            }else if(!target.dead() && target.unit() != null && target.unit().isValid()){
+                spectating = target.unit();
+            }else{
+                spectating = null;
+            }
+        }else if(spectating != null && (!spectating.isValid() || (!isSpectatorMode() && spectating.team != player.team()))){
             spectating = null;
+        }
+
+        if(isSpectatorMode() && (commandMode || commandRect || selectedResource != null || !selectedUnits.isEmpty() || !commandBuildings.isEmpty())){
+            commandMode = false;
+            commandRect = false;
+            selectedUnits.clear();
+            commandBuildings.clear();
+            selectedResource = null;
+            Events.fire(Trigger.unitCommandChange);
         }
 
         if(logicCutscene && !renderer.isCutscene()){
@@ -1829,7 +1951,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 }
 
                 Teamc teamTarget = null;
-                Building buildAtPos = buildAt(target.x, target.y);
+                Building buildAtPos = world.buildWorld(target.x, target.y);
                 if(buildAtPos != null && buildAtPos.team() == player.team() && buildAtPos.block == Blocks.ventCondenser){
                     Tile ventTile = findVentTile(buildAtPos);
                     if(ventTile != null){
@@ -1845,7 +1967,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         return;
                     }
                 }
-                if(buildAtPos != null && buildAtPos.team() != player.team()){
+                boolean attackableAnyTeamBuild = buildAtPos != null && Units.targetableAllTeams(buildAtPos);
+                if(buildAtPos != null && (buildAtPos.team() != player.team() || attackableAnyTeamBuild)){
                     teamTarget = buildAtPos;
                 }else{
                     Unit enemyUnit = selectedEnemyUnit(target.x, target.y);
@@ -1908,7 +2031,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     ids[i] = selectedUnits.get(i).id;
                 }
 
-                if(teamTarget != null && teamTarget.team() != player.team()){
+                boolean attackableAllyBuild = teamTarget instanceof Building b && Units.targetableAllTeams(b);
+                if(teamTarget != null && (teamTarget.team() != player.team() || attackableAllyBuild)){
                     Events.fire(Trigger.unitCommandAttack);
                 }else if(teamTarget == null){
                     Events.fire(Trigger.unitCommandPosition);
@@ -1936,22 +2060,34 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public void drawCommand(Unit sel){
-        float radius = sel.hitSize / 2f;
-
-        //Draw thin green circle on top of unit
-        Lines.stroke(0.8f);
+        float radius = Math.max(1f, sel.hitSize / 2f + selectionSolidRadiusOffset);
+        Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
         Lines.circle(sel.x, sel.y, radius);
         Draw.reset();
     }
 
     public void drawCommand(Building build){
-        float radius = build.hitSize() / 2f;
-
-        //Draw thin green circle on top of building
-        Lines.stroke(0.8f);
+        float radius = Math.max(1f, build.hitSize() / 2f + selectionSolidRadiusOffset);
+        Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
         Lines.circle(build.x, build.y, radius);
+        Draw.reset();
+    }
+
+    private void drawCommandDashed(Unit sel){
+        float radius = Math.max(1f, sel.hitSize / 2f + selectionDashedRadiusOffset);
+        Lines.stroke(selectionRingStroke);
+        Draw.color(Color.green);
+        Lines.dashCircle(sel.x, sel.y, radius);
+        Draw.reset();
+    }
+
+    private void drawCommandDashed(Building build){
+        float radius = Math.max(1f, build.hitSize() / 2f + selectionDashedRadiusOffset);
+        Lines.stroke(selectionRingStroke);
+        Draw.color(Color.green);
+        Lines.dashCircle(build.x, build.y, radius);
         Draw.reset();
     }
 
@@ -1988,9 +2124,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 float rad = unit.hitSize / 2f;
 
                 //Draw only the outer ring on top of unit
-                Lines.stroke(0.5f);
+                Lines.stroke(selectionRingStroke);
                 Draw.color(Color.green);
-                Lines.circle(unit.x, unit.y, rad);
+                Lines.circle(unit.x, unit.y, Math.max(1f, rad + selectionSolidRadiusOffset));
             }
             Draw.reset();
         }
@@ -1998,11 +2134,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     private void drawCommandedBuildings(){
         if(commandMode && !commandBuildings.isEmpty()){
-            Lines.stroke(0.8f);
+            Lines.stroke(selectionRingStroke);
             Draw.color(Color.green);
             for(Building build : commandBuildings){
                 if(build == null || !build.isValid()) continue;
-                Lines.circle(build.x, build.y, build.hitSize() / 2f);
+                Lines.circle(build.x, build.y, Math.max(1f, build.hitSize() / 2f + selectionSolidRadiusOffset));
             }
             Draw.reset();
         }
@@ -2292,12 +2428,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
             var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
             for(var unit : units){
-                drawCommand(unit);
+                drawCommandDashed(unit);
             }
             if(units.isEmpty()){
                 var buildings = selectedCommandBuildings(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
                 for(var build : buildings){
-                    drawCommand(build);
+                    drawCommandDashed(build);
                 }
             }
 

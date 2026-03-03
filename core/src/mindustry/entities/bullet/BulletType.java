@@ -735,7 +735,7 @@ public class BulletType extends Content implements Cloneable{
                 );
             }else{
                 if(b.aimTile != null && b.aimTile.build != null &&
-                    (b.aimTile.build.team != b.team || Units.targetableAllTeams(b.aimTile.build)) &&
+                    (b.team.isEnemy(b.aimTile.build.team) || Units.targetableAllTeams(b.aimTile.build)) &&
                     Units.canTargetBuilding(collidesAir, collidesGround, b.aimTile.build) &&
                     !b.hasCollided(b.aimTile.build.id)){
                     target = b.aimTile.build;

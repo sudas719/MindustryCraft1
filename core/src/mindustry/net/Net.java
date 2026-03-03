@@ -50,6 +50,10 @@ public class Net{
 
         //register generated packet classes
         Call.registerPackets();
+
+        //keep custom extensions after generated packets to preserve base packet IDs.
+        registerPacket(ServerInfoRequest::new);
+        registerPacket(ServerInfoResponse::new);
     }
 
     /** Registers a new packet type for serialization. */

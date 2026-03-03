@@ -331,13 +331,6 @@ public class SettingsMenuDialog extends BaseDialog{
             game.checkPref("crashreport", true);
         }
 
-        game.checkPref("communityservers", true, val -> {
-            defaultServers.clear();
-            if(val){
-                JoinDialog.fetchServers();
-            }
-        });
-
         game.checkPref("savecreate", true);
         game.checkPref("blockreplace", true);
         game.checkPref("conveyorpathfinding", true);

@@ -567,6 +567,7 @@ public class Shaders{
         public Color color = new Color();
         public TextureRegion region;
         public float mode = 0f;
+        public float progress = 1f;
         public float lineStep = 0.1f;
         public float lineWidth = 0.06f;
         public float time = 0f;
@@ -579,6 +580,7 @@ public class Shaders{
         public void apply(){
             setUniformf("u_color", color);
             setUniformf("u_mode", mode);
+            setUniformf("u_progress", progress);
             setUniformf("u_lineStep", lineStep);
             setUniformf("u_lineWidth", lineWidth);
             setUniformf("u_time", time);

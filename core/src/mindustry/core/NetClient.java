@@ -36,8 +36,12 @@ import static mindustry.Vars.*;
 public class NetClient implements ApplicationListener{
     private static final long entitySnapshotTimeout = 1000 * 20;
     private static final float dataTimeout = 60 * 30;
-    /** ticks between syncs, e.g. 5 means 60/5 = 12 syncs/sec*/
-    private static final float playerSyncTime = 4;
+    /** ticks between syncs, e.g. 2 means 60/2 = 30 syncs/sec */
+    private static final float playerSyncTime = 2;
+    /** use 60Hz while player state is actively changing */
+    private static final float playerSyncActiveTime = 1f;
+    private static final float snapshotPosThreshold2 = 0.04f;
+    private static final float snapshotAimThreshold2 = 1.5f * 1.5f;
     private static final Reads dataReads = new Reads(null);
     private static final JsonValue tmpJsonMap = new JsonValue(ValueType.object);
 
@@ -55,6 +59,10 @@ public class NetClient implements ApplicationListener{
     private long lastSnapshotTimestamp;
     /** Last sent client snapshot ID. */
     private int lastSent;
+    private boolean hasLastSnapshotState;
+    private int lastSnapshotUnitId = -2, lastSnapshotPlanSize = -2;
+    private float lastSnapshotX, lastSnapshotY, lastSnapshotAimX, lastSnapshotAimY;
+    private boolean lastSnapshotDead, lastSnapshotBoosting, lastSnapshotShooting, lastSnapshotChatting, lastSnapshotBuilding;
 
     /** List of entities that were removed, and need not be added while syncing. */
     private IntSet removed = new IntSet();
@@ -68,6 +76,10 @@ public class NetClient implements ApplicationListener{
     private ObjectMap<String, Seq<Cons<byte[]>>> customBinaryPacketHandlers = new ObjectMap<>();
 
     public NetClient(){
+        addPacketHandler("identity-ping", nonce -> {
+            String hash = DeviceIdentity.getIdentityHashFromUserFile();
+            Call.serverPacketReliable("identity-pong", (nonce == null ? "" : nonce) + "|" + (hash == null ? "" : hash));
+        });
 
         net.handleClient(Connect.class, packet -> {
             Log.info("Connecting to server: @", packet.addressTCP);
@@ -105,9 +117,17 @@ public class NetClient implements ApplicationListener{
             c.color = player.color.rgba();
             c.usid = getUsid(packet.addressTCP);
             c.uuid = platform.getUUID();
+            c.deviceHash = DeviceIdentity.getIdentityHash();
 
             if(c.uuid == null){
                 ui.showErrorMessage("@invalidid");
+                ui.loadfrag.hide();
+                disconnectQuietly();
+                return;
+            }
+
+            if(c.deviceHash == null){
+                DeviceIdentity.showJoinBlockedMessage();
                 ui.loadfrag.hide();
                 disconnectQuietly();
                 return;
@@ -291,17 +311,27 @@ public class NetClient implements ApplicationListener{
                 return;
             }
 
-            //special case; graphical server needs to see its message
-            if(!headless){
-                sendMessage(netServer.chatFormatter.format(player, message), message, player);
-            }
+            boolean observerSender = isObserverTeam(player.team());
+            String formatted = netServer.chatFormatter.format(player, message);
+            String observerFormatted = "[gray]<OBS>[] " + formatted;
+            String plainMessage = message;
 
             //server console logging
             Log.info("&fi@: @", "&lc" + player.plainName(), "&lw" + message);
 
-            //invoke event for all clients but also locally
-            //this is required so other clients get the correct name even if they don't know who's sending it yet
-            Call.sendMessage(netServer.chatFormatter.format(player, message), message, player);
+            if(observerSender){
+                //spectator chat is team-local by default
+                Groups.player.each(p -> isObserverTeam(p.team()), o -> o.sendMessage(observerFormatted, player, plainMessage));
+            }else{
+                //special case; graphical server needs to see its message
+                if(!headless){
+                    sendMessage(formatted, plainMessage, player);
+                }
+
+                //invoke event for all clients but also locally
+                //this is required so other clients get the correct name even if they don't know who's sending it yet
+                Call.sendMessage(formatted, plainMessage, player);
+            }
         }else{
 
             //a command was sent, now get the output
@@ -627,6 +657,8 @@ public class NetClient implements ApplicationListener{
         state.set(State.playing);
         connecting = false;
         ui.join.hide();
+        DeviceIdentity.bindUidFromPlayerName(player.name);
+        Time.runTask(12f, () -> DeviceIdentity.bindUidFromPlayerName(player.name));
         net.setClientLoaded(true);
         Core.app.post(Call::connectConfirm);
         Time.runTask(40f, platform::updateRPC);
@@ -642,10 +674,17 @@ public class NetClient implements ApplicationListener{
         quietReset = false;
         quiet = false;
         lastSent = 0;
+        hasLastSnapshotState = false;
+        lastSnapshotUnitId = -2;
+        lastSnapshotPlanSize = -2;
         lastSnapshotTimestamp = 0;
 
         Groups.clear();
         ui.chatfrag.clearMessages();
+    }
+
+    private static boolean isObserverTeam(@Nullable Team team){
+        return team == Team.derelict || (team != null && !team.data().isAlive());
     }
 
     public void beginConnecting(){
@@ -683,31 +722,60 @@ public class NetClient implements ApplicationListener{
     }
 
     void sync(){
-        if(timer.get(0, playerSyncTime)){
-            boolean dead = player.dead();
-            Unit unit = dead ? null : player.unit();
-            int uid = dead || unit == null ? -1 : unit.id;
+        boolean dead = player.dead();
+        Unit unit = dead ? null : player.unit();
+        int uid = dead || unit == null ? -1 : unit.id;
+        float x = dead ? player.x : unit.x, y = dead ? player.y : unit.y;
+        float aimX = dead ? 0f : unit.aimX(), aimY = dead ? 0f : unit.aimY();
+        boolean boosting = player.boosting, shooting = player.shooting;
+        boolean chatting = ui.chatfrag.shown(), building = control.input.isBuilding;
+        int planSize = player.isBuilder() && unit != null && unit.plans != null ? unit.plans.size : -1;
 
+        float syncInterval = shouldUseActiveSync(uid, dead, x, y, aimX, aimY, boosting, shooting, chatting, building, planSize) ? playerSyncActiveTime : playerSyncTime;
+
+        if(timer.get(0, syncInterval)){
             Call.clientSnapshot(
             lastSent++,
             uid,
             dead,
-            dead ? player.x : unit.x, dead ? player.y : unit.y,
-            dead ? 0f : unit.aimX(), dead ? 0f : unit.aimY(),
+            x, y,
+            aimX, aimY,
             unit == null ? 0f : unit.rotation,
             unit instanceof Mechc m ? m.baseRotation() : 0,
             unit == null ? 0f : unit.vel.x, unit == null ? 0f : unit.vel.y,
             dead ? null : unit.mineTile,
-            player.boosting, player.shooting, ui.chatfrag.shown(), control.input.isBuilding,
+            boosting, shooting, chatting, building,
             player.isBuilder() && unit != null ? unit.plans : null,
             Core.camera.position.x, Core.camera.position.y,
             Core.camera.width, Core.camera.height
             );
+
+            hasLastSnapshotState = true;
+            lastSnapshotUnitId = uid;
+            lastSnapshotDead = dead;
+            lastSnapshotX = x;
+            lastSnapshotY = y;
+            lastSnapshotAimX = aimX;
+            lastSnapshotAimY = aimY;
+            lastSnapshotBoosting = boosting;
+            lastSnapshotShooting = shooting;
+            lastSnapshotChatting = chatting;
+            lastSnapshotBuilding = building;
+            lastSnapshotPlanSize = planSize;
         }
 
         if(timer.get(1, 60)){
             Call.ping(Time.millis());
         }
+    }
+
+    private boolean shouldUseActiveSync(int unitId, boolean dead, float x, float y, float aimX, float aimY, boolean boosting, boolean shooting, boolean chatting, boolean building, int planSize){
+        if(!hasLastSnapshotState) return true;
+        if(unitId != lastSnapshotUnitId || dead != lastSnapshotDead) return true;
+        if(boosting != lastSnapshotBoosting || shooting != lastSnapshotShooting || chatting != lastSnapshotChatting || building != lastSnapshotBuilding) return true;
+        if(planSize != lastSnapshotPlanSize) return true;
+        if(Mathf.dst2(x, y, lastSnapshotX, lastSnapshotY) > snapshotPosThreshold2) return true;
+        return Mathf.dst2(aimX, aimY, lastSnapshotAimX, lastSnapshotAimY) > snapshotAimThreshold2;
     }
 
     String getUsid(String ip){

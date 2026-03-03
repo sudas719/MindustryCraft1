@@ -103,6 +103,18 @@ public class Team implements Comparable<Team>, Senseable{
         return state.teams.isActive(this);
     }
 
+    /** @return whether this team is allied with another team for targeting/AI purposes. */
+    public boolean isAllied(Team other){
+        if(other == null) return false;
+        return state != null && state.rules != null ? state.rules.teamsAllied(this, other) : this == other;
+    }
+
+    /** @return whether this team is hostile to another team for targeting/AI purposes. */
+    public boolean isEnemy(Team other){
+        if(other == null) return false;
+        return state != null && state.rules != null ? state.rules.teamsHostile(this, other) : this != other;
+    }
+
     /** @return whether this team has any active cores. Not the same as active()! */
     public boolean isAlive(){
         return data().isAlive();

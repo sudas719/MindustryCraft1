@@ -114,7 +114,7 @@ public class Packets{
         public int version;
         public String versionType;
         public Seq<String> mods;
-        public String name, locale, uuid, usid;
+        public String name, locale, uuid, usid, deviceHash;
         public boolean mobile;
         public int color;
 
@@ -125,6 +125,7 @@ public class Packets{
             TypeIO.writeString(buffer, name);
             TypeIO.writeString(buffer, locale);
             TypeIO.writeString(buffer, usid);
+            TypeIO.writeString(buffer, deviceHash);
 
             byte[] b = Base64Coder.decode(uuid);
             buffer.b(b);
@@ -147,6 +148,7 @@ public class Packets{
             name = TypeIO.readString(buffer);
             locale = TypeIO.readString(buffer);
             usid = TypeIO.readString(buffer);
+            deviceHash = TypeIO.readString(buffer);
             byte[] idbytes =  buffer.b(16);
             uuid = new String(Base64Coder.encode(idbytes));
             mobile = buffer.b() == 1;
@@ -156,6 +158,36 @@ public class Packets{
             for(int i = 0; i < totalMods; i++){
                 mods.add(TypeIO.readString(buffer));
             }
+        }
+
+        @Override
+        public int getPriority(){
+            return priorityHigh;
+        }
+    }
+
+    /** Requests server list data through TCP without joining a game. */
+    public static class ServerInfoRequest extends Packet{
+        @Override
+        public int getPriority(){
+            return priorityHigh;
+        }
+    }
+
+    /** Response payload for {@link ServerInfoRequest}. */
+    public static class ServerInfoResponse extends Packet{
+        public byte[] data = NODATA;
+
+        @Override
+        public void write(Writes buffer){
+            buffer.i(data.length);
+            buffer.b(data);
+        }
+
+        @Override
+        public void read(Reads buffer){
+            int length = buffer.i();
+            data = length <= 0 ? NODATA : buffer.b(length);
         }
 
         @Override

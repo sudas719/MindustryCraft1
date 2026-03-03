@@ -311,22 +311,12 @@ public class OverlayRenderer{
 
         Draw.z(Layer.fogOfWar + 0.01f);
 
-        //All players see a white radar range circle.
+        //Enemy radars use white circles as well.
         Lines.stroke(radarCircleStroke);
         Draw.color(1f, 1f, 1f, 0.72f * pulse);
         Groups.build.each(build -> {
-            if(build == null || !build.isValid() || build.block != Blocks.radar) return;
-            Lines.circle(build.x, build.y, radarIntelRange);
-        });
-
-        //Enemy radars additionally show an arc-dashed ring to the viewer.
-        Lines.stroke(radarEnemyDashStroke);
-        Draw.color(Pal.remove, 0.78f);
-        Groups.build.each(build -> {
             if(build == null || !build.isValid() || build.block != Blocks.radar || build.team == viewer) return;
-            for(int i = 0; i < radarEnemyDashSegments; i++){
-                Lines.arc(build.x, build.y, radarIntelRange, radarEnemyDashArc / 360f, i * radarEnemyDashStep);
-            }
+            Lines.circle(build.x, build.y, radarIntelRange);
         });
 
         //Friendly radars mark fogged enemy units with red dots; this does not reveal fog.
@@ -440,19 +430,19 @@ public class OverlayRenderer{
             hoverPulseUntil = Time.time + 60f;
             hoverPulseX = hover.x;
             hoverPulseY = hover.y;
-            hoverPulseRadius = hover.radius + 6f;
+            hoverPulseRadius = hoverRotatingRadius(hover.radius);
             hoverPulseColor.set(hoverColor(hover));
         }
 
         Draw.z(Layer.overlayUI + 0.01f);
-        Lines.stroke(1.6f);
+        Lines.stroke(InputHandler.selectionRingStroke);
         Draw.color(hoverColor(hover));
 
         if(hover.resource != null){
-            Lines.circle(hover.x, hover.y, hover.radius);
+            Lines.circle(hover.x, hover.y, Math.max(1f, hover.radius + InputHandler.selectionSolidRadiusOffset));
         }else{
             float rotation = Time.time * 360f / (60f * 4f);
-            float radius = hover.radius + 2f;
+            float radius = hoverRotatingRadius(hover.radius);
             float arcDeg = 31.5f;
             float step = 45f;
             for(int i = 0; i < 8; i++){
@@ -469,19 +459,19 @@ public class OverlayRenderer{
                 if(valid){
                     hoverPulseX = unit.x;
                     hoverPulseY = unit.y;
-                    hoverPulseRadius = unit.hitSize / 2f + 6f;
+                    hoverPulseRadius = hoverRotatingRadius(unit.hitSize / 2f);
                 }
             }else if(hoverPulseTarget instanceof Building build){
                 valid = build.isValid();
                 if(valid){
                     hoverPulseX = build.x;
                     hoverPulseY = build.y;
-                    hoverPulseRadius = build.hitSize() / 2f + 6f;
+                    hoverPulseRadius = hoverRotatingRadius(build.hitSize() / 2f);
                 }
             }else if(hoverPulseTarget instanceof Tile tile){
                 hoverPulseX = tile.worldx();
                 hoverPulseY = tile.worldy();
-                hoverPulseRadius = tilesize / 2f + 6f;
+                hoverPulseRadius = hoverRotatingRadius(tilesize / 2f);
             }
             if(valid){
                 float pulseRot = (Time.time - hoverPulseStart) * 360f / 60f;
@@ -496,6 +486,10 @@ public class OverlayRenderer{
         }
 
         Draw.reset();
+    }
+
+    private float hoverRotatingRadius(float baseRadius){
+        return Math.max(1f, baseRadius + InputHandler.selectionRotatingDashedRadiusOffset);
     }
 
     private Color hoverColor(InputHandler.HoverInfo hover){

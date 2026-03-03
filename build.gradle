@@ -336,6 +336,7 @@ project(":core"){
         api arcModule("extensions:arcnet")
         implementation arcModule("extensions:filedialogs")
         api "com.github.Anuken:rhino:$rhinoVersion"
+        implementation "org.mindrot:jbcrypt:0.4"
         if(localArc && debugged()) api arcModule("extensions:recorder")
         if(localArc) api arcModule(":extensions:packer")
 

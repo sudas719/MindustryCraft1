@@ -2176,6 +2176,7 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
     @Replace
     @Override
     public boolean inFogTo(Team viewer){
+        if(viewer == Team.derelict || !viewer.data().isAlive()) return false;
         if(team == viewer || !state.rules.fog) return false;
 
         int size = block.size, of = block.sizeOffset, tx = tile.x, ty = tile.y;

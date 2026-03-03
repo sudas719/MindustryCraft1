@@ -180,8 +180,9 @@ public abstract class ClientLauncher extends ApplicationCore implements Platform
         assets.load(mods);
         assets.loadRun("mergeUI", PixmapPacker.class, () -> {}, () -> Fonts.mergeFontAtlas(atlas));
 
-        add(logic = new Logic());
+        //Process local input before world logic each frame to reduce one-frame perceived command delay.
         add(control = new Control());
+        add(logic = new Logic());
         add(renderer = new Renderer());
         add(ui = new UI());
         add(netServer = new NetServer());

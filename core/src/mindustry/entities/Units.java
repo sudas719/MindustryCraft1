@@ -212,7 +212,10 @@ public class Units{
     public static boolean invalidateTarget(Posc target, Team team, float x, float y, float range, float sourceRadius){
         return target == null ||
             (range != Float.MAX_VALUE && !withinTargetRange(target, x, y, range, sourceRadius)) ||
-            (target instanceof Teamc t && t.team() == team && !(target instanceof Building b && targetableAllTeams(b))) ||
+            (target instanceof Teamc t && (
+                (t.team() == team && !(target instanceof Building b && targetableAllTeams(b))) ||
+                (t.team() != team && !team.isEnemy(t.team()))
+            )) ||
             (target instanceof Healthc h && !h.isValid()) ||
             (target instanceof Unit u && !u.targetable(team));
     }
@@ -380,7 +383,7 @@ public class Units{
         cpriority = -99999f;
 
         nearbyEnemies(team, x, y, range + sourceRadius, e -> {
-            if(e.dead() || !predicate.get(e) || e.team == Team.derelict || !e.targetable(team) || e.inFogTo(team)) return;
+            if(e.dead() || !team.isEnemy(e.team) || !predicate.get(e) || e.team == Team.derelict || !e.targetable(team) || e.inFogTo(team)) return;
 
             float dst = edgeDst(e, x, y, sourceRadius);
             if(dst <= range && (result == null || dst < cdist || e.type.targetPriority > cpriority) && e.type.targetPriority >= cpriority){
@@ -407,7 +410,7 @@ public class Units{
         cpriority = -99999f;
 
         nearbyEnemies(team, x, y, range + sourceRadius, e -> {
-            if(e.dead() || !predicate.get(e) || e.team == Team.derelict || !withinTargetRange(e, x, y, range, sourceRadius) || !e.targetable(team) || e.inFogTo(team)) return;
+            if(e.dead() || !team.isEnemy(e.team) || !predicate.get(e) || e.team == Team.derelict || !withinTargetRange(e, x, y, range, sourceRadius) || !e.targetable(team) || e.inFogTo(team)) return;
 
             float cost = sort.cost(e, x, y);
             if((result == null || cost < cdist || e.type.targetPriority > cpriority) && e.type.targetPriority >= cpriority){
@@ -581,7 +584,7 @@ public class Units{
         Seq<TeamData> data = state.teams.present;
         for(int i = 0; i < data.size; i++){
             var other = data.items[i];
-            if(other.team != team && other.team != Team.derelict){
+            if(team.isEnemy(other.team) && other.team != Team.derelict){
                 if(other.tree().any(x, y, width, height)){
                     return true;
                 }

@@ -22,6 +22,8 @@ import static mindustry.Vars.*;
 
 public class MinimapRenderer{
     private static final float baseSize = 16f, updateInterval = 2f;
+    private static final float radarIntelRange = 23f * tilesize;
+    private static final float radarCircleStroke = 1.15f;
 
     private final Seq<Unit> units = new Seq<>();
     private Pixmap pixmap;
@@ -167,6 +169,16 @@ public class MinimapRenderer{
             Draw.reset();
         }
 
+        //Show radar intel ring on minimap for all radar buildings regardless team.
+        float pulse = 0.68f + Mathf.absin(Time.time, 8f, 0.12f);
+        Lines.stroke(Scl.scl(radarCircleStroke) * scaleFactor);
+        Draw.color(1f, 1f, 1f, 0.72f * pulse);
+        Groups.build.each(build -> {
+            if(build == null || !build.isValid() || build.block != Blocks.radar) return;
+            Lines.circle(build.x, build.y, radarIntelRange);
+        });
+        Draw.reset();
+
         if(fullView && net.active()){
             for(Player player : Groups.player){
                 if(!player.dead()){
@@ -177,7 +189,8 @@ public class MinimapRenderer{
 
         Draw.reset();
 
-        if(state.rules.fog){
+        boolean spectatorView = net.active() && player != null && player.team() != null && (player.team() == mindustry.game.Team.derelict || !player.team().data().isAlive());
+        if(state.rules.fog && !spectatorView){
             if(fullView){
                 float z = zoom;
                 //max zoom out fixes everything, somehow?

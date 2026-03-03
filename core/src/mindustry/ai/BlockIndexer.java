@@ -363,7 +363,7 @@ public class BlockIndexer{
         //when team data is not initialized, scan through every team. this is terrible
         if(data.isEmpty()){
             for(Team enemy : Team.all){
-                if(enemy == team || (enemy == Team.derelict && !state.rules.coreCapture)) continue;
+                if(!team.isEnemy(enemy) || (enemy == Team.derelict && !state.rules.coreCapture)) continue;
                 var set = getFlagged(enemy)[type.ordinal()];
                 if(set != null){
                     breturnArray.addAll(set);
@@ -372,7 +372,7 @@ public class BlockIndexer{
         }else{
             for(int i = 0; i < data.size; i++){
                 Team enemy = data.items[i].team;
-                if(enemy == team || (enemy == Team.derelict && !state.rules.coreCapture)) continue;
+                if(!team.isEnemy(enemy) || (enemy == Team.derelict && !state.rules.coreCapture)) continue;
                 var set = getFlagged(enemy)[type.ordinal()];
                 if(set != null){
                     breturnArray.addAll(set);
@@ -431,14 +431,14 @@ public class BlockIndexer{
         for(int i = 0; i < activeTeams.size; i++){
             Team enemy = activeTeams.items[i];
 
-            boolean sameTeam = enemy == team;
+            boolean allied = !team.isEnemy(enemy);
             boolean derelictBlocked = enemy == Team.derelict && !state.rules.coreCapture;
 
             Building candidate = indexer.findTile(enemy, x, y, range, b ->
                 pred.get(b) &&
                 b.isDiscovered(team) &&
                 (!derelictBlocked || b.block.targetableAllTeams) &&
-                (!sameTeam || b.block.targetableAllTeams), true);
+                (!allied || b.block.targetableAllTeams), true);
             if(candidate == null) continue;
 
             //if a block has the same priority, the closer one should be targeted

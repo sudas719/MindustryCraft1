@@ -803,7 +803,12 @@ public class MobileInput extends InputHandler implements GestureListener{
             Core.camera.position.add(delta);
             if(!delta.isZero()){
                 spectating = null;
+                spectatingPlayer = -1;
             }
+        }
+
+        if(player.dead()){
+            player.set(Core.camera.position.x, Core.camera.position.y);
         }
 
         if(Core.settings.getBool("keyboard")){
@@ -965,6 +970,7 @@ public class MobileInput extends InputHandler implements GestureListener{
             Core.camera.position.x -= deltaX;
             Core.camera.position.y -= deltaY;
             spectating = null;
+            spectatingPlayer = -1;
         }
 
         camera.position.clamp(-camera.width/4f, -camera.height/4f, world.unitWidth() + camera.width/4f, world.unitHeight() + camera.height/4f);

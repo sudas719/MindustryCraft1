@@ -29,6 +29,7 @@ import mindustry.io.*;
 import mindustry.logic.*;
 import mindustry.type.*;
 import mindustry.ui.*;
+import mindustry.ui.fragments.HudFragment;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.environment.*;
@@ -120,6 +121,7 @@ public class CoreBlock extends StorageBlock{
         Building build = world.build(buildPos);
         if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
         if(unitId != UnitTypes.nova.id) return;
+        HudFragment.recordPlayerAction(player);
         core.queueUnit(unitId);
     }
 
@@ -128,6 +130,7 @@ public class CoreBlock extends StorageBlock{
         if(player == null) return;
         Building build = world.build(buildPos);
         if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
         core.cancelCurrentUnit();
     }
 
@@ -136,9 +139,64 @@ public class CoreBlock extends StorageBlock{
         if(player == null) return;
         Building build = world.build(buildPos);
         if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
         if(!headless){
             renderer.showLaunch(core);
         }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreRequestLoadScvs(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.requestLoadScvs();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreUnloadScvs(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.unloadScvs();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreStartOrbitalUpgrade(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.startOrbitalUpgrade();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreCancelOrbitalUpgrade(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.cancelOrbitalUpgrade();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreStartFortressUpgrade(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.startFortressUpgrade();
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void coreCancelFortressUpgrade(Player player, int buildPos){
+        if(player == null) return;
+        Building build = world.build(buildPos);
+        if(!(build instanceof CoreBuild core) || build.team() != player.team()) return;
+        HudFragment.recordPlayerAction(player);
+        core.cancelFortressUpgrade();
     }
 
     @Override
@@ -867,6 +925,7 @@ public class CoreBlock extends StorageBlock{
         }
 
         private void spawnUnit(UnitType type){
+            if(net.client()) return;
             if(type == null) return;
             Unit unit = type.create(team);
             Vec2 spawn = getSpawnPosition(unit);
