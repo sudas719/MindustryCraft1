@@ -105,7 +105,7 @@ public class MenuFragment{
         }
 
         String[] versionLines = {
-            "v0.4",
+            "v0.5",
             "MindustryCraft1",
             "Love From StarCraft2"
         };
