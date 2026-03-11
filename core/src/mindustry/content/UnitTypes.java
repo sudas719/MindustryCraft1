@@ -28,7 +28,10 @@ import mindustry.type.ammo.*;
 import mindustry.type.unit.*;
 import mindustry.type.weapons.*;
 import mindustry.world.Block;
+import mindustry.world.Build;
 import mindustry.world.Tile;
+import mindustry.world.blocks.ConstructBlock;
+import mindustry.core.World;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.units.*;
 import mindustry.world.meta.*;
@@ -86,7 +89,7 @@ public class UnitTypes{
     private static final float medivacHealRange = 5.5f * tilesize;
     private static final int medivacMaxSlots = 8;
     private static final IntSet medivacMovingUnload = new IntSet();
-    private static final float ravenTurretDeployRange = 3.5f * tilesize;
+    private static final float ravenTurretDeployRange = 3f * tilesize;
     private static final float ravenTurretLifetime = 8f * 60f;
     private static final float ravenAntiArmorRange = 11f * tilesize;
     private static final float ravenAntiArmorRadius = 3f * tilesize;
@@ -114,6 +117,7 @@ public class UnitTypes{
     private static final float battlecruiserBodyScale = 0.60f;
     private static final float battlecruiserTextureXScale = 0.8f;
     private static final float battlecruiserGhostScale = battlecruiserBodyScale;
+    private static final float scepterVisualScale = 0.8f;
     private static final float battlecruiserMaterializeFrontDelay = 0f;
     private static final float battlecruiserMaterializeFrontDuration = 0.45f;
     private static final int battlecruiserMaterializeSlices = 30;
@@ -489,6 +493,7 @@ public class UnitTypes{
     public static class PreceptSiegeData{
         public float cooldown = 0f;
         public float flash = 0f;
+        public boolean siegeMode = false;
     }
 
     public static class ScepterModeData{
@@ -524,9 +529,11 @@ public class UnitTypes{
 
     public static class RavenData{
         public final Vec2 antiArmorTarget = new Vec2();
+        public final Vec2 turretTarget = new Vec2();
         public int matrixTargetId = -1;
         public boolean pendingAntiArmor = false;
         public boolean pendingMatrix = false;
+        public boolean pendingTurret = false;
     }
 
     public static class BattlecruiserData{
@@ -1641,6 +1648,11 @@ public class UnitTypes{
         preceptSiegeData.remove(unit.id);
     }
 
+    public static boolean preceptSiegeMode(@Nullable Unit unit){
+        if(!isSiegeTank(unit)) return false;
+        return getPreceptSiegeData(unit).siegeMode;
+    }
+
     public static float preceptTransitionDuration(){
         return preceptSiegeTransitionTime;
     }
@@ -1666,7 +1678,7 @@ public class UnitTypes{
     }
 
     public static boolean preceptIsSieged(@Nullable Unit unit){
-        return isSiegeTank(unit) && unit.hasEffect(StatusEffects.preceptSieged) && !preceptIsSieging(unit) && !preceptIsUnsieging(unit);
+        return preceptSiegeMode(unit) && unit.hasEffect(StatusEffects.preceptSieged) && !preceptIsSieging(unit) && !preceptIsUnsieging(unit);
     }
 
     public static boolean preceptIsUnsieging(@Nullable Unit unit){
@@ -1728,6 +1740,7 @@ public class UnitTypes{
         if(siege){
             if(!preceptCanEnterSiege(unit)) return;
             PreceptSiegeData data = getPreceptSiegeData(unit);
+            data.siegeMode = true;
             data.cooldown = 0f;
             data.flash = 0f;
             unit.unapply(StatusEffects.preceptUnsieging);
@@ -1735,6 +1748,8 @@ public class UnitTypes{
             unit.apply(StatusEffects.preceptSieging, preceptSiegeTransitionTime);
         }else{
             if(!preceptCanExitSiege(unit)) return;
+            PreceptSiegeData data = getPreceptSiegeData(unit);
+            data.siegeMode = false;
             unit.unapply(StatusEffects.preceptSieging);
             unit.unapply(StatusEffects.preceptSieged);
             unit.apply(StatusEffects.preceptUnsieging, preceptSiegeTransitionTime);
@@ -2839,6 +2854,15 @@ public class UnitTypes{
         float z = Math.max(Layer.flyingUnit, unit.type.flyingLayer) + 0.36f;
         float a = Mathf.clamp(fade);
         Color ghostColor = Tmp.c1.set(unit.team.color).lerp(Color.white, 0.45f);
+
+        float fog = unit.type.fogRadius;
+        if(fog > 0.001f && a > 0.001f){
+            Draw.z(z - 0.02f);
+            Lines.stroke(1f);
+            Draw.color(Tmp.c2.set(unit.team.color).lerp(Color.white, 0.25f), 0.2f * a);
+            Lines.circle(x, y, fog * tilesize);
+            Draw.reset();
+        }
 
         Draw.z(z);
         if(scan >= 0.999f){
@@ -6362,7 +6386,6 @@ public class UnitTypes{
         if(team == null || level < 1 || level > vehicleWeaponMaxLevel) return false;
         if(level != plannedVehicleWeaponLevel(team) + 1) return false;
         if(!vehicleWeaponHasArmory(team)) return false;
-        if(infantryWeaponLevel(team) < level) return false;
         return vehicleWeaponCanAfford(team, level);
     }
 
@@ -7300,7 +7323,8 @@ public class UnitTypes{
     public static boolean ravenCanDeployTurret(@Nullable Unit unit){
         return isRaven(unit)
             && !ravenMatrixDisabled(unit)
-            && unit.energy >= ravenTurretCost;
+            && unit.energy >= ravenTurretCost
+            && Blocks.ravenTurret != null;
     }
 
     public static boolean ravenCanUseAntiArmor(@Nullable Unit unit){
@@ -7314,6 +7338,39 @@ public class UnitTypes{
             && !ravenMatrixDisabled(unit)
             && unit.energy >= ravenMatrixCost
             && ravenMatrixTechLevel(unit.team) > 0;
+    }
+
+    private static boolean ravenCanPlaceTurret(@Nullable Unit unit, float worldX, float worldY){
+        if(unit == null || Blocks.ravenTurret == null) return false;
+        Block block = Blocks.ravenTurret;
+
+        Tmp.v1.set(worldX, worldY).sub(block.offset, block.offset);
+        int tx = World.toTile(Tmp.v1.x);
+        int ty = World.toTile(Tmp.v1.y);
+        if(tx < 0 || ty < 0 || tx >= world.width() || ty >= world.height()) return false;
+
+        return Build.validPlaceIgnoreUnits(block, unit.team, tx, ty, 0, false, false)
+            && Build.checkNoUnitOverlap(block, tx, ty);
+    }
+
+    private static boolean ravenPlaceTurret(@Nullable Unit unit, float worldX, float worldY){
+        if(unit == null || Blocks.ravenTurret == null) return false;
+        Block block = Blocks.ravenTurret;
+
+        Tmp.v1.set(worldX, worldY).sub(block.offset, block.offset);
+        int tx = World.toTile(Tmp.v1.x);
+        int ty = World.toTile(Tmp.v1.y);
+        if(tx < 0 || ty < 0 || tx >= world.width() || ty >= world.height()) return false;
+
+        Tile tile = world.tile(tx, ty);
+        if(tile == null) return false;
+
+        ConstructBlock.constructFinish(tile, block, unit, (byte)0, unit.team, null);
+        if(tile.build != null){
+            tile.build.placed();
+        }
+        Fx.spawn.at(tx * tilesize + block.offset, ty * tilesize + block.offset, 0f, unit.team.color);
+        return true;
     }
 
     public static boolean ravenMatrixValidTarget(@Nullable Unit target, Team team){
@@ -7339,32 +7396,19 @@ public class UnitTypes{
         return Mathf.clamp(unit.getDuration(StatusEffects.ravenTurretLifetime) / ravenTurretLifetime);
     }
 
-    public static boolean commandRavenDeployTurret(@Nullable Unit unit){
-        if(!ravenCanDeployTurret(unit) || ravenTurret == null) return false;
+    public static float ravenTurretLifetime(){
+        return ravenTurretLifetime;
+    }
 
-        unit.energy = Math.max(0f, unit.energy - ravenTurretCost);
+    public static boolean commandRavenDeployTurret(@Nullable Unit unit, @Nullable Vec2 target){
+        if(!ravenCanDeployTurret(unit) || target == null) return false;
 
-        float spawnX = unit.x;
-        float spawnY = unit.y;
-        for(int i = 0; i < 12; i++){
-            float angle = (Time.time + i * 31f) % 360f;
-            float dist = ravenTurretDeployRange * (0.25f + i / 12f * 0.75f);
-            float tx = Mathf.clamp(unit.x + Angles.trnsx(angle, dist), 0f, Math.max(world.unitWidth() - tilesize, 0f));
-            float ty = Mathf.clamp(unit.y + Angles.trnsy(angle, dist), 0f, Math.max(world.unitHeight() - tilesize, 0f));
-            Tile tile = world.tileWorld(tx, ty);
-            if(tile != null && !tile.solid()){
-                spawnX = tx;
-                spawnY = ty;
-                break;
-            }
-        }
-
-        Unit turret = ravenTurret.create(unit.team);
-        turret.set(spawnX, spawnY);
-        turret.rotation(unit.rotation);
-        turret.add();
-        turret.apply(StatusEffects.ravenTurretLifetime, ravenTurretLifetime);
-        Fx.spawn.at(spawnX, spawnY, 0f, unit.team.color);
+        RavenData data = getRavenData(unit);
+        data.pendingTurret = true;
+        data.pendingAntiArmor = false;
+        data.pendingMatrix = false;
+        data.matrixTargetId = -1;
+        data.turretTarget.set(target);
         return true;
     }
 
@@ -7395,7 +7439,29 @@ public class UnitTypes{
             data.pendingAntiArmor = false;
             data.pendingMatrix = false;
             data.matrixTargetId = -1;
+            data.pendingTurret = false;
             return;
+        }
+
+        if(data.pendingTurret){
+            if(!ravenCanDeployTurret(unit) || Blocks.ravenTurret == null){
+                data.pendingTurret = false;
+            }else{
+                Vec2 target = data.turretTarget;
+                unit.lookAt(target);
+
+                if(unit.within(target, ravenTurretDeployRange)){
+                    if(ravenCanPlaceTurret(unit, target.x, target.y)){
+                        if(ravenPlaceTurret(unit, target.x, target.y)){
+                            unit.energy = Math.max(0f, unit.energy - ravenTurretCost);
+                        }
+                    }
+                    data.pendingTurret = false;
+                }else if(unit.controller() instanceof CommandAI ai){
+                    ai.command(UnitCommand.moveCommand);
+                    ai.commandPosition(target, false);
+                }
+            }
         }
 
         if(data.pendingAntiArmor){
@@ -7619,12 +7685,13 @@ public class UnitTypes{
             rotateSpeed = 6f;
             omniMovement = true;
             rotateMoveFirst = false;
-            range = maxRange = 5f * tilesize;
+                  range = maxRange = 5.5f * tilesize;
             targetAir = true;
             targetGround = true;
             armorType = ArmorType.light;
             unitClasses = EnumSet.of(UnitClass.biological);
             population = 1;
+            fogRadius = 9f;
 
             weapons.add(new Weapon(){{
                 mirror = false;
@@ -7696,6 +7763,7 @@ public class UnitTypes{
             armorType = ArmorType.light;
             unitClasses = EnumSet.of(UnitClass.biological);
             population = 1;
+            fogRadius = 9f;
             canPassWalls = true;
             regenDelay = 3f;
             regenRate = 2.5f;
@@ -7739,6 +7807,7 @@ public class UnitTypes{
             uiIcon = Core.atlas.find("unit-alpha-ui", fullIcon);
             shadowRegion = fullIcon;
             clipSize = Math.max(region.width * 2f, clipSize);
+            updateHitSizeFromRegion();
         }
         @Override
         public void drawMech(Mechc mech){
@@ -7747,14 +7816,18 @@ public class UnitTypes{
         };
 
         mace = new UnitType("mace"){
-            @Override
-            public void update(Unit unit){
-                super.update(unit);
-                if(maceLocusTransforming(unit)){
-                    unit.vel.setZero();
-                    if(unit.controller() instanceof CommandAI ai){
-                        ai.clearCommands();
-                    }
+              @Override
+              public void update(Unit unit){
+                  super.update(unit);
+                  PreceptSiegeData siegeData = getPreceptSiegeData(unit);
+                  if(!siegeData.siegeMode){
+                      unit.unapply(StatusEffects.preceptSieged);
+                  }
+                  if(maceLocusTransforming(unit)){
+                      unit.vel.setZero();
+                      if(unit.controller() instanceof CommandAI ai){
+                          ai.clearCommands();
+                      }
                 }
             }
 
@@ -7766,6 +7839,7 @@ public class UnitTypes{
             {
             speed = 3.15f;
             hitSize = 10f;
+            fogRadius = 10f;
             health = 135f;
             armor = 0f;
             armorType = ArmorType.light;
@@ -7863,6 +7937,19 @@ public class UnitTypes{
 
         ravenTurret = new UnitType("raven-turret"){
             @Override
+            public void load(){
+                super.load();
+                region = Core.atlas.find("salvo", region);
+                previewRegion = Core.atlas.find("salvo-preview", region);
+                outlineRegion = Core.atlas.find("salvo-outline", outlineRegion);
+                baseRegion = Core.atlas.find("salvo-base", baseRegion);
+                uiIcon = Core.atlas.find("salvo-ui", uiIcon);
+                fullIcon = Core.atlas.find("salvo-full", fullIcon);
+                shadowRegion = Core.atlas.find("salvo-shadow", shadowRegion);
+                updateHitSizeFromRegion();
+            }
+
+            @Override
             public void update(Unit unit){
                 super.update(unit);
                 if(unit.getDuration(StatusEffects.ravenTurretLifetime) <= 0.001f){
@@ -7875,6 +7962,7 @@ public class UnitTypes{
                 accel = 0f;
                 drag = 1f;
                 hitSize = 9f;
+                fogRadius = 7f;
                 health = 140f;
                 armor = 0f;
                 armorType = ArmorType.heavy;
@@ -8007,6 +8095,7 @@ public class UnitTypes{
             }
 
             {
+            visualHitSizeScale = 0.7f;
             rotateSpeed = 3f; // 180 deg/sec
             targetAir = false;
             speed = 3.15f;
@@ -8020,6 +8109,7 @@ public class UnitTypes{
             armorType = ArmorType.heavy;
             unitClasses = EnumSet.of(UnitClass.biological, UnitClass.heavy);
             population = 2;
+            fogRadius = 10f;
 
             weapons.add(new Weapon("artillery-mount"){{
                 x = 6.8f;
@@ -8217,7 +8307,9 @@ public class UnitTypes{
         };
 
         ghost = new UnitType("ghost"){{
+            visualHitSizeScale = 0.7f;
             speed = 3.15f;
+            fogRadius = 11f;
             health = 100f;
             armor = 0f;
             rotateSpeed = 6f;
@@ -8402,6 +8494,7 @@ public class UnitTypes{
             uiIcon = Core.atlas.find("unit-atrax-ui", fullIcon);
             shadowRegion = fullIcon;
             clipSize = Math.max(region.width * 2f, clipSize);
+            updateHitSizeFromRegion();
         }
         };
 
@@ -8409,7 +8502,7 @@ public class UnitTypes{
             @Override
             public void draw(Unit unit){
                 float prevX = Draw.xscl, prevY = Draw.yscl;
-                Draw.scl(prevX * 0.5f, prevY * 0.5f);
+                Draw.scl(prevX * scepterVisualScale, prevY * scepterVisualScale);
                 super.draw(unit);
                 Draw.scl(prevX, prevY);
             }
@@ -8433,8 +8526,10 @@ public class UnitTypes{
             }
 
             {
+                visualHitSizeScale = scepterVisualScale;
                 speed = 2.62f;
                 hitSize = 0.9125f * tilesize;
+                fogRadius = 11f;
                 rotateSpeed = 6f; // 360 deg/sec
                 omniMovement = true;
                 rotateMoveFirst = false;
@@ -8485,7 +8580,7 @@ public class UnitTypes{
                 public void draw(Unit unit, WeaponMount mount){
                     if(!scepterDisplayBurstMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.draw(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -8494,7 +8589,7 @@ public class UnitTypes{
                 public void drawOutline(Unit unit, WeaponMount mount){
                     if(!scepterDisplayBurstMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.drawOutline(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -8507,9 +8602,9 @@ public class UnitTypes{
 
                 {
                     top = false;
-                    y = 1f;
-                    x = 10.5f;
-                    shootY = 5f;
+                    y = 1f * scepterVisualScale;
+                    x = 10.5f * scepterVisualScale;
+                    shootY = 5f * scepterVisualScale;
                     reload = 2.14f * 60f;
                     recoil = 0.5f;
                     rotate = false;
@@ -8631,7 +8726,7 @@ public class UnitTypes{
                 public void draw(Unit unit, WeaponMount mount){
                     if(!scepterDisplayImpactMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.draw(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -8640,7 +8735,7 @@ public class UnitTypes{
                 public void drawOutline(Unit unit, WeaponMount mount){
                     if(!scepterDisplayImpactMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.drawOutline(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -8653,9 +8748,9 @@ public class UnitTypes{
 
                 {
                     top = false;
-                    y = -2f;
-                    x = 10.5f;
-                    shootY = 5f;
+                    y = -2f * scepterVisualScale;
+                    x = 10.5f * scepterVisualScale;
+                    shootY = 5f * scepterVisualScale;
                     reload = 0.91f * 60f;
                     recoil = 0.5f;
                     rotate = false;
@@ -8771,7 +8866,7 @@ public class UnitTypes{
                 @Override
                 public void draw(Unit unit, WeaponMount mount){
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.draw(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -8779,16 +8874,16 @@ public class UnitTypes{
                 @Override
                 public void drawOutline(Unit unit, WeaponMount mount){
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f, prevY * 1.35f);
+                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
                     super.drawOutline(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
 
                 {
                 reload = 0.91f * 60f;
-                x = 12.5f;
-                y = 1f;
-                shootY = 8f;
+                x = 12.5f * scepterVisualScale;
+                y = 1f * scepterVisualScale;
+                shootY = 8f * scepterVisualScale;
                 rotate = false;
                 rotateSpeed = 6f; // 360 deg/sec
                 targetAir = false;
@@ -8909,6 +9004,7 @@ public class UnitTypes{
             speed = 3.94f;
             accel = 10f;
             hitSize = 8f;
+            fogRadius = 8f;
             health = 45f;
             armor = 1f;
             armorType = ArmorType.light;
@@ -9212,6 +9308,7 @@ public class UnitTypes{
 
             speed = 3.94f;
             hitSize = 8f;
+            fogRadius = 7f;
             health = 90f;
             armor = 0f;
             armorType = ArmorType.light;
@@ -9889,12 +9986,14 @@ public class UnitTypes{
             }
 
             {
+                visualHitSizeScale = 1f;
                 researchCostMultiplier = 0.5f;
                 speed = 3.85f;
                 accel = 0.08f;
                 drag = 0.04f;
                 flying = true;
                 health = 135f;
+                fogRadius = 10f;
                 armor = 0f;
                 armorType = ArmorType.heavy;
                 unitClasses = EnumSet.of(UnitClass.mechanical);
@@ -10111,6 +10210,7 @@ public class UnitTypes{
                 for(int i = 0; i < wreckRegions.length; i++){
                     wreckRegions[i] = Core.atlas.find(copy + "-wreck" + i);
                 }
+                updateHitSizeFromRegion();
             }
 
             {
@@ -10121,6 +10221,7 @@ public class UnitTypes{
                 lowAltitude = true;
                 rotateSpeed = 8f;
                 health = 180f;
+                fogRadius = 9f;
                 armor = 0f;
                 armorType = ArmorType.heavy;
                 unitClasses = EnumSet.of(UnitClass.mechanical);
@@ -10427,6 +10528,7 @@ public class UnitTypes{
                 omniMovement = true;
                 rotateMoveFirst = false;
                 rotateSpeed = 6f; // 360 deg/sec
+                fogRadius = 10f;
                 energyCapacity = 200f;
                 energyInit = 50f;
 
@@ -10557,6 +10659,7 @@ public class UnitTypes{
                 }
 
                 rebuildBattlecruiserSpotMask(region);
+                updateHitSizeFromRegion();
             }
 
             @Override
@@ -10688,6 +10791,7 @@ public class UnitTypes{
                 engineOffset = 21f * battlecruiserBodyScale;
                 engineSize = 5.3f * battlecruiserBodyScale;
                 hitSize = 40f;
+                fogRadius = 12f;
                 range = maxRange = battlecruiserWeaponRange;
                 targetAir = true;
                 targetGround = true;
@@ -11082,6 +11186,7 @@ public class UnitTypes{
             engineOffset = 10.5f;
             faceTarget = false;
             hitSize = 16.05f;
+            fogRadius = 11f;
             engineSize = 3f;
             range = maxRange = medivacHealRange;
             payloadCapacity = medivacMaxSlots * tilePayload;
@@ -12505,7 +12610,9 @@ public class UnitTypes{
             }
 
             {
+                visualHitSizeScale = scaledTankVisualScale;
                 hitSize = 18f;
+                fogRadius = 10f;
                 speed = 5.95f;
                 rotateSpeed = 6f; // 360 deg/sec
                 health = 90f;
@@ -12523,7 +12630,7 @@ public class UnitTypes{
                         if(!unit.isAdded() || mount == null) return true;
 
                         //Simple rule: if player gives a new move command during lock-on, cancel this shot.
-                        if(unit.controller() instanceof CommandAI ai && ai.currentCommand() == UnitCommand.moveCommand){
+                          if(unit.controller() instanceof CommandAI ai && ai.currentCommand() == UnitCommand.moveCommand && ai.attackTarget == null){
                             Position current = ai.targetPos;
                             float currentX = current == null ? Float.NaN : current.getX();
                             float currentY = current == null ? Float.NaN : current.getY();
@@ -12603,11 +12710,11 @@ public class UnitTypes{
                         shootStatus = StatusEffects.none;
                         shootStatusDuration = 0f;
 
-                        bullet = new ContinuousFlameBulletType(8f){
+                          bullet = new ContinuousFlameBulletType(8f){
                     final float lightArmorDamage = 14f;
 
                     {
-                        length = 5f * tilesize;
+                            length = 6f * tilesize;
                         width = 0.2f * tilesize;
                         lifetime = 60f;
                         damageInterval = 61f;
@@ -12623,7 +12730,7 @@ public class UnitTypes{
                         pierce = true;
                         pierceBuilding = true;
                         pierceCap = -1;
-                        hitSize = 0.4f * tilesize;
+                          hitSize = 0.4f * tilesize;
                         shootEffect = Fx.shootSmallFlame;
                         hitEffect = Fx.hitFlameSmall;
                         despawnEffect = Fx.none;
@@ -12784,7 +12891,9 @@ public class UnitTypes{
             }
 
             {
+                visualHitSizeScale = scaledTankVisualScale;
                 hitSize = 12f;
+                fogRadius = 11f;
                 treadPullOffset = 5;
                 speed = 3.15f;
                 rotateSpeed = 6f; // 360 deg/sec
@@ -13028,33 +13137,35 @@ public class UnitTypes{
             @Override
             public void update(Unit unit){
                 super.update(unit);
-                updatePreceptSiegeTimers(unit);
+                  updatePreceptSiegeTimers(unit);
 
-                if(preceptIsSieging(unit)){
-                    unit.vel.setZero();
-                    if(unit.controller() instanceof CommandAI ai){
-                        ai.clearCommands();
-                    }
-                    if(unit.getDuration(StatusEffects.preceptSieging) <= 0.001f){
-                        unit.unapply(StatusEffects.preceptSieging);
-                        unit.apply(StatusEffects.preceptSieged, 1f);
-                        playSiegeFootEffect(unit);
-                    }
-                }
+                  if(preceptIsSieging(unit)){
+                      unit.vel.setZero();
+                      if(unit.controller() instanceof CommandAI ai){
+                          ai.clearCommands();
+                      }
+                      if(unit.getDuration(StatusEffects.preceptSieging) <= 0.001f){
+                          unit.unapply(StatusEffects.preceptSieging);
+                          unit.apply(StatusEffects.preceptSieged, 1f);
+                          getPreceptSiegeData(unit).siegeMode = true;
+                          playSiegeFootEffect(unit);
+                      }
+                  }
 
-                if(preceptIsUnsieging(unit)){
-                    unit.vel.setZero();
-                    if(unit.controller() instanceof CommandAI ai){
-                        ai.clearCommands();
-                    }
-                    if(unit.getDuration(StatusEffects.preceptUnsieging) <= 0.001f){
-                        unit.unapply(StatusEffects.preceptUnsieging);
-                    }
-                }
+                  if(preceptIsUnsieging(unit)){
+                      unit.vel.setZero();
+                      if(unit.controller() instanceof CommandAI ai){
+                          ai.clearCommands();
+                      }
+                      if(unit.getDuration(StatusEffects.preceptUnsieging) <= 0.001f){
+                          unit.unapply(StatusEffects.preceptUnsieging);
+                          getPreceptSiegeData(unit).siegeMode = false;
+                      }
+                  }
 
-                if(preceptIsSieged(unit)){
-                    unit.vel.setZero();
-                }
+                  if(preceptIsSieged(unit)){
+                      unit.vel.setZero();
+                  }
             }
 
             @Override
@@ -13170,11 +13281,14 @@ public class UnitTypes{
                     wreckRegions[i] = Core.atlas.find(copy + "-wreck" + i);
                 }
                 clipSize = Math.max(region.width * 2f, clipSize);
+                updateHitSizeFromRegion();
             }
 
             {
+                visualHitSizeScale = scaledTankVisualScale;
                 fullOverride = "precept";
                 hitSize = 12f;
+                fogRadius = 11f;
                 treadPullOffset = 5;
                 speed = 4.72f;
                 rotateSpeed = 6f; // 360 deg/sec
@@ -14448,7 +14562,7 @@ public class UnitTypes{
                 population = 2;
                 hitSize = 12f;
                 engineSize = 0f;
-                fogRadius = 25f;
+                fogRadius = 11f;
                 itemCapacity = 0;
                 canAttack = false;
                 targetAir = false;
@@ -15208,6 +15322,7 @@ public class UnitTypes{
             region = Core.atlas.find("core-nucleus");
             uiIcon = Core.atlas.find("core-nucleus");
             fullIcon = Core.atlas.find("core-nucleus");
+            updateHitSizeFromRegion();
         }
         };
 

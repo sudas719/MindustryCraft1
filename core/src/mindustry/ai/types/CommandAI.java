@@ -150,6 +150,12 @@ public class CommandAI extends AIController{
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
             if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)){
+                mount.target = null;
+                mount.rotate = false;
+                mount.shoot = false;
+                continue;
+            }
             if(!weaponCanHitTarget(weapon, attackTarget)){
                 mount.target = null;
                 mount.rotate = false;
@@ -174,7 +180,7 @@ public class CommandAI extends AIController{
     }
 
     public boolean isAttacking(){
-        return withinAttackEdgeRange(target, unit.range());
+        return withinAttackEdgeRange(target, effectiveWeaponRange());
     }
 
     @Override
@@ -355,7 +361,7 @@ public class CommandAI extends AIController{
 
         boolean alwaysArrive = false;
 
-        float engageRange = unit.range();
+        float engageRange = effectiveWeaponRange();
         boolean withinAttackRange = attackTarget != null && withinAttackEdgeRange(attackTarget, engageRange) && !ramming;
         if(forcedFriendlyAttackTarget(attackTarget)){
             //For forced ally attack commands, stop once any valid weapon can actually engage.
@@ -510,6 +516,10 @@ public class CommandAI extends AIController{
 
             if(command == UnitCommand.loopPayloadCommand){
                 alwaysArrive = true;
+            }
+
+            if(attackTarget != null && canAttackTargetNow(attackTarget) && !ramming){
+                move = false;
             }
 
             if(move){
@@ -982,6 +992,44 @@ public class CommandAI extends AIController{
             && !attackMovePosition;
     }
 
+    private float effectiveWeaponRange(){
+        if(attackTarget == null) return unit.range();
+
+        if(unit.type == UnitTypes.precept){
+            float base = UnitTypes.preceptIsSieged(unit) ? UnitTypes.preceptSiegeRange() : UnitTypes.preceptMobileRange();
+            float targetRadius = Units.hitRadius(attackTarget);
+            return Math.max(0f, base - unit.hitSize / 2f - targetRadius);
+        }
+
+        float best = -1f;
+        for(var mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
+            if(!weaponCanHitTarget(weapon, attackTarget)) continue;
+            float weaponRange = weapon.range();
+            if(weaponRange > best){
+                best = weaponRange;
+            }
+        }
+
+        if(best < 0f){
+            return unit.range();
+        }
+
+        return Math.max(0f, best - unit.hitSize / 2f);
+    }
+
+    private boolean preceptWeaponActive(Weapon weapon, Unit unit){
+        if(weapon == null || weapon.name == null) return true;
+        boolean sieged = UnitTypes.preceptIsSieged(unit);
+        if(sieged){
+            return weapon.name.equals("precept-siege-weapon");
+        }else{
+            return weapon.name.equals("precept-weapon");
+        }
+    }
+
     @Override
     public void hit(Bullet bullet){
         if(unit.team.isAI() && bullet.owner instanceof Teamc && ((Teamc)bullet.owner).team() != unit.team && attackTarget == null &&
@@ -1026,6 +1074,22 @@ public class CommandAI extends AIController{
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
             if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
+            if(!weaponCanHitTarget(weapon, target)) continue;
+            float weaponRange = weapon.range() + unit.hitSize / 2f;
+            if(Units.withinTargetRange(target, unit.x, unit.y, weaponRange, unit.hitSize / 2f)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean canAttackTargetNow(@Nullable Teamc target){
+        if(target == null) return false;
+        for(var mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
             if(!weaponCanHitTarget(weapon, target)) continue;
             float weaponRange = weapon.range() + unit.hitSize / 2f;
             if(Units.withinTargetRange(target, unit.x, unit.y, weaponRange, unit.hitSize / 2f)){

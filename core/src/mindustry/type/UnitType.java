@@ -412,6 +412,9 @@ public class UnitType extends UnlockableContent implements Senseable{
     /** if false, no sprite outlines are generated */
     public boolean outlines = true;
 
+    /** visual-only draw scaling that should also affect hit size */
+    public float visualHitSizeScale = 1f;
+
     /** amount of items this unit can carry; <0 to determine based on hitSize. */
     public int itemCapacity = -1;
     /** amount of ammo this unit can hold (if the rule is enabled); <0 to determine based on weapon fire rate. */
@@ -1221,6 +1224,8 @@ public class UnitType extends UnlockableContent implements Senseable{
         baseRegion = Core.atlas.find(name + "-base");
         cellRegion = Core.atlas.find(name + "-cell", Core.atlas.find("power-cell"));
 
+        updateHitSizeFromRegion();
+
         mineLaserRegion = Core.atlas.find("minelaser");
         mineLaserEndRegion = Core.atlas.find("minelaser-end");
         //when linear filtering is on, it's acceptable to use the relatively low-res 'particle' region
@@ -1248,6 +1253,16 @@ public class UnitType extends UnlockableContent implements Senseable{
         }
 
         clipSize = Math.max(region.width * 2f, clipSize);
+    }
+
+    protected void updateHitSizeFromRegion(){
+        if(region == null || !region.found()) return;
+        float drawW = region.width * region.scale / 4f;
+        float drawH = region.height * region.scale / 4f;
+        float side = Math.max(drawW, drawH);
+        if(side > 0.001f){
+            hitSize = side * visualHitSizeScale;
+        }
     }
 
     public void getRegionsToOutline(Seq<TextureRegion> out){

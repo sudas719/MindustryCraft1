@@ -158,7 +158,7 @@ public class Blocks{
     coreBastion, coreCitadel, coreAcropolis, reinforcedContainer, reinforcedVault,
 
     //turrets
-    duo, scatter, scorch, hail, arc, wave, lancer, swarmer, salvo, fuse, ripple, cyclone, foreshadow, spectre, meltdown, segment, parallax, tsunami,
+    duo, scatter, scorch, hail, arc, wave, lancer, swarmer, salvo, ravenTurret, fuse, ripple, cyclone, foreshadow, spectre, meltdown, segment, parallax, tsunami,
 
     //turrets - erekir
     breach, diffuse, sublimate, titan, disperse, afflict, lustre, scathe, smite, malign,
@@ -214,6 +214,7 @@ public class Blocks{
         for(int i = 1; i <= Vars.maxBlockSize; i++){
             new ConstructBlock(i);
         }
+        ConstructBlock.get(3).fogRadius = 4;
 
         deepwater = new Floor("deep-water"){{
             speedMultiplier = 0.2f;
@@ -1408,6 +1409,7 @@ public class Blocks{
             size = 3;
             armor = 1f;
             health = 400;
+            fogRadius = 10;
             researchCostMultiplier = 1.1f;
             researchCost = with(Items.silicon, 2000, Items.oxide, 900, Items.beryllium, 2400);
             slotCapacity = 4;
@@ -1809,6 +1811,7 @@ public class Blocks{
             health = 400;
             armor = 1f;
             size = 2;
+            fogRadius = 9;
             unitCapModifier = 8;
             commandable = true;
             linkAdjacent = false;
@@ -3066,6 +3069,7 @@ public class Blocks{
             craftTime = 120f;
             size = 3;
             armor = 1f;
+            fogRadius = 7;
             ambientSound = Sounds.loopHum;
             ambientSoundVolume = 0.06f;
             hasLiquids = true;
@@ -3261,6 +3265,7 @@ public class Blocks{
             armor = 1f;
             itemCapacity = 13000;
             size = 5;
+            fogRadius = 11;
             thrusterLength = 40/4f;
 
             unitCapModifier = 16;
@@ -3766,6 +3771,8 @@ public class Blocks{
         hail = new ItemTurret("hail"){{
             requirements(Category.turret, with(Items.graphite, 100, Items.highEnergyGas, 50));
             buildTime = 18f * 60f;
+            fogRadius = 12;
+            fogRadiusMultiplier = 0.41f;
             ammo(
                 Items.graphite, new ArtilleryBulletType(3f, 20){{
                     knockback = 0.8f;
@@ -3960,6 +3967,7 @@ public class Blocks{
         swarmer = new ItemTurret("swarmer"){{
             requirements(Category.turret, with(Items.graphite, 100));
             buildTime = 18f * 60f;
+            fogRadius = 11;
 
             BulletType longArrowMissile = new MissileBulletType(4.2f, 12f){
                 {
@@ -4162,6 +4170,116 @@ public class Blocks{
             coolant = consumeCoolant(0.2f);
             depositCooldown = 2.0f;
         }};
+
+        ravenTurret = new Turret("raven-turret"){
+            private final BulletType ravenTurretBullet = new BasicBulletType(7f, 18f){{
+                width = 7f;
+                height = 9f;
+                lifetime = 45f;
+                rangeOverride = 6f * tilesize;
+                collidesAir = true;
+                collidesGround = true;
+                shootEffect = Fx.shootSmall;
+                smokeEffect = Fx.shootSmallSmoke;
+                hitEffect = Fx.hitBulletColor;
+                despawnEffect = Fx.none;
+                trailLength = 5;
+                trailWidth = 1.2f;
+            }};
+
+            {
+                buildVisibility = BuildVisibility.hidden;
+                requirements(Category.turret, with());
+                alwaysUnlocked = true;
+                size = 2;
+                health = 140;
+                armor = 0f;
+                targetAir = true;
+                targetGround = true;
+                range = 6f * tilesize;
+                reload = 0.57f * 60f;
+                shootCone = 12f;
+                rotateSpeed = 6f;
+                recoil = 0f;
+                shake = 0f;
+                fogRadius = 7;
+                ammoUseEffect = Fx.none;
+                shootSound = Sounds.shootDuo;
+                envEnabled |= Env.space;
+
+                drawer = new DrawTurret(){{
+                    parts.add(new RegionPart("-side"){{
+                        progress = PartProgress.warmup;
+                        moveX = 0.6f;
+                        moveRot = -15f;
+                        mirror = true;
+                        layerOffset = 0.001f;
+                        moves.add(new PartMove(PartProgress.recoil, 0.5f, -0.5f, -8f));
+                    }}, new RegionPart("-barrel"){{
+                        progress = PartProgress.recoil;
+                        moveY = -2.5f;
+                    }});
+                }
+
+                @Override
+                public void load(Block block){
+                    preview = Core.atlas.find("salvo-preview");
+                    outline = Core.atlas.find("salvo-outline");
+                    liquid = Core.atlas.find("salvo-liquid");
+                    top = Core.atlas.find("salvo-top");
+                    heat = Core.atlas.find("salvo-heat");
+                    base = Core.atlas.find("salvo-base");
+
+                    for(var part : parts){
+                        part.turretShading = true;
+                        part.load("salvo");
+                    }
+                }
+                };
+
+                buildType = () -> new TurretBuild(){
+                    private float life = 0f;
+
+                    @Override
+                    public void placed(){
+                        super.placed();
+                        life = UnitTypes.ravenTurretLifetime();
+                    }
+
+                    @Override
+                    public void updateTile(){
+                        super.updateTile();
+                        life -= edelta();
+                        if(life <= 0f){
+                            kill();
+                        }
+                    }
+
+                    @Override
+                    public BulletType useAmmo(){
+                        return ravenTurretBullet;
+                    }
+
+                    @Override
+                    public BulletType peekAmmo(){
+                        return ravenTurretBullet;
+                    }
+
+                    @Override
+                    public boolean hasAmmo(){
+                        return true;
+                    }
+                };
+            }
+
+            @Override
+            public void load(){
+                super.load();
+                region = Core.atlas.find("salvo", region);
+                uiIcon = Core.atlas.find("salvo-ui", uiIcon);
+                fullIcon = Core.atlas.find("salvo-full", fullIcon);
+            }
+        };
 
         segment = new PointDefenseTurret("segment"){{
             requirements(Category.turret, with(Items.silicon, 130, Items.thorium, 80, Items.phaseFabric, 40, Items.titanium, 40));

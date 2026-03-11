@@ -227,6 +227,15 @@ public class ConstructBlock extends Block{
         }
 
         @Override
+        public float fogRadius(){
+            if(current != null){
+                if(current.size == 3) return 4f;
+                if(current == Blocks.swarmer || current == Blocks.hail || current == Blocks.doorLarge || current == Blocks.coreNucleus) return 4f;
+            }
+            return super.fogRadius();
+        }
+
+        @Override
         public boolean checkSolid(){
             return current.solid || previous.solid;
         }

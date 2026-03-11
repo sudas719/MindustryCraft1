@@ -73,6 +73,7 @@ public class UnitAbilityPanel extends Table{
         BATTLECRUISER_YAMATO,
         BATTLECRUISER_WARP,
         RAVEN_ANTI_ARMOR,
+        RAVEN_TURRET,
         RAVEN_MATRIX,
         BUNKER_ATTACK,
         BUNKER_LOAD
@@ -310,6 +311,7 @@ public class UnitAbilityPanel extends Table{
         && activeCommand != CommandMode.BATTLECRUISER_YAMATO
         && activeCommand != CommandMode.BATTLECRUISER_WARP
         && activeCommand != CommandMode.RAVEN_ANTI_ARMOR
+        && activeCommand != CommandMode.RAVEN_TURRET
         && activeCommand != CommandMode.RAVEN_MATRIX
         && activeCommand != CommandMode.BUNKER_ATTACK
         && activeCommand != CommandMode.BUNKER_LOAD){
@@ -342,6 +344,8 @@ public class UnitAbilityPanel extends Table{
             buildBansheePanel();
         }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_ANTI_ARMOR){
             buildCoreTargetPanel("反护甲飞弹", "左键选择施法区域");
+        }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_TURRET){
+            buildCoreTargetPanel("自动机炮", "左键选择放置位置");
         }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_MATRIX){
             buildCoreTargetPanel("干扰矩阵", "左键选择机械/灵能目标");
         }else if(isOnlyRavenSelected()){
@@ -829,7 +833,7 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, this::issueRavenDeployTurretCommand);
+        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, () -> enterCommandMode(CommandMode.RAVEN_TURRET));
         addIconButton(grid, "r", Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR));
         addIconButton(grid, "c", Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX));
         addEmpty(grid);
@@ -3901,14 +3905,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void issueRavenDeployTurretCommand(){
-        IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
-            if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
-            if(!UnitTypes.ravenCanDeployTurret(unit)) continue;
-            ids.add(unit.id);
-        }
-        if(ids.size > 0){
-            Call.commandAvertDeployTurret(player, ids.toArray());
+        if(anyRavenCanDeployTurret()){
+            enterCommandMode(CommandMode.RAVEN_TURRET);
         }
     }
 
@@ -4577,7 +4575,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleRavenHotkeys(){
-        if(activeCommand == CommandMode.RAVEN_ANTI_ARMOR || activeCommand == CommandMode.RAVEN_MATRIX){
+        if(activeCommand == CommandMode.RAVEN_ANTI_ARMOR || activeCommand == CommandMode.RAVEN_TURRET || activeCommand == CommandMode.RAVEN_MATRIX){
             if(Core.input.keyTap(KeyCode.escape)){
                 exitCommandMode();
             }
@@ -4585,7 +4583,7 @@ public class UnitAbilityPanel extends Table{
         }
 
         if(Core.input.keyTap(KeyCode.t) && anyRavenCanDeployTurret()){
-            issueRavenDeployTurretCommand();
+            enterCommandMode(CommandMode.RAVEN_TURRET);
         }else if(Core.input.keyTap(KeyCode.r) && anyRavenCanUseAntiArmor()){
             enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR);
         }else if(Core.input.keyTap(KeyCode.c)){

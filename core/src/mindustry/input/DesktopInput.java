@@ -1445,6 +1445,13 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET){
+            if(executeRavenTurretCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX){
             if(executeRavenMatrixCommand(worldX, worldY) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
@@ -1832,6 +1839,24 @@ public class DesktopInput extends InputHandler{
         int[] ids = selectedRavenIds(UnitTypes::ravenCanUseAntiArmor);
         if(ids.length == 0) return false;
         Call.commandAvertAntiArmor(player, ids, new Vec2(worldX, worldY));
+        return true;
+    }
+
+    private boolean executeRavenTurretCommand(float worldX, float worldY){
+        Block block = Blocks.ravenTurret;
+        if(block == null) return false;
+
+        Tmp.v1.set(worldX, worldY).sub(block.offset, block.offset);
+        int tx = World.toTile(Tmp.v1.x);
+        int ty = World.toTile(Tmp.v1.y);
+        if(tx < 0 || ty < 0 || tx >= world.width() || ty >= world.height()) return false;
+        if(!Build.validPlaceIgnoreUnits(block, player.team(), tx, ty, 0, false, false) || !Build.checkNoUnitOverlap(block, tx, ty)){
+            return false;
+        }
+
+        int[] ids = selectedRavenIds(UnitTypes::ravenCanDeployTurret);
+        if(ids.length == 0) return false;
+        Call.commandAvertDeployTurret(player, ids, new Vec2(worldX, worldY));
         return true;
     }
 

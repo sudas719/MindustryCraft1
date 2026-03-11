@@ -376,6 +376,9 @@ public class Weapon implements Cloneable{
             if(!mount.bullet.isAdded() || mount.bullet.time >= mount.bullet.lifetime || mount.bullet.type != bullet){
                 mount.bullet = null;
             }else{
+                if(mount.shoot && unit.isGrounded() && !UnitTypes.allowMoveWhileShooting(unit)){
+                    unit.firingLock(Math.max(1f, reload));
+                }
                 mount.bullet.rotation(weaponRotation + 90);
                 mount.bullet.set(bulletX, bulletY);
                 mount.reload = reload;
@@ -512,6 +515,9 @@ public class Weapon implements Cloneable{
         Object data = bullet instanceof PointBulletType ? mount.target : null;
         mount.bullet = bullet.create(unit, shooter, unit.team, bulletX, bulletY, angle, -1f, (1f - velocityRnd) + Mathf.random(velocityRnd) + extraVelocity, lifeScl, data, mover, mount.aimX, mount.aimY, mount.target);
         handleBullet(unit, mount, mount.bullet);
+        if(unit.isGrounded() && !UnitTypes.allowMoveWhileShooting(unit)){
+            unit.firingLock(Math.max(1f, reload));
+        }
 
         if(!continuous){
             shootSound.at(bulletX, bulletY, Mathf.random(soundPitchMin, soundPitchMax), shootSoundVolume);

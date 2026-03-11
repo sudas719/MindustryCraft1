@@ -1311,6 +1311,9 @@ public class Block extends UnlockableContent implements Senseable{
             priority = TargetPriority.under;
         }
 
+        if(fogRadius <= 0 && size == 3){
+            fogRadius = 9;
+        }
         if(fogRadius > 0){
             flags = flags.with(BlockFlag.hasFogRadius);
         }

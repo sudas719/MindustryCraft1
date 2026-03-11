@@ -76,6 +76,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private transient boolean energyInitialized;
     private transient float regenTimer;
     private transient float lastHitTime;
+    private transient float firingLockTime;
 
     @SyncLocal float elevation;
     private transient boolean wasFlying;
@@ -558,7 +559,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public float collisionPushScale(){
-        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())) return 999f;
+        if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())) return 999f;
         if(harvestSoftTime <= 0f) return 1f;
         return Mathf.lerp(1f, harvestSoftScale, harvestSoftTime / harvestSoftDuration);
     }
@@ -566,7 +567,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public void impulse(float x, float y){
-        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())) return;
+        if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())) return;
         float mass = hitSize * hitSize * Mathf.pi;
         vel.add(x / mass, y / mass);
     }
@@ -1064,7 +1065,15 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         updateAirSeparation();
 
-        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())){
+        if(firingLockTime > 0f){
+            firingLockTime = Math.max(0f, firingLockTime - Time.delta);
+        }
+
+        if(firingLockActive() && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive()){
+            firingLockTime = 0f;
+        }
+
+        if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())){
             vel.setZero();
         }
 
@@ -1102,6 +1111,16 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     public boolean shouldUpdateController(){
         return true;
+    }
+
+    public void firingLock(float duration){
+        if(duration > firingLockTime){
+            firingLockTime = duration;
+        }
+    }
+
+    public boolean firingLockActive(){
+        return firingLockTime > 0f;
     }
 
     /** @return a preview UI icon for this unit. */

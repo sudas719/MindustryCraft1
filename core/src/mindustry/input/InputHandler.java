@@ -1041,8 +1041,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
-    public static void commandAvertDeployTurret(Player player, int[] unitIds){
-        if(player == null || unitIds == null) return;
+    public static void commandAvertDeployTurret(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
 
         if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
             event.unitIDs = unitIds;
@@ -1052,11 +1052,14 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         recordPlayerAction(player);
 
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
         for(int id : unitIds){
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isRaven(unit)) continue;
             if(UnitTypes.ravenMatrixDisabled(unit)) continue;
-            UnitTypes.commandRavenDeployTurret(unit);
+            UnitTypes.commandRavenDeployTurret(unit, safeTarget);
             unit.lastCommanded = player.coloredName();
         }
     }
@@ -2503,9 +2506,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void drawTop(){
         if(ui.hudfrag == null || ui.hudfrag.abilityPanel == null) return;
         var panel = ui.hudfrag.abilityPanel;
-        if(panel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE) return;
+        if(panel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE
+        && panel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET){
+            return;
+        }
 
-        Block block = panel.getPlacingBlock();
+        Block block = panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET ? Blocks.ravenTurret : panel.getPlacingBlock();
         if(block == null) return;
 
         float worldX = input.mouseWorldX();
@@ -2535,8 +2541,13 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             bplan.config = block.lastConfig;
         }
         bplan.animScale = 1f;
-        block.drawPlan(bplan, allPlans(), validPlace(tx, ty, block, placeRotation, null, true), 0.5f);
-        drawPlacementConstraintGrid(block, player.team(), tx, ty, placeRotation);
+        boolean valid = panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET
+            ? Build.validPlaceIgnoreUnits(block, player.team(), tx, ty, placeRotation, false, false) && Build.checkNoUnitOverlap(block, tx, ty)
+            : validPlace(tx, ty, block, placeRotation, null, true);
+        block.drawPlan(bplan, allPlans(), valid, 0.5f);
+        if(panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE){
+            drawPlacementConstraintGrid(block, player.team(), tx, ty, placeRotation);
+        }
     }
 
     public void drawOverSelect(){
