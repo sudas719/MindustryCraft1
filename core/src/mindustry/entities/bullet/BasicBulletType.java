@@ -25,6 +25,7 @@ public class BasicBulletType extends BulletType{
     public BasicBulletType(float speed, float damage, String bulletSprite){
         super(speed, damage);
         this.sprite = bulletSprite;
+        ballisticTracking = true;
     }
 
     public BasicBulletType(float speed, float damage){

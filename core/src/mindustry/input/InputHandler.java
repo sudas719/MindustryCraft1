@@ -668,6 +668,31 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandMaceLocusMode(Player player, int[] unitIds, boolean toLocus){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        recordPlayerAction(player);
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team()) continue;
+            if(toLocus){
+                if(!UnitTypes.isMace(unit) || UnitTypes.ravenMatrixDisabled(unit) || !UnitTypes.maceCanTransformToLocus(unit)) continue;
+            }else{
+                if(!UnitTypes.isLocus(unit) || UnitTypes.ravenMatrixDisabled(unit) || !UnitTypes.locusCanTransformToMace(unit)) continue;
+            }
+            UnitTypes.commandMaceLocusMode(unit, toLocus);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
     public static void commandLiberatorMode(Player player, int[] unitIds, boolean defenseMode, @Nullable Vec2 zoneTarget){
         if(player == null || unitIds == null) return;
 
@@ -712,6 +737,27 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             if(unit == null || unit.team != player.team() || !UnitTypes.isMedivac(unit)) continue;
             if(UnitTypes.ravenMatrixDisabled(unit)) continue;
             UnitTypes.commandMedivacAfterburner(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandBarracksStimpack(Player player, int[] unitIds){
+        if(player == null || unitIds == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        recordPlayerAction(player);
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandBarracksStimpack(unit);
             unit.lastCommanded = player.coloredName();
         }
     }

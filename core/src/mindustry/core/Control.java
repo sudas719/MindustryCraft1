@@ -343,6 +343,7 @@ public class Control implements ApplicationListener, Loadable{
         Draw.scl = 1f / Core.atlas.find("scale_marker").width;
 
         Core.input.setCatch(KeyCode.back, true);
+        Core.input.setCatch(KeyCode.escape, true);
 
         Core.settings.defaults(
         "ip", "localhost",

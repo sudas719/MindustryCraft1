@@ -551,12 +551,30 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(harvestCollision){
             return -1;
         }
+        if(isFlying() && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive()){
+            return -1;
+        }
         return type.allowLegStep && type.legPhysicsLayer ? PhysicsProcess.layerLegs : isGrounded() ? PhysicsProcess.layerGround : PhysicsProcess.layerFlying;
     }
 
     public float collisionPushScale(){
+        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())) return 999f;
         if(harvestSoftTime <= 0f) return 1f;
         return Mathf.lerp(1f, harvestSoftScale, harvestSoftTime / harvestSoftDuration);
+    }
+
+    @Override
+    @Replace
+    public void impulse(float x, float y){
+        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())) return;
+        float mass = hitSize * hitSize * Mathf.pi;
+        vel.add(x / mass, y / mass);
+    }
+
+    @Override
+    @Replace
+    public void impulse(Vec2 v){
+        impulse(v.x, v.y);
     }
 
     public void lookAt(float angle){
@@ -1044,6 +1062,12 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
             controller.updateUnit();
         }
 
+        updateAirSeparation();
+
+        if(isShooting() && !UnitTypes.allowMoveWhileShooting(self())){
+            vel.setZero();
+        }
+
         //clear controller when it becomes invalid
         if(!controller.isValidController()){
             resetController();
@@ -1053,6 +1077,27 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(spawnedByCore && !isPlayer() && !dead){
             Call.unitDespawn(self());
         }
+    }
+
+    private void updateAirSeparation(){
+        if(!(isFlying() && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive())) return;
+        float radius = hitSize * unitCollisionRadiusScale;
+        float size = radius * 2f;
+        Units.nearby(x - radius, y - radius, size, size, other -> {
+            if(other == null || other == self() || !other.isValid() || !other.isFlying()) return;
+            if(!(other.controller() instanceof CommandAI cmdOther) || !cmdOther.moveOnlyCommandActive()) return;
+            float otherRadius = other.hitSize * unitCollisionRadiusScale;
+            float rs = radius + otherRadius;
+            float dst = Mathf.dst(x, y, other.x, other.y);
+            if(dst >= rs) return;
+            if(Mathf.zero(dst)){
+                tmp1.rnd(1f);
+            }else{
+                tmp1.set(x - other.x, y - other.y).scl(1f / dst);
+            }
+            float push = (rs - dst) * 0.08f * Time.delta;
+            velAddNet(tmp1.scl(push));
+        });
     }
 
     public boolean shouldUpdateController(){

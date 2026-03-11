@@ -119,6 +119,12 @@ public class NetServer implements ApplicationListener{
     private ObjectMap<String, Long> identityChallengeTimes = new ObjectMap<>();
     private ObjectSet<String> integrityBans = new ObjectSet<>();
     private final ObjectSet<String> adminOnlyClientCommands = new ObjectSet<>();
+    private final ObjectIntMap<String> helpMenuPageByPlayer = new ObjectIntMap<>();
+    private final ObjectMap<String, String> mapsMenuFilterByPlayer = new ObjectMap<>();
+    private final ObjectIntMap<String> mapsMenuPageByPlayer = new ObjectIntMap<>();
+    private final ObjectMap<String, String> siteMapsSearchByPlayer = new ObjectMap<>();
+    private final ObjectIntMap<String> siteMapsPageByPlayer = new ObjectIntMap<>();
+    private final ObjectMap<String, Seq<ResourceMapInfo>> siteMapsCacheByPlayer = new ObjectMap<>();
     private final Fi banListFile = Core.settings.getDataDirectory().child("banList");
     private final ObjectMap<String, Effect> wayzerEffects = new ObjectMap<>();
     private long gatherLastTime = -1000000L;
@@ -148,6 +154,9 @@ public class NetServer implements ApplicationListener{
     private final int[] handicapOptions = {100, 90, 80, 70, 60, 50};
     private int startCountdownToken = 0;
     private boolean startCountdownActive = false;
+    private final int helpMenuId;
+    private final int mapsMenuId;
+    private final int siteMapsMenuId;
     private final int handicapMenuId;
 
     /** Current kick session. */
@@ -177,6 +186,9 @@ public class NetServer implements ApplicationListener{
     private ObjectMap<String, Seq<Cons2<Player, Object>>> logicClientDataHandlers = new ObjectMap<>();
 
     public NetServer(){
+        helpMenuId = Menus.registerMenu(this::handleHelpMenu);
+        mapsMenuId = Menus.registerMenu(this::handleMapsMenu);
+        siteMapsMenuId = Menus.registerMenu(this::handleSiteMapsMenu);
         handicapMenuId = Menus.registerMenu(this::handleHandicapMenu);
 
         loadBanList();
@@ -257,7 +269,13 @@ public class NetServer implements ApplicationListener{
                 con.kick("This server requires a valid local device hash identity.", 0);
                 return;
             }
+            String deviceKey = packet.deviceKey == null ? null : packet.deviceKey.trim();
+            if(deviceKey == null || !deviceKey.startsWith("dk1$") || deviceKey.length() != 68){
+                con.kick("This server requires a valid local device key identity.", 0);
+                return;
+            }
 
+            //Use device hash directly as the authoritative server-side player identity.
             String uuid = deviceHash;
 
             if(admins.isIPBanned(con.address) || admins.isSubnetBanned(con.address) || con.kicked || !con.isConnected()) return;
@@ -364,7 +382,7 @@ public class NetServer implements ApplicationListener{
             String ip = con.address;
 
             admins.updatePlayerJoined(uuid, ip, packet.name);
-            String shortUid = admins.bindDeviceIdentity(uuid, deviceHash);
+            String shortUid = admins.bindDeviceIdentity(uuid, deviceHash, deviceKey);
 
             if(packet.version != Version.build && Version.build != -1 && packet.version != -1){
                 con.kick(packet.version > Version.build ? KickReason.serverOutdated : KickReason.clientOutdated);
@@ -408,9 +426,11 @@ public class NetServer implements ApplicationListener{
             //assign team; if all teams are occupied, fallback is handled by assignTeam()
             Team assignedTeam = assignTeam(player);
             player.team(assignedTeam);
-            int playerNumber = nextPlayerNumber++;
-            playerNumbers.put(player.uuid(), playerNumber);
-            Call.infoMessage(con, "Your player number: #" + playerNumber);
+            int playerNumber = playerNumbers.get(player.uuid(), 0);
+            if(playerNumber <= 0){
+                playerNumber = nextPlayerNumber++;
+                playerNumbers.put(player.uuid(), playerNumber);
+            }
 
             sendWorldData(player);
 
@@ -465,6 +485,247 @@ public class NetServer implements ApplicationListener{
         return visible;
     }
 
+    private void sendHelpText(Player player, int requestedPage){
+        Seq<Command> visibleCommands = getVisibleClientCommands(player);
+        if(visibleCommands.isEmpty()){
+            player.sendMessage("[scarlet]No commands available.");
+            return;
+        }
+
+        int commandsPerPage = 6;
+        int pages = Math.max(1, Mathf.ceil((float)visibleCommands.size / commandsPerPage));
+        int page = Mathf.clamp(requestedPage, 0, pages - 1);
+
+        StringBuilder result = new StringBuilder();
+        result.append(Strings.format("[orange]-- Commands Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n", (page + 1), pages));
+
+        for(int i = commandsPerPage * page; i < Math.min(commandsPerPage * (page + 1), visibleCommands.size); i++){
+            Command command = visibleCommands.get(i);
+            result.append("[orange] /").append(command.text).append("[white] ").append(command.paramText).append("[lightgray] - ").append(command.description).append("\n");
+        }
+        player.sendMessage(result.toString());
+    }
+
+    private void openHelpMenu(Player player, int requestedPage){
+        if(player == null || player.con == null) return;
+
+        Seq<Command> visibleCommands = getVisibleClientCommands(player);
+        if(visibleCommands.isEmpty()){
+            player.sendMessage("[scarlet]No commands available.");
+            return;
+        }
+
+        int commandsPerPage = 6;
+        int pages = Math.max(1, Mathf.ceil((float)visibleCommands.size / commandsPerPage));
+        int page = Mathf.clamp(requestedPage, 0, pages - 1);
+        helpMenuPageByPlayer.put(player.uuid(), page);
+
+        int start = commandsPerPage * page;
+        int end = Math.min(commandsPerPage * (page + 1), visibleCommands.size);
+        int commandCount = end - start;
+        int commandRows = Math.max(1, Mathf.ceil(commandCount / 2f));
+        String[][] options = new String[commandRows + 2][];
+
+        int cursor = 0;
+        for(int row = 0; row < commandRows; row++){
+            int remain = commandCount - cursor;
+            int cols = Math.min(2, Math.max(remain, 0));
+            if(cols == 0){
+                options[row] = new String[]{" "};
+                continue;
+            }
+
+            String[] line = new String[cols];
+            for(int col = 0; col < cols; col++){
+                Command command = visibleCommands.get(start + cursor++);
+                line[col] = "/" + command.text;
+            }
+            options[row] = line;
+        }
+
+        options[commandRows] = new String[]{"< Prev", (page + 1) + "/" + pages, "Next >"};
+        options[commandRows + 1] = new String[]{"Close"};
+
+        StringBuilder message = new StringBuilder();
+        message.append("[lightgray]Select a command button to view usage.\n\n");
+        for(int i = start; i < end; i++){
+            Command command = visibleCommands.get(i);
+            message.append("[orange]/").append(command.text).append("[lightgray] - ").append(command.description).append('\n');
+        }
+
+        Call.menu(player.con, helpMenuId, "Command Help", message.toString(), options);
+    }
+
+    private Seq<Map> filterBuiltinMaps(@Nullable String filter){
+        Seq<Map> builtin = maps.defaultMaps();
+        if(filter != null && !filter.trim().isEmpty()){
+            String lowered = filter.trim().toLowerCase();
+            builtin = builtin.select(map -> map.plainName().toLowerCase().contains(lowered));
+        }
+        return builtin;
+    }
+
+    private void sendMapsText(Player player, @Nullable String filter, int requestedPage){
+        Seq<Map> builtin = filterBuiltinMaps(filter);
+        if(builtin.isEmpty()){
+            player.sendMessage("[scarlet]No built-in maps matched your query.");
+            return;
+        }
+
+        int perPage = 10;
+        int totalPages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, builtin.size);
+
+        StringBuilder out = new StringBuilder();
+        if(filter != null && !filter.trim().isEmpty()){
+            out.append("[lightgray]Filter: [accent]").append(filter).append('\n');
+        }
+        out.append(Strings.format("[orange]-- Built-in Maps [lightgray]@[gray]/[lightgray]@[orange] --\n\n", page + 1, totalPages));
+        for(int i = start; i < end; i++){
+            Map map = builtin.get(i);
+            out.append("[lightgray] ").append(i + 1).append(". [accent]").append(map.plainName()).append('\n');
+        }
+        out.append("\n[lightgray]< [accent]").append(page + 1).append("[lightgray]/[accent]").append(totalPages).append("[lightgray] >");
+        player.sendMessage(out.toString());
+    }
+
+    private void openMapsMenu(Player player, @Nullable String filter, int requestedPage){
+        if(player == null) return;
+        if(player.con == null){
+            sendMapsText(player, filter, requestedPage);
+            return;
+        }
+
+        Seq<Map> builtin = filterBuiltinMaps(filter);
+        if(builtin.isEmpty()){
+            player.sendMessage("[scarlet]No built-in maps matched your query.");
+            return;
+        }
+
+        int perPage = 10;
+        int totalPages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, builtin.size);
+        int itemCount = end - start;
+        int rows = Math.max(1, Mathf.ceil(itemCount / 2f));
+        String[][] options = new String[rows + 2][];
+
+        int cursor = 0;
+        for(int row = 0; row < rows; row++){
+            int remain = itemCount - cursor;
+            int cols = Math.min(2, Math.max(remain, 0));
+            if(cols == 0){
+                options[row] = new String[]{" "};
+                continue;
+            }
+
+            String[] line = new String[cols];
+            for(int col = 0; col < cols; col++){
+                Map map = builtin.get(start + cursor);
+                String label = (start + cursor + 1) + "." + Strings.truncate(map.plainName(), 20);
+                line[col] = label;
+                cursor++;
+            }
+            options[row] = line;
+        }
+
+        options[rows] = new String[]{"< Prev", (page + 1) + "/" + totalPages, "Next >"};
+        options[rows + 1] = new String[]{"Close"};
+
+        StringBuilder message = new StringBuilder();
+        message.append("[lightgray]Built-in maps");
+        if(filter != null && !filter.trim().isEmpty()){
+            message.append(" [accent](filter: ").append(filter.trim()).append(")[]");
+        }
+        message.append("\n[lightgray]Click an item to show map details.\n");
+
+        mapsMenuFilterByPlayer.put(player.uuid(), filter == null ? "" : filter.trim());
+        mapsMenuPageByPlayer.put(player.uuid(), page);
+        Call.menu(player.con, mapsMenuId, "Built-in Maps", message.toString(), options);
+    }
+
+    private void sendSiteMapsText(Player player, String search, Seq<ResourceMapInfo> infos, int requestedPage){
+        if(infos.isEmpty()){
+            player.sendMessage("[scarlet]No resource-site maps matched your query.");
+            return;
+        }
+
+        int perPage = 10;
+        int totalPages = Math.max(1, Mathf.ceil((float)infos.size / perPage));
+        int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, infos.size);
+
+        StringBuilder out = new StringBuilder();
+        out.append(Strings.format("[orange]-- Resource Maps [lightgray]@[gray]/[lightgray]@[orange] --\n", page + 1, totalPages));
+        out.append("[lightgray]Search: [accent]").append(search.isEmpty() ? "<all>" : search).append("\n\n");
+        for(int i = start; i < end; i++){
+            ResourceMapInfo info = infos.get(i);
+            out.append("[lightgray] ").append(i + 1).append(". [accent]").append(info.id)
+            .append("[lightgray] | ").append(info.name)
+            .append("[lightgray] | ").append(info.mode)
+            .append("[lightgray] | by ").append(info.author)
+            .append('\n');
+        }
+        out.append("\n[lightgray]Use [accent]/votemap <id>[] or [accent]/host <id>[] to switch.");
+        player.sendMessage(out.toString());
+    }
+
+    private void openSiteMapsMenu(Player player, String search, Seq<ResourceMapInfo> infos, int requestedPage){
+        if(player == null) return;
+        if(player.con == null){
+            sendSiteMapsText(player, search, infos, requestedPage);
+            return;
+        }
+        if(infos.isEmpty()){
+            player.sendMessage("[scarlet]No resource-site maps matched your query.");
+            return;
+        }
+
+        int perPage = 10;
+        int totalPages = Math.max(1, Mathf.ceil((float)infos.size / perPage));
+        int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, infos.size);
+        int itemCount = end - start;
+        int rows = Math.max(1, Mathf.ceil(itemCount / 2f));
+        String[][] options = new String[rows + 2][];
+
+        int cursor = 0;
+        for(int row = 0; row < rows; row++){
+            int remain = itemCount - cursor;
+            int cols = Math.min(2, Math.max(remain, 0));
+            if(cols == 0){
+                options[row] = new String[]{" "};
+                continue;
+            }
+
+            String[] line = new String[cols];
+            for(int col = 0; col < cols; col++){
+                ResourceMapInfo info = infos.get(start + cursor);
+                line[col] = info.id + ":" + Strings.truncate(info.name, 18);
+                cursor++;
+            }
+            options[row] = line;
+        }
+
+        options[rows] = new String[]{"< Prev", (page + 1) + "/" + totalPages, "Next >"};
+        options[rows + 1] = new String[]{"Close"};
+
+        String queryLabel = search == null || search.isEmpty() ? "<all>" : search;
+        StringBuilder message = new StringBuilder();
+        message.append("[lightgray]Resource site maps [accent](search: ").append(queryLabel).append(")[]\n");
+        message.append("[lightgray]Click an item to show map id and usage.\n");
+
+        siteMapsSearchByPlayer.put(player.uuid(), search == null ? "" : search);
+        siteMapsPageByPlayer.put(player.uuid(), page);
+        siteMapsCacheByPlayer.put(player.uuid(), infos);
+        Call.menu(player.con, siteMapsMenuId, "Resource Maps", message.toString(), options);
+    }
+
     private void registerCommands(){
         markAdminOnlyCommands(
         "siteapicfg", "host", "clearunit", "dosbanclear", "showeffect", "showeffectlist",
@@ -478,30 +739,12 @@ public class NetServer implements ApplicationListener{
                 player.sendMessage("[scarlet]'page' must be a number.");
                 return;
             }
-            Seq<Command> visibleCommands = getVisibleClientCommands(player);
-            if(visibleCommands.isEmpty()){
-                player.sendMessage("[scarlet]No commands available.");
-                return;
-            }
-            int commandsPerPage = 6;
             int page = args.length > 0 ? Strings.parseInt(args[0]) : 1;
-            int pages = Mathf.ceil((float)visibleCommands.size / commandsPerPage);
-
-            page--;
-
-            if(page >= pages || page < 0){
-                player.sendMessage("[scarlet]'page' must be a number between[orange] 1[] and[orange] " + pages + "[scarlet].");
-                return;
+            if(player.con == null){
+                sendHelpText(player, page - 1);
+            }else{
+                openHelpMenu(player, page - 1);
             }
-
-            StringBuilder result = new StringBuilder();
-            result.append(Strings.format("[orange]-- Commands Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n", (page + 1), pages));
-
-            for(int i = commandsPerPage * page; i < Math.min(commandsPerPage * (page + 1), visibleCommands.size); i++){
-                Command command = visibleCommands.get(i);
-                result.append("[orange] /").append(command.text).append("[white] ").append(command.paramText).append("[lightgray] - ").append(command.description).append("\n");
-            }
-            player.sendMessage(result.toString());
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
@@ -524,39 +767,11 @@ public class NetServer implements ApplicationListener{
                 }
                 page = Strings.parseInt(args[1]);
             }
-
-            Seq<Map> builtin = maps.defaultMaps();
-            if(filter != null && !filter.trim().isEmpty()){
-                String lowered = filter.toLowerCase();
-                builtin = builtin.select(map -> map.plainName().toLowerCase().contains(lowered));
-            }
-
-            if(builtin.isEmpty()){
-                player.sendMessage("[scarlet]No built-in maps matched your query.");
+            if(page < 1){
+                player.sendMessage("[scarlet]'page' must be >= 1.");
                 return;
             }
-
-            int perPage = 10;
-            int totalPages = Mathf.ceil((float)builtin.size / perPage);
-            if(page < 1 || page > totalPages){
-                player.sendMessage("[scarlet]'page' must be between [orange]1[scarlet] and [orange]" + totalPages + "[scarlet].");
-                return;
-            }
-
-            int start = (page - 1) * perPage;
-            int end = Math.min(start + perPage, builtin.size);
-
-            StringBuilder out = new StringBuilder();
-            if(filter != null && !filter.trim().isEmpty()){
-                out.append("[lightgray]Filter: [accent]").append(filter).append('\n');
-            }
-            out.append(Strings.format("[orange]-- Built-in Maps [lightgray]@[gray]/[lightgray]@[orange] --\n\n", page, totalPages));
-            for(int i = start; i < end; i++){
-                Map map = builtin.get(i);
-                out.append("[lightgray] ").append(i + 1).append(". [accent]").append(map.plainName()).append('\n');
-            }
-            out.append("\n[lightgray]< [accent]").append(page).append("[lightgray]/[accent]").append(totalPages).append("[lightgray] >");
-            player.sendMessage(out.toString());
+            openMapsMenu(player, filter, page - 1);
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
@@ -620,34 +835,7 @@ public class NetServer implements ApplicationListener{
             String finalSearch = search == null ? "" : search.trim();
             int finalPage = page;
             fetchResourceSiteMaps(finalSearch, infos -> Core.app.post(() -> {
-                if(infos.isEmpty()){
-                    player.sendMessage("[scarlet]No resource-site maps matched your query.");
-                    return;
-                }
-
-                int perPage = 10;
-                int totalPages = Math.max(1, Mathf.ceil((float)infos.size / perPage));
-                if(finalPage > totalPages){
-                    player.sendMessage("[scarlet]'page' must be between [orange]1[scarlet] and [orange]" + totalPages + "[scarlet].");
-                    return;
-                }
-
-                int start = (finalPage - 1) * perPage;
-                int end = Math.min(start + perPage, infos.size);
-
-                StringBuilder out = new StringBuilder();
-                out.append(Strings.format("[orange]-- Resource Maps [lightgray]@[gray]/[lightgray]@[orange] --\n", finalPage, totalPages));
-                out.append("[lightgray]Search: [accent]").append(finalSearch.isEmpty() ? "<all>" : finalSearch).append("\n\n");
-                for(int i = start; i < end; i++){
-                    ResourceMapInfo info = infos.get(i);
-                    out.append("[lightgray] ").append(i + 1).append(". [accent]").append(info.id)
-                    .append("[lightgray] | ").append(info.name)
-                    .append("[lightgray] | ").append(info.mode)
-                    .append("[lightgray] | by ").append(info.author)
-                    .append('\n');
-                }
-                out.append("\n[lightgray]Use [accent]/votemap <id>[] or [accent]/host <id>[] to switch.");
-                player.sendMessage(out.toString());
+                openSiteMapsMenu(player, finalSearch, infos, finalPage - 1);
             }), err -> Core.app.post(() -> player.sendMessage("[scarlet]Failed to fetch resource maps: " + err)));
         });
 
@@ -1599,56 +1787,7 @@ public class NetServer implements ApplicationListener{
         // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/cmds/voteMap.kts + scripts/wayzer/map/resourceHelper.kts (partial)
         clientCommands.<Player>register("votemap", "<map...>", "Vote to change current map.", (args, player) -> {
-            String token = args[0] == null ? "" : args[0].trim();
-            if(isResourceMapIdToken(token)){
-                int resourceId = Strings.parseInt(token);
-                startGenericVote(
-                player,
-                "[yellow]Vote to change map to resource-site id [accent]" + resourceId,
-                p -> true,
-                c -> votesRequired(),
-                true,
-                () -> {
-                    Call.sendMessage("[yellow]Downloading voted resource-site map [accent]" + resourceId + "[yellow]...");
-                    fetchResourceSiteMapById(resourceId, map -> Core.app.post(() -> {
-                        try{
-                            world.loadMap(map, map.applyRules(state.rules.mode()));
-                            logic.play();
-                            Call.sendMessage("[green]Loaded resource-site map [accent]" + map.plainName() + "[green] (id=" + resourceId + ").");
-                        }catch(Throwable t){
-                            Log.err("Failed to load voted resource-site map " + resourceId + ".", t);
-                            Call.sendMessage("[scarlet]Failed to load voted resource-site map id=" + resourceId + ".");
-                        }
-                    }), err -> Core.app.post(() -> Call.sendMessage("[scarlet]Failed to download resource-site map id=" + resourceId + ": " + err)));
-                });
-                return;
-            }
-
-            Map target = resolveVoteMap(args[0]);
-            if(target == null){
-                player.sendMessage("[scarlet]Map not found. Use [orange]/maps[] or [orange]/sitemaps[].");
-                return;
-            }
-
-            Map selected = target;
-            startGenericVote(
-            player,
-            "[yellow]Vote to change map to [accent]" + selected.plainName(),
-            p -> true,
-            c -> votesRequired(),
-            true,
-            () -> {
-                Call.sendMessage("[yellow]Loading voted map: [accent]" + selected.plainName());
-                Core.app.post(() -> {
-                    try{
-                        world.loadMap(selected, selected.applyRules(state.rules.mode()));
-                        logic.play();
-                    }catch(Throwable t){
-                        Log.err("Failed to load voted map.", t);
-                        Call.sendMessage("[scarlet]Failed to load map: " + selected.plainName());
-                    }
-                });
-            });
+            startVoteMap(player, args[0]);
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
@@ -1860,7 +1999,16 @@ public class NetServer implements ApplicationListener{
             }
         });
 
-        clientCommands.<Player>register("vote", "<y/n/c/start>", "Vote on the current vote session. Use 'start' during preview to start match vote.", (arg, player) -> {
+        clientCommands.<Player>register("vote", "<y/n/c/start/map> [map...]", "Vote on current session. Also supports '/vote map <map/id>'.", (arg, player) -> {
+            if(arg[0].equalsIgnoreCase("map")){
+                if(arg.length < 2 || arg[1] == null || arg[1].trim().isEmpty()){
+                    player.sendMessage("[scarlet]Usage: /vote map <map/id>");
+                    return;
+                }
+                startVoteMap(player, arg[1].trim());
+                return;
+            }
+
             if(arg[0].equalsIgnoreCase("start")){
                 if(currentlyVoting != null || currentlyKicking != null){
                     player.sendMessage("[scarlet]A vote is already in progress.");
@@ -2064,7 +2212,12 @@ public class NetServer implements ApplicationListener{
 
         player.remove();
         player.con.hasDisconnected = true;
-        netServer.playerNumbers.remove(player.uuid(), 0);
+        netServer.helpMenuPageByPlayer.remove(player.uuid(), 0);
+        netServer.mapsMenuFilterByPlayer.remove(player.uuid());
+        netServer.mapsMenuPageByPlayer.remove(player.uuid(), 0);
+        netServer.siteMapsSearchByPlayer.remove(player.uuid());
+        netServer.siteMapsPageByPlayer.remove(player.uuid(), 0);
+        netServer.siteMapsCacheByPlayer.remove(player.uuid());
         netServer.identityChallenges.remove(player.uuid());
         netServer.identityChallengeTimes.remove(player.uuid());
     }
@@ -2167,7 +2320,9 @@ public class NetServer implements ApplicationListener{
         identityChallenges.remove(id);
         identityChallengeTimes.remove(id);
 
-        if(!id.equals(reportedHash)){
+        PlayerInfo info = admins.getInfoOptional(id);
+        String expectedHash = info != null && info.deviceHash != null ? info.deviceHash.trim() : id;
+        if(!expectedHash.equals(reportedHash)){
             integrityBan(player, "identity-hash-changed");
         }
     }
@@ -2508,6 +2663,64 @@ public class NetServer implements ApplicationListener{
                 onFailure.get("Map file decode failed.");
             }
         }, err -> onFailure.get(err.getMessage() == null ? err.toString() : err.getMessage()));
+    }
+
+    private void startVoteMap(Player player, String rawToken){
+        String token = rawToken == null ? "" : rawToken.trim();
+        if(token.isEmpty()){
+            player.sendMessage("[scarlet]Map argument cannot be empty.");
+            return;
+        }
+
+        if(isResourceMapIdToken(token)){
+            int resourceId = Strings.parseInt(token);
+            startGenericVote(
+            player,
+            "[yellow]Vote to change map to resource-site id [accent]" + resourceId,
+            p -> true,
+            c -> votesRequired(),
+            true,
+            () -> {
+                Call.sendMessage("[yellow]Downloading voted resource-site map [accent]" + resourceId + "[yellow]...");
+                fetchResourceSiteMapById(resourceId, map -> Core.app.post(() -> {
+                    try{
+                        world.loadMap(map, map.applyRules(state.rules.mode()));
+                        logic.play();
+                        Call.sendMessage("[green]Loaded resource-site map [accent]" + map.plainName() + "[green] (id=" + resourceId + ").");
+                    }catch(Throwable t){
+                        Log.err("Failed to load voted resource-site map " + resourceId + ".", t);
+                        Call.sendMessage("[scarlet]Failed to load voted resource-site map id=" + resourceId + ".");
+                    }
+                }), err -> Core.app.post(() -> Call.sendMessage("[scarlet]Failed to download resource-site map id=" + resourceId + ": " + err)));
+            });
+            return;
+        }
+
+        Map target = resolveVoteMap(token);
+        if(target == null){
+            player.sendMessage("[scarlet]Map not found. Use [orange]/maps[] or [orange]/sitemaps[].");
+            return;
+        }
+
+        Map selected = target;
+        startGenericVote(
+        player,
+        "[yellow]Vote to change map to [accent]" + selected.plainName(),
+        p -> true,
+        c -> votesRequired(),
+        true,
+        () -> {
+            Call.sendMessage("[yellow]Loading voted map: [accent]" + selected.plainName());
+            Core.app.post(() -> {
+                try{
+                    world.loadMap(selected, selected.applyRules(state.rules.mode()));
+                    logic.play();
+                }catch(Throwable t){
+                    Log.err("Failed to load voted map.", t);
+                    Call.sendMessage("[scarlet]Failed to load map: " + selected.plainName());
+                }
+            });
+        });
     }
 
     private @Nullable Map resolveVoteMap(String token){
@@ -3164,6 +3377,171 @@ public class NetServer implements ApplicationListener{
     private int getTeamHandicapPercent(@Nullable Team team){
         if(team == null) return 100;
         return teamHandicapPercent.get(team.id, 100);
+    }
+
+    private void handleHelpMenu(Player player, int option){
+        if(player == null) return;
+        if(option < 0){
+            helpMenuPageByPlayer.remove(player.uuid(), 0);
+            return;
+        }
+
+        Seq<Command> visibleCommands = getVisibleClientCommands(player);
+        if(visibleCommands.isEmpty()){
+            player.sendMessage("[scarlet]No commands available.");
+            return;
+        }
+
+        int commandsPerPage = 6;
+        int pages = Math.max(1, Mathf.ceil((float)visibleCommands.size / commandsPerPage));
+        int page = Mathf.clamp(helpMenuPageByPlayer.get(player.uuid(), 0), 0, pages - 1);
+
+        int start = commandsPerPage * page;
+        int end = Math.min(commandsPerPage * (page + 1), visibleCommands.size);
+        int commandCount = end - start;
+
+        int prevIndex = commandCount;
+        int pageIndex = commandCount + 1;
+        int nextIndex = commandCount + 2;
+        int closeIndex = commandCount + 3;
+
+        if(option < commandCount){
+            Command command = visibleCommands.get(start + option);
+            String usage = "/" + command.text + (command.paramText == null || command.paramText.isEmpty() ? "" : " " + command.paramText);
+            player.sendMessage("[orange]" + usage + "\n[lightgray]" + command.description);
+            openHelpMenu(player, page);
+            return;
+        }
+
+        if(option == prevIndex){
+            openHelpMenu(player, page - 1);
+        }else if(option == nextIndex){
+            openHelpMenu(player, page + 1);
+        }else if(option == pageIndex){
+            openHelpMenu(player, page);
+        }else if(option == closeIndex){
+            helpMenuPageByPlayer.remove(player.uuid(), 0);
+        }
+    }
+
+    private void handleMapsMenu(Player player, int option){
+        if(player == null) return;
+        String id = player.uuid();
+        if(option < 0){
+            mapsMenuFilterByPlayer.remove(id);
+            mapsMenuPageByPlayer.remove(id, 0);
+            return;
+        }
+
+        String filter = mapsMenuFilterByPlayer.get(id, "");
+        Seq<Map> builtin = filterBuiltinMaps(filter);
+        if(builtin.isEmpty()){
+            player.sendMessage("[scarlet]No built-in maps matched your query.");
+            return;
+        }
+
+        int perPage = 10;
+        int pages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int page = Mathf.clamp(mapsMenuPageByPlayer.get(id, 0), 0, pages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, builtin.size);
+        int itemCount = end - start;
+
+        int prevIndex = itemCount;
+        int pageIndex = itemCount + 1;
+        int nextIndex = itemCount + 2;
+        int closeIndex = itemCount + 3;
+
+        if(option < itemCount){
+            Map map = builtin.get(start + option);
+            StringBuilder info = new StringBuilder();
+            info.append("[orange]Map: [accent]").append(map.plainName()).append('\n');
+            if(map.author() != null && !map.author().trim().isEmpty()){
+                info.append("[orange]Author: [lightgray]").append(map.author()).append('\n');
+            }
+            if(map.description() != null && !map.description().trim().isEmpty()){
+                info.append("[orange]Desc: [lightgray]").append(Strings.truncate(map.description().trim(), 140)).append('\n');
+            }
+            info.append("[lightgray]Use [accent]/votemap ").append(map.plainName()).append("[]");
+            if(player.admin){
+                info.append("\n[lightgray]Admin: [accent]/host ").append(map.plainName()).append("[]");
+            }
+            player.sendMessage(info.toString());
+            openMapsMenu(player, filter, page);
+            return;
+        }
+
+        if(option == prevIndex){
+            openMapsMenu(player, filter, page - 1);
+        }else if(option == nextIndex){
+            openMapsMenu(player, filter, page + 1);
+        }else if(option == pageIndex){
+            openMapsMenu(player, filter, page);
+        }else if(option == closeIndex){
+            mapsMenuFilterByPlayer.remove(id);
+            mapsMenuPageByPlayer.remove(id, 0);
+        }
+    }
+
+    private void handleSiteMapsMenu(Player player, int option){
+        if(player == null) return;
+        String id = player.uuid();
+        if(option < 0){
+            siteMapsSearchByPlayer.remove(id);
+            siteMapsPageByPlayer.remove(id, 0);
+            siteMapsCacheByPlayer.remove(id);
+            return;
+        }
+
+        String search = siteMapsSearchByPlayer.get(id, "");
+        Seq<ResourceMapInfo> infos = siteMapsCacheByPlayer.get(id);
+        if(infos == null || infos.isEmpty()){
+            player.sendMessage("[scarlet]Resource map cache expired. Use /sitemaps again.");
+            return;
+        }
+
+        int perPage = 10;
+        int pages = Math.max(1, Mathf.ceil((float)infos.size / perPage));
+        int page = Mathf.clamp(siteMapsPageByPlayer.get(id, 0), 0, pages - 1);
+        int start = page * perPage;
+        int end = Math.min(start + perPage, infos.size);
+        int itemCount = end - start;
+
+        int prevIndex = itemCount;
+        int pageIndex = itemCount + 1;
+        int nextIndex = itemCount + 2;
+        int closeIndex = itemCount + 3;
+
+        if(option < itemCount){
+            ResourceMapInfo info = infos.get(start + option);
+            StringBuilder msg = new StringBuilder();
+            msg.append("[orange]Map ID: [accent]").append(info.id).append('\n');
+            msg.append("[orange]Name: [lightgray]").append(info.name).append('\n');
+            msg.append("[orange]Mode: [lightgray]").append(info.mode).append('\n');
+            msg.append("[orange]Author: [lightgray]").append(info.author).append('\n');
+            if(info.description != null && !info.description.trim().isEmpty()){
+                msg.append("[orange]Desc: [lightgray]").append(Strings.truncate(info.description.trim(), 160)).append('\n');
+            }
+            msg.append("[lightgray]Use [accent]/votemap ").append(info.id).append("[]");
+            if(player.admin){
+                msg.append("\n[lightgray]Admin: [accent]/host ").append(info.id).append("[]");
+            }
+            player.sendMessage(msg.toString());
+            openSiteMapsMenu(player, search, infos, page);
+            return;
+        }
+
+        if(option == prevIndex){
+            openSiteMapsMenu(player, search, infos, page - 1);
+        }else if(option == nextIndex){
+            openSiteMapsMenu(player, search, infos, page + 1);
+        }else if(option == pageIndex){
+            openSiteMapsMenu(player, search, infos, page);
+        }else if(option == closeIndex){
+            siteMapsSearchByPlayer.remove(id);
+            siteMapsPageByPlayer.remove(id, 0);
+            siteMapsCacheByPlayer.remove(id);
+        }
     }
 
     private void handleHandicapMenu(Player player, int option){

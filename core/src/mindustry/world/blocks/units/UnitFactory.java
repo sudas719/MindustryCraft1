@@ -499,6 +499,25 @@ public class UnitFactory extends UnitBlock{
                 return;
             }
 
+            if(sandboxInstant()){
+                if(enabled && efficiency > 0f && currentPlan != -1 && payload == null){
+                    UnitPlan plan = plans.get(currentPlan);
+                    if(plan.unit.isBanned()){
+                        currentPlan = -1;
+                        progress = 0f;
+                        speedScl = 0f;
+                        return;
+                    }
+                    spawnUnit(plan);
+                    progress = 0f;
+                    speedScl = 0f;
+                }else{
+                    progress = 0f;
+                    speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
+                }
+                return;
+            }
+
             if(efficiency > 0 && currentPlan != -1){
                 time += edelta() * speedScl * Vars.state.rules.unitBuildSpeed(team);
                 progress += edelta() * Vars.state.rules.unitBuildSpeed(team);
@@ -926,9 +945,14 @@ public class UnitFactory extends UnitBlock{
             return team.data().getCount(Blocks.siliconCrucible) > 0;
         }
 
+        private boolean sandboxInstant(){
+            return state.rules.infiniteResources || team.rules().infiniteResources;
+        }
+
         public boolean canLift(){
             if(isAddonBuilding()) return false;
             if(payload != null) return false;
+            if(UnitTypes.factoryTechResearching(this)) return false;
             return queuedTotal() <= 0;
         }
 
@@ -1075,6 +1099,62 @@ public class UnitFactory extends UnitBlock{
                 speedScl2 = 0f;
             }
 
+            if(sandboxInstant()){
+                boolean canBuild = enabled && efficiency > 0f && payload == null;
+                if(!canBuild){
+                    speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
+                    speedScl2 = Mathf.lerpDelta(speedScl2, 0f, 0.05f);
+                    return;
+                }
+
+                int guard = 0;
+                while(payload == null && queuedTotal() > 0 && guard++ < 64){
+                    fillSlotsFromQueue();
+
+                    UnitPlan slot1 = currentPlan == -1 ? null : plans.get(currentPlan);
+                    UnitPlan slot2 = currentPlan2 == -1 ? null : plans.get(currentPlan2);
+
+                    if(slot1 != null && slot1.unit.isBanned()){
+                        currentPlan = -1;
+                        progress = 0f;
+                        speedScl = 0f;
+                        slot1 = null;
+                    }
+                    if(slot2 != null && slot2.unit.isBanned()){
+                        currentPlan2 = -1;
+                        progress2 = 0f;
+                        speedScl2 = 0f;
+                        slot2 = null;
+                    }
+
+                    if(slot1 == null && slot2 == null && planQueue.size == 0) break;
+
+                    if(slot1 != null){
+                        spawnUnit(slot1);
+                        currentPlan = -1;
+                        progress = 0f;
+                        speedScl = 0f;
+                    }
+                    if(payload != null) break;
+
+                    if(activeUnitSlots() > 1 && slot2 != null){
+                        spawnUnit(slot2);
+                        currentPlan2 = -1;
+                        progress2 = 0f;
+                        speedScl2 = 0f;
+                    }
+                }
+
+                queued = queuedTotal();
+                if(queuedTotal() <= 0){
+                    currentPlan = -1;
+                    currentPlan2 = -1;
+                    progress = 0f;
+                    progress2 = 0f;
+                }
+                return;
+            }
+
             boolean canBuild = efficiency > 0 && payload == null;
             float speed = Vars.state.rules.unitBuildSpeed(team);
             int activeSlots = activeUnitSlots();
@@ -1157,9 +1237,14 @@ public class UnitFactory extends UnitBlock{
             }
 
             if(tile.build instanceof ConstructBlock.ConstructBuild cons && cons.current != null && cons.current.id == addonBuildBlock){
-                float time = addonBuildTime <= 0f ? 1f : addonBuildTime;
-                cons.construct(null, null, delta() / time, null);
-                if(cons.progress >= 1f && tile.build.block.id == addonBuildBlock){
+                if(sandboxInstant()){
+                    ConstructBlock.clearForceBuildTime(tile.pos());
+                    cons.construct(null, null, 1f, null);
+                }else{
+                    float time = addonBuildTime <= 0f ? 1f : addonBuildTime;
+                    cons.construct(null, null, delta() / time, null);
+                }
+                if(tile.build != null && tile.build.block.id == addonBuildBlock){
                     clearAddonBuildState();
                 }
                 return;

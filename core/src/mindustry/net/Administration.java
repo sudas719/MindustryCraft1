@@ -214,11 +214,25 @@ public class Administration{
         if(!info.ips.contains(ip, false)) info.ips.add(ip);
     }
 
-    public String bindDeviceIdentity(String id, String deviceHash){
+    public String resolveDeviceIdentityId(String fallbackId, String deviceKey){
+        if(isValidDeviceKey(deviceKey)){
+            PlayerInfo existing = findByDeviceKey(deviceKey);
+            if(existing != null && existing.id != null){
+                return existing.id;
+            }
+        }
+        return fallbackId;
+    }
+
+    public String bindDeviceIdentity(String id, String deviceHash, String deviceKey){
         boolean changed = false;
         PlayerInfo info = getCreateInfo(id);
         if(deviceHash != null && !deviceHash.equals(info.deviceHash)){
             info.deviceHash = deviceHash;
+            changed = true;
+        }
+        if(deviceKey != null && !deviceKey.equals(info.deviceKey)){
+            info.deviceKey = deviceKey;
             changed = true;
         }
 
@@ -296,6 +310,15 @@ public class Administration{
         for(int i = 0; i < uid.length(); i++){
             char c = uid.charAt(i);
             if(!Character.isLetterOrDigit(c)) return false;
+        }
+        return true;
+    }
+
+    private boolean isValidDeviceKey(String deviceKey){
+        if(deviceKey == null || !deviceKey.startsWith("dk1$") || deviceKey.length() != 68) return false;
+        for(int i = 4; i < deviceKey.length(); i++){
+            char c = deviceKey.charAt(i);
+            if(!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f')) return false;
         }
         return true;
     }
@@ -549,6 +572,16 @@ public class Administration{
         return null;
     }
 
+    public @Nullable PlayerInfo findByDeviceKey(String deviceKey){
+        if(!isValidDeviceKey(deviceKey)) return null;
+        for(PlayerInfo info : playerInfo.values()){
+            if(deviceKey.equals(info.deviceKey)){
+                return info;
+            }
+        }
+        return null;
+    }
+
     public Seq<PlayerInfo> getWhitelisted(){
         return playerInfo.values().toSeq().select(p -> isWhitelisted(p.id, p.adminUsid));
     }
@@ -721,6 +754,7 @@ public class Administration{
         public Seq<String> names = new Seq<>();
         public String adminUsid;
         public String deviceHash;
+        public String deviceKey;
         public String shortUid;
         public int timesKicked;
         public int timesJoined;

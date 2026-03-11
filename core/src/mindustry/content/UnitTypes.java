@@ -4,6 +4,7 @@ import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.math.geom.*;
+import arc.func.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.Events;
@@ -26,6 +27,7 @@ import mindustry.type.*;
 import mindustry.type.ammo.*;
 import mindustry.type.unit.*;
 import mindustry.type.weapons.*;
+import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.units.*;
@@ -71,8 +73,10 @@ public class UnitTypes{
     private static final float liberatorZoneSelectTiles = 8f;
     private static final float liberatorFighterRangeTiles = 5f;
     private static final float liberatorDefenseRangeTiles = 10f;
-    private static final IntMap<LiberatorData> liberatorData = new IntMap<>();
-    private static final IntMap<VikingData> vikingData = new IntMap<>();
+    private static final float liberatorDefenseAcquireBonusTiles = 1f;
+    private static final IntMap<LiberatorData> liberatorData = Sc2State.liberatorData;
+    private static final IntMap<VikingData> vikingData = Sc2State.vikingData;
+    private static final IntMap<MaceLocusTransformData> maceLocusTransformData = Sc2State.maceLocusTransformData;
     private static final float scaledTankVisualScale = 0.65f;
     private static final float scaledTankShadowScale = scaledTankVisualScale * 0.85f;
     private static final float medivacAfterburnerDuration = 6f * 60f;
@@ -178,6 +182,85 @@ public class UnitTypes{
     });
     private static final float bansheeCloakCost = 25f;
     private static final float bansheeCloakDrain = 1.3f;
+    private static final int barracksBlastShieldCrystalCost = 100;
+    private static final int barracksBlastShieldGasCost = 100;
+    private static final float barracksBlastShieldResearchTime = 79f * 60f;
+    private static final float barracksBlastShieldHpBonus = 10f;
+    private static final int barracksStimpackCrystalCost = 100;
+    private static final int barracksStimpackGasCost = 100;
+    private static final float barracksStimpackResearchTime = 100f * 60f;
+    private static final float barracksStimpackDuration = 10f * 60f;
+    private static final float barracksStimpackCooldown = 1f * 60f;
+    private static final float barracksStimpackMarineHealthCost = 10f;
+    private static final float barracksStimpackMarauderHealthCost = 20f;
+    private static final int barracksConcussiveCrystalCost = 50;
+    private static final int barracksConcussiveGasCost = 50;
+    private static final float barracksConcussiveResearchTime = 43f * 60f;
+    private static final float barracksConcussiveDuration = 1f * 60f;
+    private static final float barracksConcussiveSpeedPenalty = 1.57f;
+    private static final int infernoPreheaterCrystalCost = 100;
+    private static final int infernoPreheaterGasCost = 100;
+    private static final float infernoPreheaterResearchTime = 79f * 60f;
+    private static final int infernoPreheaterLocusLightBonusAmount = 5;
+    private static final int infernoPreheaterMaceLightBonusAmount = 12;
+    private static final int electromagneticFieldAcceleratorCrystalCost = 100;
+    private static final int electromagneticFieldAcceleratorGasCost = 100;
+    private static final float electromagneticFieldAcceleratorResearchTime = 100f * 60f;
+    private static final int drillClawCrystalCost = 75;
+    private static final int drillClawGasCost = 75;
+    private static final float drillClawResearchTime = 79f * 60f;
+    private static final int smartServosCrystalCost = 100;
+    private static final int smartServosGasCost = 100;
+    private static final float smartServosResearchTime = 79f * 60f;
+    private static final int bansheeCloakFieldCrystalCost = 100;
+    private static final int bansheeCloakFieldGasCost = 100;
+    private static final float bansheeCloakFieldResearchTime = 79f * 60f;
+    private static final int bansheeAfterburnerCrystalCost = 125;
+    private static final int bansheeAfterburnerGasCost = 125;
+    private static final float bansheeAfterburnerResearchTime = 79f * 60f;
+    private static final int ravenMatrixTechCrystalCost = 50;
+    private static final int ravenMatrixTechGasCost = 50;
+    private static final float ravenMatrixTechResearchTime = 57f * 60f;
+    private static final int battlecruiserWeaponRefitCrystalCost = 150;
+    private static final int battlecruiserWeaponRefitGasCost = 150;
+    private static final float battlecruiserWeaponRefitResearchTime = 100f * 60f;
+    private static final int medivacCaduceusReactorCrystalCost = 100;
+    private static final int medivacCaduceusReactorGasCost = 100;
+    private static final float medivacCaduceusReactorResearchTime = 50f * 60f;
+    private static final int liberatorAdvancedBallisticsCrystalCost = 150;
+    private static final int liberatorAdvancedBallisticsGasCost = 150;
+    private static final float liberatorAdvancedBallisticsResearchTime = 79f * 60f;
+    private static final float maceLocusTransformBaseTime = 3f * 60f;
+    private static final float maceLocusTransformSmartServoTime = 1f * 60f;
+    private static final float vikingTransformSmartServoTime = 1f * 60f;
+    private static final float scepterSwitchSmartServoTime = 1f * 60f;
+    private static final float liberatorDeploySmartServoTime = 2f * 60f;
+    private static final float liberatorUndeploySmartServoTime = 2f * 60f;
+    private static final float widowBurrowDrillClawTime = 1f * 60f;
+    private static final float widowUnburrowDrillClawTime = 1f * 60f;
+    private static final float hurricaneLockDamage = 20f;
+    private static final float hurricaneLockUpgradedDamage = 30f;
+    private static final float hurricaneBaseMissileDamage = 18f;
+    private static final int armoryQueueVehicleWeapon = 1;
+    private static final int armoryQueueVehicleArmor = 2;
+    private static final int armoryQueueShipWeapon = 3;
+    private static final int engineeringQueueInfantryWeapon = 1;
+    private static final int engineeringQueueInfantryArmor = 2;
+    private static final int engineeringQueueInstantTracking = 3;
+    private static final int engineeringQueueSteelArmor = 4;
+    private static final int barracksQueueBlastShield = 1;
+    private static final int barracksQueueStimpack = 2;
+    private static final int barracksQueueConcussive = 3;
+    private static final int heavyFactoryQueueInfernoPreheater = 1;
+    private static final int heavyFactoryQueueElectromagneticFieldAccelerator = 2;
+    private static final int heavyFactoryQueueDrillClaw = 3;
+    private static final int heavyFactoryQueueSmartServos = 4;
+    private static final int starportQueueCloakField = 1;
+    private static final int starportQueueAfterburner = 2;
+    private static final int starportQueueMatrix = 3;
+    private static final int fusionCoreQueueWeaponRefit = 1;
+    private static final int fusionCoreQueueCaduceusReactor = 2;
+    private static final int fusionCoreQueueAdvancedBallistics = 3;
     private static final int infantryWeaponMaxLevel = 3;
     private static final int[] infantryWeaponCrystalCost = {0, 100, 150, 200};
     private static final int[] infantryWeaponGasCost = {0, 100, 150, 200};
@@ -334,14 +417,34 @@ public class UnitTypes{
     });
     private static final IntMap<RavenData> ravenData = new IntMap<>();
     private static final IntMap<BattlecruiserData> battlecruiserData = new IntMap<>();
-    private static final IntMap<InfantryWeaponData> infantryWeaponData = new IntMap<>();
-    private static final IntMap<VehicleWeaponData> vehicleWeaponData = new IntMap<>();
-    private static final IntMap<ShipWeaponData> shipWeaponData = new IntMap<>();
-    private static final IntMap<VehicleArmorData> vehicleArmorData = new IntMap<>();
-    private static final IntMap<InfantryArmorData> infantryArmorData = new IntMap<>();
-    private static final IntMap<InstantTrackingData> instantTrackingData = new IntMap<>();
-    private static final IntMap<SteelArmorData> steelArmorData = new IntMap<>();
-    private static final IntMap<GhostCamoData> ghostCamoData = new IntMap<>();
+    private static final IntMap<InfantryWeaponData> infantryWeaponData = Sc2State.infantryWeaponData;
+    private static final IntMap<VehicleWeaponData> vehicleWeaponData = Sc2State.vehicleWeaponData;
+    private static final IntMap<ShipWeaponData> shipWeaponData = Sc2State.shipWeaponData;
+    private static final IntMap<VehicleArmorData> vehicleArmorData = Sc2State.vehicleArmorData;
+    private static final IntMap<InfantryArmorData> infantryArmorData = Sc2State.infantryArmorData;
+    private static final IntMap<InstantTrackingData> instantTrackingData = Sc2State.instantTrackingData;
+    private static final IntMap<SteelArmorData> steelArmorData = Sc2State.steelArmorData;
+    private static final IntMap<GhostCamoData> ghostCamoData = Sc2State.ghostCamoData;
+    private static final IntMap<BarracksBlastShieldData> barracksBlastShieldData = Sc2State.barracksBlastShieldData;
+    private static final IntMap<BarracksStimpackData> barracksStimpackData = Sc2State.barracksStimpackData;
+    private static final IntMap<BarracksConcussiveData> barracksConcussiveData = Sc2State.barracksConcussiveData;
+    private static final IntMap<InfernoPreheaterData> infernoPreheaterData = Sc2State.infernoPreheaterData;
+    private static final IntMap<ElectromagneticFieldAcceleratorData> electromagneticFieldAcceleratorData = Sc2State.electromagneticFieldAcceleratorData;
+    private static final IntMap<DrillClawData> drillClawData = Sc2State.drillClawData;
+    private static final IntMap<SmartServosData> smartServosData = Sc2State.smartServosData;
+    private static final IntMap<BansheeCloakFieldData> bansheeCloakFieldData = Sc2State.bansheeCloakFieldData;
+    private static final IntMap<BansheeAfterburnerData> bansheeAfterburnerData = Sc2State.bansheeAfterburnerData;
+    private static final IntMap<RavenMatrixTechData> ravenMatrixTechData = Sc2State.ravenMatrixTechData;
+    private static final IntMap<BattlecruiserWeaponRefitData> battlecruiserWeaponRefitData = Sc2State.battlecruiserWeaponRefitData;
+    private static final IntMap<MedivacCaduceusReactorData> medivacCaduceusReactorData = Sc2State.medivacCaduceusReactorData;
+    private static final IntMap<LiberatorAdvancedBallisticsData> liberatorAdvancedBallisticsData = Sc2State.liberatorAdvancedBallisticsData;
+    private static final IntMap<IntSeq> armoryResearchQueue = Sc2State.armoryResearchQueue;
+    private static final IntMap<IntSeq> engineeringResearchQueue = Sc2State.engineeringResearchQueue;
+    private static final IntMap<IntSeq> barracksResearchQueue = Sc2State.barracksResearchQueue;
+    private static final IntMap<IntSeq> heavyFactoryResearchQueue = Sc2State.heavyFactoryResearchQueue;
+    private static final IntMap<IntSeq> starportResearchQueue = Sc2State.starportResearchQueue;
+    private static final IntMap<IntSeq> fusionCoreResearchQueue = Sc2State.fusionCoreResearchQueue;
+    private static final IntFloatMap barracksStimpackCooldowns = Sc2State.barracksStimpackCooldowns;
     private static final IntMap<GhostWarheadSiloData> ghostWarheadSiloData = new IntMap<>();
     private static final IntMap<GhostTacticalNukeData> ghostTacticalNukeData = new IntMap<>();
     private static final IntMap<GhostStableAimData> ghostStableAimData = new IntMap<>();
@@ -410,6 +513,12 @@ public class UnitTypes{
         public boolean mechMode = false;
         public boolean transforming = false;
         public boolean toMech = false;
+        public float transformTime = 0f;
+    }
+
+    public static class MaceLocusTransformData{
+        public boolean transforming = false;
+        public boolean toLocus = false;
         public float transformTime = 0f;
     }
 
@@ -485,6 +594,84 @@ public class UnitTypes{
     }
 
     public static class GhostCamoData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BarracksBlastShieldData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BarracksStimpackData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BarracksConcussiveData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class InfernoPreheaterData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class ElectromagneticFieldAcceleratorData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class DrillClawData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class SmartServosData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BansheeCloakFieldData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BansheeAfterburnerData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class RavenMatrixTechData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class BattlecruiserWeaponRefitData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class MedivacCaduceusReactorData{
+        public int level = 0;
+        public boolean researching = false;
+        public float researchTime = 0f;
+    }
+
+    public static class LiberatorAdvancedBallisticsData{
         public int level = 0;
         public boolean researching = false;
         public float researchTime = 0f;
@@ -735,7 +922,21 @@ public class UnitTypes{
     }
 
     public static float widowBurrowDuration(){
+        return widowBurrowDuration(null);
+    }
+
+    public static float widowBurrowDuration(@Nullable Team team){
+        if(drillClawLevel(team) > 0){
+            return widowBurrowDrillClawTime;
+        }
         return widowBurrowTime;
+    }
+
+    private static float widowUnburrowDuration(@Nullable Team team){
+        if(drillClawLevel(team) > 0){
+            return widowUnburrowDrillClawTime;
+        }
+        return widowUnburrowTime;
     }
 
     public static float widowReloadDuration(){
@@ -793,7 +994,7 @@ public class UnitTypes{
 
     public static float widowBurrowProgress(@Nullable Unit unit){
         if(!widowIsBurrowing(unit)) return 0f;
-        return Mathf.clamp(1f - unit.getDuration(StatusEffects.widowBurrowing) / widowBurrowTime);
+        return Mathf.clamp(1f - unit.getDuration(StatusEffects.widowBurrowing) / widowBurrowDuration(unit == null ? null : unit.team));
     }
 
     public static float widowReloadProgress(@Nullable Unit unit){
@@ -807,7 +1008,7 @@ public class UnitTypes{
         clearWidowLockData(unit);
         unit.unapply(StatusEffects.widowUnburrowing);
         unit.unapply(StatusEffects.widowBuried);
-        unit.apply(StatusEffects.widowBurrowing, widowBurrowTime);
+        unit.apply(StatusEffects.widowBurrowing, widowBurrowDuration(unit.team));
     }
 
     public static void commandWidowUnburrow(@Nullable Unit unit){
@@ -817,7 +1018,7 @@ public class UnitTypes{
         clearWidowLockData(unit);
         unit.unapply(StatusEffects.widowBurrowing);
         unit.unapply(StatusEffects.widowBuried);
-        unit.apply(StatusEffects.widowUnburrowing, widowUnburrowTime);
+        unit.apply(StatusEffects.widowUnburrowing, widowUnburrowDuration(unit.team));
     }
 
     public static boolean widowCanReserveTarget(@Nullable Unit unit, int targetId){
@@ -884,6 +1085,63 @@ public class UnitTypes{
 
     public static boolean isViking(@Nullable Unit unit){
         return unit != null && flare != null && unit.type == flare;
+    }
+
+    public static boolean isMace(@Nullable Unit unit){
+        return unit != null && mace != null && unit.type == mace;
+    }
+
+    public static boolean isLocus(@Nullable Unit unit){
+        return unit != null && locus != null && unit.type == locus;
+    }
+
+    private static MaceLocusTransformData getMaceLocusTransformData(@Nullable Unit unit){
+        if(unit == null){
+            return new MaceLocusTransformData();
+        }
+        MaceLocusTransformData data = maceLocusTransformData.get(unit.id);
+        if(data == null){
+            data = new MaceLocusTransformData();
+            maceLocusTransformData.put(unit.id, data);
+        }
+        return data;
+    }
+
+    private static void clearMaceLocusTransformData(@Nullable Unit unit){
+        if(unit == null) return;
+        maceLocusTransformData.remove(unit.id);
+    }
+
+    public static boolean maceLocusTransforming(@Nullable Unit unit){
+        return (isMace(unit) || isLocus(unit)) && getMaceLocusTransformData(unit).transforming;
+    }
+
+    public static boolean maceCanTransformToLocus(@Nullable Unit unit){
+        if(!isMace(unit)) return false;
+        if(!infantryWeaponHasArmory(unit.team)) return false;
+        if(ravenMatrixDisabled(unit)) return false;
+        return !maceLocusTransforming(unit);
+    }
+
+    public static boolean locusCanTransformToMace(@Nullable Unit unit){
+        if(!isLocus(unit)) return false;
+        if(!infantryWeaponHasArmory(unit.team)) return false;
+        if(ravenMatrixDisabled(unit)) return false;
+        return !maceLocusTransforming(unit);
+    }
+
+    public static boolean commandMaceLocusMode(@Nullable Unit unit, boolean toLocus){
+        if(toLocus){
+            if(!maceCanTransformToLocus(unit)) return false;
+        }else{
+            if(!locusCanTransformToMace(unit)) return false;
+        }
+
+        MaceLocusTransformData data = getMaceLocusTransformData(unit);
+        data.transforming = true;
+        data.toLocus = toLocus;
+        data.transformTime = maceLocusTransformDuration(unit == null ? null : unit.team);
+        return true;
     }
 
     private static void ensureVikingHooks(){
@@ -954,6 +1212,46 @@ public class UnitTypes{
         return data.mechMode && !data.transforming && !ravenMatrixDisabled(unit);
     }
 
+    private static float vikingTransformDurationForTeam(@Nullable Team team){
+        if(smartServosLevel(team) > 0){
+            return vikingTransformSmartServoTime;
+        }
+        return vikingTransformDuration;
+    }
+
+    public static float maceLocusTransformDuration(@Nullable Team team){
+        if(smartServosLevel(team) > 0){
+            return maceLocusTransformSmartServoTime;
+        }
+        return maceLocusTransformBaseTime;
+    }
+
+    private static float liberatorDeployDuration(@Nullable Team team){
+        if(smartServosLevel(team) > 0){
+            return liberatorDeploySmartServoTime;
+        }
+        return liberatorDeployTime;
+    }
+
+    private static float liberatorUndeployDuration(@Nullable Team team){
+        if(smartServosLevel(team) > 0){
+            return liberatorUndeploySmartServoTime;
+        }
+        return liberatorUndeployTime;
+    }
+
+    public static float scepterSwitchDuration(@Nullable Team team){
+        if(smartServosLevel(team) > 0){
+            return scepterSwitchSmartServoTime;
+        }
+        return scepterSwitchTime;
+    }
+
+    public static float hurricaneMissileDamage(@Nullable Team team, boolean lockedShot){
+        if(!lockedShot) return hurricaneBaseMissileDamage;
+        return electromagneticFieldAcceleratorLevel(team) > 0 ? hurricaneLockUpgradedDamage : hurricaneLockDamage;
+    }
+
     public static boolean commandVikingMode(@Nullable Unit unit, boolean mechMode){
         if(!isViking(unit)) return false;
         VikingData data = getVikingData(unit);
@@ -962,7 +1260,7 @@ public class UnitTypes{
             if(!vikingCanTransformToMech(unit)) return false;
             data.transforming = true;
             data.toMech = true;
-            data.transformTime = vikingTransformDuration;
+            data.transformTime = vikingTransformDurationForTeam(unit.team);
             return true;
         }
 
@@ -1010,6 +1308,14 @@ public class UnitTypes{
         return liberatorDefenseRangeTiles * tilesize;
     }
 
+    public static float liberatorDefenseAcquireRange(@Nullable Team team){
+        float base = liberatorDefenseRange();
+        if(liberatorAdvancedBallisticsLevel(team) > 0){
+            return base + liberatorDefenseAcquireBonusTiles * tilesize;
+        }
+        return base;
+    }
+
     public static LiberatorData getLiberatorData(@Nullable Unit unit){
         if(unit == null){
             return new LiberatorData();
@@ -1053,13 +1359,14 @@ public class UnitTypes{
 
     private static void startLiberatorDeploy(Unit unit){
         LiberatorData data = getLiberatorData(unit);
+        float duration = liberatorDeployDuration(unit.team);
         data.pendingDeploy = false;
         data.deploying = true;
         data.undeploying = false;
-        data.transitionTime = liberatorDeployTime;
+        data.transitionTime = duration;
         unit.unapply(StatusEffects.liberatorUndeploying);
         unit.unapply(StatusEffects.liberatorDefending);
-        unit.apply(StatusEffects.liberatorDeploying, liberatorDeployTime);
+        unit.apply(StatusEffects.liberatorDeploying, duration);
     }
 
     public static boolean commandLiberatorDefense(@Nullable Unit unit, @Nullable Vec2 zone){
@@ -1082,13 +1389,14 @@ public class UnitTypes{
     public static boolean commandLiberatorFighter(@Nullable Unit unit){
         if(!liberatorCanExitDefense(unit)) return false;
         LiberatorData data = getLiberatorData(unit);
+        float duration = liberatorUndeployDuration(unit.team);
         data.pendingDeploy = false;
         data.deploying = false;
         data.undeploying = true;
-        data.transitionTime = liberatorUndeployTime;
+        data.transitionTime = duration;
         unit.unapply(StatusEffects.liberatorDeploying);
         unit.unapply(StatusEffects.liberatorDefending);
-        unit.apply(StatusEffects.liberatorUndeploying, liberatorUndeployTime);
+        unit.apply(StatusEffects.liberatorUndeploying, duration);
         return true;
     }
 
@@ -1109,7 +1417,7 @@ public class UnitTypes{
         float zoneRadius = liberatorZoneRadius();
 
         if(data.deploying){
-            float progress = 1f - Mathf.clamp(data.transitionTime / liberatorDeployTime);
+            float progress = 1f - Mathf.clamp(data.transitionTime / Math.max(liberatorDeployDuration(unit.team), 0.001f));
             float drawRadius = zoneRadius * progress;
             float alpha = (1f - progress) * 0.35f;
             Draw.z(Layer.effect);
@@ -1196,7 +1504,7 @@ public class UnitTypes{
     }
 
     public static float scepterSwitchDuration(){
-        return scepterSwitchTime;
+        return scepterSwitchDuration(null);
     }
 
     public static ScepterModeData getScepterModeData(@Nullable Unit unit){
@@ -1249,10 +1557,11 @@ public class UnitTypes{
         ScepterModeData data = getScepterModeData(unit);
         if(data.switching || data.impactMode == impactMode) return false;
 
+        float duration = scepterSwitchDuration(unit.team);
         data.switching = true;
         data.switchToImpact = impactMode;
-        data.switchTime = scepterSwitchTime;
-        unit.apply(StatusEffects.scepterSwitching, scepterSwitchTime);
+        data.switchTime = duration;
+        unit.apply(StatusEffects.scepterSwitching, duration);
         return true;
     }
 
@@ -2127,7 +2436,7 @@ public class UnitTypes{
         if(bansheeCloaked(unit)) return true;
         return !ravenMatrixDisabled(unit)
             && unit.energy >= bansheeCloakCost
-            && ravenTeamHasTechAddon(unit.team);
+            && bansheeCloakFieldLevel(unit.team) > 0;
     }
 
     public static boolean commandBansheeCloak(@Nullable Unit unit){
@@ -2136,7 +2445,7 @@ public class UnitTypes{
             unit.unapply(StatusEffects.bansheeCloak);
             return true;
         }
-        if(ravenMatrixDisabled(unit) || unit.energy < bansheeCloakCost || !ravenTeamHasTechAddon(unit.team)) return false;
+        if(ravenMatrixDisabled(unit) || unit.energy < bansheeCloakCost || bansheeCloakFieldLevel(unit.team) <= 0) return false;
         unit.energy = Math.max(0f, unit.energy - bansheeCloakCost);
         unit.apply(StatusEffects.bansheeCloak, 1f);
         return true;
@@ -2147,6 +2456,15 @@ public class UnitTypes{
         unit.energy = Math.max(0f, unit.energy - bansheeCloakDrain * Time.delta / 60f);
         if(unit.energy <= 0.001f){
             unit.unapply(StatusEffects.bansheeCloak);
+        }
+    }
+
+    public static void updateBansheeAfterburner(@Nullable Unit unit){
+        if(!isBanshee(unit)) return;
+        if(bansheeAfterburnerLevel(unit.team) > 0){
+            unit.apply(StatusEffects.bansheeAfterburner, 2f);
+        }else{
+            unit.unapply(StatusEffects.bansheeAfterburner);
         }
     }
 
@@ -2172,9 +2490,7 @@ public class UnitTypes{
     }
 
     public static boolean battlecruiserHasYamatoTech(@Nullable Team team){
-        return team != null
-            && team.data().getCount(Blocks.surgeCrucible) > 0
-            && ravenTeamHasTechAddon(team);
+        return battlecruiserWeaponRefitLevel(team) > 0;
     }
 
     public static float battlecruiserYamatoCooldownDuration(){
@@ -3179,6 +3495,55 @@ public class UnitTypes{
         medivacMovingUnload.remove(unit.id);
     }
 
+    private static void updateMedivacCaduceusReactor(@Nullable Unit unit){
+        if(!isMedivac(unit) || unit == null) return;
+        if(medivacCaduceusReactorLevel(unit.team) <= 0) return;
+        float capacity = unit.type.energyCapacity;
+        if(unit.energy >= capacity - 0.001f) return;
+        unit.energy = Math.min(capacity, unit.energy + unit.type.energyRegen * Time.delta);
+    }
+
+    public static boolean isBarracksStimpackUnit(@Nullable Unit unit){
+        if(unit == null || !unit.isValid()) return false;
+        return unit.type == dagger || unit.type == fortress;
+    }
+
+    public static float barracksStimpackCooldown(@Nullable Unit unit){
+        if(!isBarracksStimpackUnit(unit)) return 0f;
+        return Math.max(0f, barracksStimpackCooldowns.get(unit.id, 0f));
+    }
+
+    public static float barracksStimpackCooldownDuration(){
+        return barracksStimpackCooldown;
+    }
+
+    public static boolean barracksStimpackCanUse(@Nullable Unit unit){
+        if(!isBarracksStimpackUnit(unit)) return false;
+        if(ravenMatrixDisabled(unit)) return false;
+        if(barracksStimpackLevel(unit.team) <= 0) return false;
+        if(barracksStimpackCooldown(unit) > 0.001f) return false;
+
+        float healthCost = unit.type == dagger ? barracksStimpackMarineHealthCost : barracksStimpackMarauderHealthCost;
+        return unit.health() > healthCost;
+    }
+
+    public static boolean commandBarracksStimpack(@Nullable Unit unit){
+        if(!barracksStimpackCanUse(unit)) return false;
+
+        float healthCost = unit.type == dagger ? barracksStimpackMarineHealthCost : barracksStimpackMarauderHealthCost;
+        float nextHealth = unit.health() - healthCost;
+        if(nextHealth <= 0f) return false;
+
+        unit.health(nextHealth);
+        if(unit.type == dagger){
+            unit.apply(StatusEffects.barracksStimpackMarine, barracksStimpackDuration);
+        }else{
+            unit.apply(StatusEffects.barracksStimpackMarauder, barracksStimpackDuration);
+        }
+        barracksStimpackCooldowns.put(unit.id, barracksStimpackCooldown);
+        return true;
+    }
+
     public static float ravenAntiArmorDuration(){
         return ravenAntiArmorDuration;
     }
@@ -3234,14 +3599,8 @@ public class UnitTypes{
         Events.run(Trigger.update, UnitTypes::updateInfantryUpgrades);
         Events.run(Trigger.uiDrawBegin, UnitTypes::drawGhostTacticalNukeOverlay);
         Events.on(WorldLoadEvent.class, e -> {
-            infantryWeaponData.clear();
-            vehicleWeaponData.clear();
-            shipWeaponData.clear();
-            vehicleArmorData.clear();
-            infantryArmorData.clear();
-            instantTrackingData.clear();
-            steelArmorData.clear();
-            ghostCamoData.clear();
+            Sc2State.clearTechState();
+            Sc2State.clearTransformState();
             ghostWarheadSiloData.clear();
             ghostTacticalNukeData.clear();
             ghostStableAimData.clear();
@@ -3329,8 +3688,526 @@ public class UnitTypes{
         return data;
     }
 
+    private static @Nullable BansheeCloakFieldData getBansheeCloakFieldData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BansheeCloakFieldData data = bansheeCloakFieldData.get(team.id);
+        if(data == null && create){
+            data = new BansheeCloakFieldData();
+            bansheeCloakFieldData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable BansheeAfterburnerData getBansheeAfterburnerData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BansheeAfterburnerData data = bansheeAfterburnerData.get(team.id);
+        if(data == null && create){
+            data = new BansheeAfterburnerData();
+            bansheeAfterburnerData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable RavenMatrixTechData getRavenMatrixTechData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        RavenMatrixTechData data = ravenMatrixTechData.get(team.id);
+        if(data == null && create){
+            data = new RavenMatrixTechData();
+            ravenMatrixTechData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable BattlecruiserWeaponRefitData getBattlecruiserWeaponRefitData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BattlecruiserWeaponRefitData data = battlecruiserWeaponRefitData.get(team.id);
+        if(data == null && create){
+            data = new BattlecruiserWeaponRefitData();
+            battlecruiserWeaponRefitData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable MedivacCaduceusReactorData getMedivacCaduceusReactorData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        MedivacCaduceusReactorData data = medivacCaduceusReactorData.get(team.id);
+        if(data == null && create){
+            data = new MedivacCaduceusReactorData();
+            medivacCaduceusReactorData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable LiberatorAdvancedBallisticsData getLiberatorAdvancedBallisticsData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        LiberatorAdvancedBallisticsData data = liberatorAdvancedBallisticsData.get(team.id);
+        if(data == null && create){
+            data = new LiberatorAdvancedBallisticsData();
+            liberatorAdvancedBallisticsData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable BarracksBlastShieldData getBarracksBlastShieldData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BarracksBlastShieldData data = barracksBlastShieldData.get(team.id);
+        if(data == null && create){
+            data = new BarracksBlastShieldData();
+            barracksBlastShieldData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable BarracksStimpackData getBarracksStimpackData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BarracksStimpackData data = barracksStimpackData.get(team.id);
+        if(data == null && create){
+            data = new BarracksStimpackData();
+            barracksStimpackData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable BarracksConcussiveData getBarracksConcussiveData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        BarracksConcussiveData data = barracksConcussiveData.get(team.id);
+        if(data == null && create){
+            data = new BarracksConcussiveData();
+            barracksConcussiveData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable InfernoPreheaterData getInfernoPreheaterData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        InfernoPreheaterData data = infernoPreheaterData.get(team.id);
+        if(data == null && create){
+            data = new InfernoPreheaterData();
+            infernoPreheaterData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable ElectromagneticFieldAcceleratorData getElectromagneticFieldAcceleratorData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        ElectromagneticFieldAcceleratorData data = electromagneticFieldAcceleratorData.get(team.id);
+        if(data == null && create){
+            data = new ElectromagneticFieldAcceleratorData();
+            electromagneticFieldAcceleratorData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable DrillClawData getDrillClawData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        DrillClawData data = drillClawData.get(team.id);
+        if(data == null && create){
+            data = new DrillClawData();
+            drillClawData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static @Nullable SmartServosData getSmartServosData(@Nullable Team team, boolean create){
+        if(team == null) return null;
+        SmartServosData data = smartServosData.get(team.id);
+        if(data == null && create){
+            data = new SmartServosData();
+            smartServosData.put(team.id, data);
+        }
+        return data;
+    }
+
+    private static int encodeQueueCode(int type, int level){
+        return (type << 8) | (level & 0xff);
+    }
+
+    private static int queueCodeType(int code){
+        return (code >>> 8) & 0xff;
+    }
+
+    private static int queueCodeLevel(int code){
+        return code & 0xff;
+    }
+
+    private static @Nullable IntSeq getResearchQueue(IntMap<IntSeq> queues, @Nullable Team team, boolean create){
+        if(team == null) return null;
+        IntSeq queue = queues.get(team.id);
+        if(queue == null && create){
+            queue = new IntSeq();
+            queues.put(team.id, queue);
+        }
+        return queue;
+    }
+
+    private static void trimEmptyQueue(IntMap<IntSeq> queues, @Nullable Team team){
+        if(team == null) return;
+        IntSeq queue = queues.get(team.id);
+        if(queue != null && queue.size == 0){
+            queues.remove(team.id);
+        }
+    }
+
+    private static boolean startSingleResearchWithQueue(@Nullable Team team, Boolf<Team> canStart, Cons<Team> consume, Boolf<Team> activeResearching, IntMap<IntSeq> queueMap, int queueCode, Boolf<Team> startNow, Cons<Team> refund){
+        if(!canStart.get(team)) return false;
+        consume.get(team);
+
+        IntSeq queue = getResearchQueue(queueMap, team, false);
+        if(activeResearching.get(team) || (queue != null && queue.size > 0)){
+            if(queue == null){
+                queue = getResearchQueue(queueMap, team, true);
+                if(queue == null){
+                    refund.get(team);
+                    return false;
+                }
+            }
+            queue.add(queueCode);
+            return true;
+        }
+
+        if(startNow.get(team)) return true;
+        refund.get(team);
+        return false;
+    }
+
+    private static boolean startLeveledResearchWithQueue(@Nullable Team team, int level, Func2<Team, Integer, Boolean> canStart, Cons2<Team, Integer> consume, Boolf<Team> activeResearching, IntMap<IntSeq> queueMap, int queueType, Func2<Team, Integer, Boolean> startNow, Cons2<Team, Integer> refund){
+        if(!canStart.get(team, level)) return false;
+        consume.get(team, level);
+
+        IntSeq queue = getResearchQueue(queueMap, team, false);
+        if(activeResearching.get(team) || (queue != null && queue.size > 0)){
+            if(queue == null){
+                queue = getResearchQueue(queueMap, team, true);
+                if(queue == null){
+                    refund.get(team, level);
+                    return false;
+                }
+            }
+            queue.add(encodeQueueCode(queueType, level));
+            return true;
+        }
+
+        if(startNow.get(team, level)) return true;
+        refund.get(team, level);
+        return false;
+    }
+
+    private static <T> boolean cancelLeveledResearch(@Nullable Team team, @Nullable T data, Sc2TechService.IntGetter<T> researchingLevel, Sc2TechService.IntSetter<T> setResearchingLevel, Sc2TechService.FloatSetter<T> setResearchTime, Cons2<Team, Integer> refund){
+        if(team == null || data == null) return false;
+        int level = researchingLevel.get(data);
+        if(level <= 0) return false;
+        setResearchingLevel.set(data, 0);
+        setResearchTime.set(data, 0f);
+        refund.get(team, level);
+        return true;
+    }
+
+    private static <T> boolean cancelSingleResearch(@Nullable Team team, @Nullable T data, Sc2TechService.BoolGetter<T> researching, Sc2TechService.BoolSetter<T> setResearching, Sc2TechService.FloatSetter<T> setResearchTime, Cons<Team> refund){
+        if(team == null || data == null || !researching.get(data)) return false;
+        setResearching.set(data, false);
+        setResearchTime.set(data, 0f);
+        refund.get(team);
+        return true;
+    }
+
+    private static int highestQueuedLevel(@Nullable IntSeq queue, int type){
+        if(queue == null || queue.size == 0) return 0;
+        int result = 0;
+        for(int i = 0; i < queue.size; i++){
+            int code = queue.get(i);
+            if(queueCodeType(code) != type) continue;
+            result = Math.max(result, queueCodeLevel(code));
+        }
+        return result;
+    }
+
+    private static boolean queueContainsType(@Nullable IntSeq queue, int type){
+        if(queue == null || queue.size == 0) return false;
+        for(int i = 0; i < queue.size; i++){
+            if(queueCodeType(queue.get(i)) == type) return true;
+        }
+        return false;
+    }
+
+    private static int plannedVehicleWeaponLevel(@Nullable Team team){
+        int level = vehicleWeaponLevel(team);
+        level = Math.max(level, vehicleWeaponResearchingLevel(team));
+        return Math.max(level, highestQueuedLevel(getResearchQueue(armoryResearchQueue, team, false), armoryQueueVehicleWeapon));
+    }
+
+    private static int plannedVehicleArmorLevel(@Nullable Team team){
+        int level = vehicleArmorLevel(team);
+        level = Math.max(level, vehicleArmorResearchingLevel(team));
+        return Math.max(level, highestQueuedLevel(getResearchQueue(armoryResearchQueue, team, false), armoryQueueVehicleArmor));
+    }
+
+    private static int plannedShipWeaponLevel(@Nullable Team team){
+        int level = shipWeaponLevel(team);
+        level = Math.max(level, shipWeaponResearchingLevel(team));
+        return Math.max(level, highestQueuedLevel(getResearchQueue(armoryResearchQueue, team, false), armoryQueueShipWeapon));
+    }
+
+    private static int plannedInfantryWeaponLevel(@Nullable Team team){
+        int level = infantryWeaponLevel(team);
+        level = Math.max(level, infantryWeaponResearchingLevel(team));
+        return Math.max(level, highestQueuedLevel(getResearchQueue(engineeringResearchQueue, team, false), engineeringQueueInfantryWeapon));
+    }
+
+    private static int plannedInfantryArmorLevel(@Nullable Team team){
+        int level = infantryArmorLevel(team);
+        level = Math.max(level, infantryArmorResearchingLevel(team));
+        return Math.max(level, highestQueuedLevel(getResearchQueue(engineeringResearchQueue, team, false), engineeringQueueInfantryArmor));
+    }
+
+    private static boolean instantTrackingPlanned(@Nullable Team team){
+        return instantTrackingLevel(team) > 0 || instantTrackingResearching(team)
+            || queueContainsType(getResearchQueue(engineeringResearchQueue, team, false), engineeringQueueInstantTracking);
+    }
+
+    private static boolean steelArmorPlanned(@Nullable Team team){
+        return steelArmorLevel(team) > 0 || steelArmorResearching(team)
+            || queueContainsType(getResearchQueue(engineeringResearchQueue, team, false), engineeringQueueSteelArmor);
+    }
+
+    private static boolean barracksBlastShieldPlanned(@Nullable Team team){
+        return barracksBlastShieldLevel(team) > 0 || barracksBlastShieldResearching(team)
+            || queueContainsType(getResearchQueue(barracksResearchQueue, team, false), barracksQueueBlastShield);
+    }
+
+    private static boolean barracksStimpackPlanned(@Nullable Team team){
+        return barracksStimpackLevel(team) > 0 || barracksStimpackResearching(team)
+            || queueContainsType(getResearchQueue(barracksResearchQueue, team, false), barracksQueueStimpack);
+    }
+
+    private static boolean barracksConcussivePlanned(@Nullable Team team){
+        return barracksConcussiveLevel(team) > 0 || barracksConcussiveResearching(team)
+            || queueContainsType(getResearchQueue(barracksResearchQueue, team, false), barracksQueueConcussive);
+    }
+
+    private static boolean infernoPreheaterPlanned(@Nullable Team team){
+        return infernoPreheaterLevel(team) > 0 || infernoPreheaterResearching(team)
+            || queueContainsType(getResearchQueue(heavyFactoryResearchQueue, team, false), heavyFactoryQueueInfernoPreheater);
+    }
+
+    private static boolean electromagneticFieldAcceleratorPlanned(@Nullable Team team){
+        return electromagneticFieldAcceleratorLevel(team) > 0 || electromagneticFieldAcceleratorResearching(team)
+            || queueContainsType(getResearchQueue(heavyFactoryResearchQueue, team, false), heavyFactoryQueueElectromagneticFieldAccelerator);
+    }
+
+    private static boolean drillClawPlanned(@Nullable Team team){
+        return drillClawLevel(team) > 0 || drillClawResearching(team)
+            || queueContainsType(getResearchQueue(heavyFactoryResearchQueue, team, false), heavyFactoryQueueDrillClaw);
+    }
+
+    private static boolean smartServosPlanned(@Nullable Team team){
+        return smartServosLevel(team) > 0 || smartServosResearching(team)
+            || queueContainsType(getResearchQueue(heavyFactoryResearchQueue, team, false), heavyFactoryQueueSmartServos);
+    }
+
+    private static boolean bansheeCloakFieldPlanned(@Nullable Team team){
+        return bansheeCloakFieldLevel(team) > 0 || bansheeCloakFieldResearching(team)
+            || queueContainsType(getResearchQueue(starportResearchQueue, team, false), starportQueueCloakField);
+    }
+
+    private static boolean bansheeAfterburnerPlanned(@Nullable Team team){
+        return bansheeAfterburnerLevel(team) > 0 || bansheeAfterburnerResearching(team)
+            || queueContainsType(getResearchQueue(starportResearchQueue, team, false), starportQueueAfterburner);
+    }
+
+    private static boolean ravenMatrixTechPlanned(@Nullable Team team){
+        return ravenMatrixTechLevel(team) > 0 || ravenMatrixTechResearching(team)
+            || queueContainsType(getResearchQueue(starportResearchQueue, team, false), starportQueueMatrix);
+    }
+
+    private static boolean battlecruiserWeaponRefitPlanned(@Nullable Team team){
+        return battlecruiserWeaponRefitLevel(team) > 0 || battlecruiserWeaponRefitResearching(team)
+            || queueContainsType(getResearchQueue(fusionCoreResearchQueue, team, false), fusionCoreQueueWeaponRefit);
+    }
+
+    private static boolean medivacCaduceusReactorPlanned(@Nullable Team team){
+        return medivacCaduceusReactorLevel(team) > 0 || medivacCaduceusReactorResearching(team)
+            || queueContainsType(getResearchQueue(fusionCoreResearchQueue, team, false), fusionCoreQueueCaduceusReactor);
+    }
+
+    private static boolean liberatorAdvancedBallisticsPlanned(@Nullable Team team){
+        return liberatorAdvancedBallisticsLevel(team) > 0 || liberatorAdvancedBallisticsResearching(team)
+            || queueContainsType(getResearchQueue(fusionCoreResearchQueue, team, false), fusionCoreQueueAdvancedBallistics);
+    }
+
+    private static boolean armoryActiveResearching(@Nullable Team team){
+        return vehicleWeaponResearching(team) || shipWeaponResearching(team) || vehicleArmorResearching(team);
+    }
+
+    private static boolean engineeringActiveResearching(@Nullable Team team){
+        return infantryWeaponResearching(team) || infantryArmorResearching(team) || instantTrackingResearching(team) || steelArmorResearching(team);
+    }
+
+    private static boolean barracksActiveResearching(@Nullable Team team){
+        return barracksBlastShieldResearching(team) || barracksStimpackResearching(team) || barracksConcussiveResearching(team);
+    }
+
+    private static boolean heavyFactoryActiveResearching(@Nullable Team team){
+        return infernoPreheaterResearching(team)
+            || electromagneticFieldAcceleratorResearching(team)
+            || drillClawResearching(team)
+            || smartServosResearching(team);
+    }
+
+    private static boolean starportActiveResearching(@Nullable Team team){
+        return bansheeCloakFieldResearching(team)
+            || bansheeAfterburnerResearching(team)
+            || ravenMatrixTechResearching(team);
+    }
+
+    private static boolean fusionCoreActiveResearching(@Nullable Team team){
+        return battlecruiserWeaponRefitResearching(team)
+            || medivacCaduceusReactorResearching(team)
+            || liberatorAdvancedBallisticsResearching(team);
+    }
+
+    private static @Nullable Block armoryQueueBlockByCode(int code){
+        int type = queueCodeType(code);
+        if(type == armoryQueueVehicleWeapon) return Blocks.siliconCrucible;
+        if(type == armoryQueueVehicleArmor) return Blocks.surgeCrucible;
+        if(type == armoryQueueShipWeapon) return Blocks.shipFabricator;
+        return null;
+    }
+
+    private static @Nullable Block engineeringQueueBlockByCode(int code){
+        int type = queueCodeType(code);
+        if(type == engineeringQueueInfantryWeapon) return Blocks.siliconCrucible;
+        if(type == engineeringQueueInfantryArmor) return Blocks.multiPress;
+        if(type == engineeringQueueInstantTracking) return Blocks.swarmer;
+        if(type == engineeringQueueSteelArmor) return Blocks.atmosphericConcentrator;
+        return null;
+    }
+
+    private static @Nullable UnitType barracksQueueUnitByCode(int code){
+        int type = queueCodeType(code);
+        if(type == barracksQueueBlastShield) return dagger;
+        if(type == barracksQueueStimpack) return fortress;
+        if(type == barracksQueueConcussive) return fortress;
+        return null;
+    }
+
+    private static @Nullable UnitType heavyFactoryQueueUnitByCode(int code){
+        int type = queueCodeType(code);
+        if(type == heavyFactoryQueueInfernoPreheater) return locus;
+        if(type == heavyFactoryQueueElectromagneticFieldAccelerator) return hurricane;
+        if(type == heavyFactoryQueueDrillClaw) return crawler;
+        if(type == heavyFactoryQueueSmartServos) return mace;
+        return null;
+    }
+
+    private static @Nullable UnitType starportQueueUnitByCode(int code){
+        int type = queueCodeType(code);
+        if(type == starportQueueCloakField) return horizon;
+        if(type == starportQueueAfterburner) return horizon;
+        if(type == starportQueueMatrix) return avert;
+        return null;
+    }
+
+    private static @Nullable UnitType fusionCoreQueueUnitByCode(int code){
+        int type = queueCodeType(code);
+        if(type == fusionCoreQueueWeaponRefit) return antumbra;
+        if(type == fusionCoreQueueCaduceusReactor) return mega;
+        if(type == fusionCoreQueueAdvancedBallistics) return liberator;
+        return null;
+    }
+
+    public static int armoryQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(armoryResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int armoryQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(armoryResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable Block armoryQueuedBlock(@Nullable Team team, int index){
+        return armoryQueueBlockByCode(armoryQueuedCode(team, index));
+    }
+
+    public static int engineeringQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(engineeringResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int engineeringQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(engineeringResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable Block engineeringQueuedBlock(@Nullable Team team, int index){
+        return engineeringQueueBlockByCode(engineeringQueuedCode(team, index));
+    }
+
+    public static int barracksQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(barracksResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int barracksQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(barracksResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable UnitType barracksQueuedUnit(@Nullable Team team, int index){
+        return barracksQueueUnitByCode(barracksQueuedCode(team, index));
+    }
+
+    public static int heavyFactoryQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(heavyFactoryResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int heavyFactoryQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(heavyFactoryResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable UnitType heavyFactoryQueuedUnit(@Nullable Team team, int index){
+        return heavyFactoryQueueUnitByCode(heavyFactoryQueuedCode(team, index));
+    }
+
+    public static int starportQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(starportResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int starportQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(starportResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable UnitType starportQueuedUnit(@Nullable Team team, int index){
+        return starportQueueUnitByCode(starportQueuedCode(team, index));
+    }
+
+    public static int fusionCoreQueuedCount(@Nullable Team team){
+        IntSeq queue = getResearchQueue(fusionCoreResearchQueue, team, false);
+        return queue == null ? 0 : queue.size;
+    }
+
+    public static int fusionCoreQueuedCode(@Nullable Team team, int index){
+        IntSeq queue = getResearchQueue(fusionCoreResearchQueue, team, false);
+        if(queue == null || index < 0 || index >= queue.size) return 0;
+        return queue.get(index);
+    }
+
+    public static @Nullable UnitType fusionCoreQueuedUnit(@Nullable Team team, int index){
+        return fusionCoreQueueUnitByCode(fusionCoreQueuedCode(team, index));
+    }
+
     private static void updateInfantryUpgrades(){
         if(state == null || !state.isGame()) return;
+        completeSandboxResearch();
         updateInfantryWeaponResearch();
         updateVehicleWeaponResearch();
         updateShipWeaponResearch();
@@ -3339,132 +4216,1182 @@ public class UnitTypes{
         updateInstantTrackingResearch();
         updateSteelArmorResearch();
         updateGhostCamoResearch();
+        updateBarracksBlastShieldResearch();
+        updateBarracksStimpackResearch();
+        updateBarracksConcussiveResearch();
+        updateInfernoPreheaterResearch();
+        updateElectromagneticFieldAcceleratorResearch();
+        updateDrillClawResearch();
+        updateSmartServosResearch();
+        updateBansheeCloakFieldResearch();
+        updateBansheeAfterburnerResearch();
+        updateRavenMatrixTechResearch();
+        updateBattlecruiserWeaponRefitResearch();
+        updateMedivacCaduceusReactorResearch();
+        updateLiberatorAdvancedBallisticsResearch();
+        advanceQueuedResearch();
+        updateMaceLocusTransforms();
+        updateBarracksStimpackCooldowns();
         updateGhostWarheadProduction();
         updateGhostTacticalNukes();
+        updateBarracksBlastShieldBonus();
+        updateBarracksConcussiveSlowEffect();
         updateInfantryArmorBonus();
     }
 
-    private static void updateInfantryWeaponResearch(){
-        for(IntMap.Entry<InfantryWeaponData> entry : infantryWeaponData.entries()){
-            Team team = Team.get(entry.key);
-            InfantryWeaponData data = entry.value;
-            if(team == null || data == null || data.researchingLevel <= 0) continue;
+    private static void completeSandboxResearch(){
+        if(state == null || !state.isGame()) return;
 
-            int level = Mathf.clamp(data.researchingLevel, 1, infantryWeaponMaxLevel);
-            data.researchTime += Time.delta;
-            if(data.researchTime >= infantryWeaponResearchTime[level]){
-                data.level = Math.max(data.level, level);
-                data.researchingLevel = 0;
-                data.researchTime = 0f;
+        completeSandboxAllResearchOnce();
+
+        int guard = 0;
+        int before = queuedResearchTotal();
+        while(guard++ < 256 && before > 0){
+            advanceQueuedResearch();
+            completeSandboxAllResearchOnce();
+
+            int after = queuedResearchTotal();
+            if(after == before) break;
+            before = after;
+        }
+    }
+
+    private static void completeSandboxAllResearchOnce(){
+        completeSandboxLeveledResearch(
+            infantryWeaponData, infantryWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxLeveledResearch(
+            vehicleWeaponData, vehicleWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxLeveledResearch(
+            shipWeaponData, shipWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxLeveledResearch(
+            vehicleArmorData, vehicleArmorMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxLeveledResearch(
+            infantryArmorData, infantryWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            instantTrackingData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            steelArmorData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            ghostCamoData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            barracksBlastShieldData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            barracksStimpackData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            barracksConcussiveData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            infernoPreheaterData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            electromagneticFieldAcceleratorData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            drillClawData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            smartServosData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            bansheeCloakFieldData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            bansheeAfterburnerData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            ravenMatrixTechData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            battlecruiserWeaponRefitData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            medivacCaduceusReactorData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+
+        completeSandboxSingleResearch(
+            liberatorAdvancedBallisticsData,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static <T> void completeSandboxLeveledResearch(IntMap<T> dataMap, int maxLevel,
+        Sc2TechService.IntGetter<T> researchingLevel, Sc2TechService.IntSetter<T> setResearchingLevel,
+        Sc2TechService.IntGetter<T> levelGetter, Sc2TechService.IntSetter<T> setLevel,
+        Sc2TechService.FloatSetter<T> setResearchTime){
+
+        for(IntMap.Entry<T> entry : dataMap.entries()){
+            Team team = Team.get(entry.key);
+            T data = entry.value;
+            if(team == null || data == null) continue;
+            if(!sandboxInstantForTeam(team)) continue;
+
+            int researching = researchingLevel.get(data);
+            if(researching <= 0) continue;
+
+            int level = Mathf.clamp(researching, 1, maxLevel);
+            if(levelGetter.get(data) < level){
+                setLevel.set(data, level);
+            }
+            setResearchingLevel.set(data, 0);
+            setResearchTime.set(data, 0f);
+        }
+    }
+
+    private static <T> void completeSandboxSingleResearch(IntMap<T> dataMap,
+        Sc2TechService.BoolGetter<T> researching, Sc2TechService.BoolSetter<T> setResearching,
+        Sc2TechService.IntGetter<T> levelGetter, Sc2TechService.IntSetter<T> setLevel,
+        Sc2TechService.FloatSetter<T> setResearchTime){
+
+        for(IntMap.Entry<T> entry : dataMap.entries()){
+            Team team = Team.get(entry.key);
+            T data = entry.value;
+            if(team == null || data == null) continue;
+            if(!sandboxInstantForTeam(team)) continue;
+
+            if(!researching.get(data)) continue;
+
+            if(levelGetter.get(data) < 1){
+                setLevel.set(data, 1);
+            }
+            setResearching.set(data, false);
+            setResearchTime.set(data, 0f);
+        }
+    }
+
+    private static int queuedResearchTotal(){
+        return queuedResearchSize(armoryResearchQueue)
+            + queuedResearchSize(engineeringResearchQueue)
+            + queuedResearchSize(barracksResearchQueue)
+            + queuedResearchSize(heavyFactoryResearchQueue)
+            + queuedResearchSize(starportResearchQueue)
+            + queuedResearchSize(fusionCoreResearchQueue);
+    }
+
+    private static int queuedResearchSize(IntMap<IntSeq> map){
+        int total = 0;
+        for(IntMap.Entry<IntSeq> entry : map.entries()){
+            IntSeq queue = entry.value;
+            if(queue != null){
+                total += queue.size;
             }
         }
+        return total;
+    }
+
+    private static boolean sandboxInstantForTeam(Team team){
+        return state.rules.infiniteResources || team.rules().infiniteResources;
+    }
+
+    private static void updateInfantryWeaponResearch(){
+        Sc2TechService.tickLeveledResearch(
+            infantryWeaponData, infantryWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value,
+            level -> infantryWeaponResearchTime[level]
+        );
     }
 
     private static void updateVehicleWeaponResearch(){
-        for(IntMap.Entry<VehicleWeaponData> entry : vehicleWeaponData.entries()){
-            Team team = Team.get(entry.key);
-            VehicleWeaponData data = entry.value;
-            if(team == null || data == null || data.researchingLevel <= 0) continue;
-
-            int level = Mathf.clamp(data.researchingLevel, 1, vehicleWeaponMaxLevel);
-            data.researchTime += Time.delta;
-            if(data.researchTime >= vehicleWeaponResearchTime[level]){
-                data.level = Math.max(data.level, level);
-                data.researchingLevel = 0;
-                data.researchTime = 0f;
-            }
-        }
+        Sc2TechService.tickLeveledResearch(
+            vehicleWeaponData, vehicleWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value,
+            level -> vehicleWeaponResearchTime[level]
+        );
     }
 
     private static void updateShipWeaponResearch(){
-        for(IntMap.Entry<ShipWeaponData> entry : shipWeaponData.entries()){
-            Team team = Team.get(entry.key);
-            ShipWeaponData data = entry.value;
-            if(team == null || data == null || data.researchingLevel <= 0) continue;
-
-            int level = Mathf.clamp(data.researchingLevel, 1, shipWeaponMaxLevel);
-            data.researchTime += Time.delta;
-            if(data.researchTime >= shipWeaponResearchTime[level]){
-                data.level = Math.max(data.level, level);
-                data.researchingLevel = 0;
-                data.researchTime = 0f;
-            }
-        }
+        Sc2TechService.tickLeveledResearch(
+            shipWeaponData, shipWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value,
+            level -> shipWeaponResearchTime[level]
+        );
     }
 
     private static void updateVehicleArmorResearch(){
-        for(IntMap.Entry<VehicleArmorData> entry : vehicleArmorData.entries()){
-            Team team = Team.get(entry.key);
-            VehicleArmorData data = entry.value;
-            if(team == null || data == null || data.researchingLevel <= 0) continue;
-
-            int level = Mathf.clamp(data.researchingLevel, 1, vehicleArmorMaxLevel);
-            data.researchTime += Time.delta;
-            if(data.researchTime >= vehicleArmorResearchTime[level]){
-                data.level = Math.max(data.level, level);
-                data.researchingLevel = 0;
-                data.researchTime = 0f;
-            }
-        }
+        Sc2TechService.tickLeveledResearch(
+            vehicleArmorData, vehicleArmorMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value,
+            level -> vehicleArmorResearchTime[level]
+        );
     }
 
     private static void updateInfantryArmorResearch(){
-        for(IntMap.Entry<InfantryArmorData> entry : infantryArmorData.entries()){
-            Team team = Team.get(entry.key);
-            InfantryArmorData data = entry.value;
-            if(team == null || data == null || data.researchingLevel <= 0) continue;
-
-            int level = Mathf.clamp(data.researchingLevel, 1, infantryWeaponMaxLevel);
-            data.researchTime += Time.delta;
-            if(data.researchTime >= infantryWeaponResearchTime[level]){
-                data.level = Math.max(data.level, level);
-                data.researchingLevel = 0;
-                data.researchTime = 0f;
-            }
-        }
+        Sc2TechService.tickLeveledResearch(
+            infantryArmorData, infantryWeaponMaxLevel,
+            data -> data.researchingLevel, (data, value) -> data.researchingLevel = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value,
+            level -> infantryWeaponResearchTime[level]
+        );
     }
 
     private static void updateInstantTrackingResearch(){
-        for(IntMap.Entry<InstantTrackingData> entry : instantTrackingData.entries()){
-            Team team = Team.get(entry.key);
-            InstantTrackingData data = entry.value;
-            if(team == null || data == null || !data.researching) continue;
-
-            data.researchTime += Time.delta;
-            if(data.researchTime >= instantTrackingResearchTime){
-                data.level = 1;
-                data.researching = false;
-                data.researchTime = 0f;
-            }
-        }
+        Sc2TechService.tickSingleResearch(
+            instantTrackingData, instantTrackingResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
     }
 
     private static void updateSteelArmorResearch(){
-        for(IntMap.Entry<SteelArmorData> entry : steelArmorData.entries()){
-            Team team = Team.get(entry.key);
-            SteelArmorData data = entry.value;
-            if(team == null || data == null || !data.researching) continue;
+        Sc2TechService.tickSingleResearch(
+            steelArmorData, steelArmorResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
 
-            data.researchTime += Time.delta;
-            if(data.researchTime >= steelArmorResearchTime){
-                data.level = 1;
-                data.researching = false;
-                data.researchTime = 0f;
+    private static void updateGhostCamoResearch(){
+        Sc2TechService.tickSingleResearch(
+            ghostCamoData, ghostCamoResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBarracksBlastShieldResearch(){
+        Sc2TechService.tickSingleResearch(
+            barracksBlastShieldData, barracksBlastShieldResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBarracksStimpackResearch(){
+        Sc2TechService.tickSingleResearch(
+            barracksStimpackData, barracksStimpackResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBarracksConcussiveResearch(){
+        Sc2TechService.tickSingleResearch(
+            barracksConcussiveData, barracksConcussiveResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateInfernoPreheaterResearch(){
+        Sc2TechService.tickSingleResearch(
+            infernoPreheaterData, infernoPreheaterResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateElectromagneticFieldAcceleratorResearch(){
+        Sc2TechService.tickSingleResearch(
+            electromagneticFieldAcceleratorData, electromagneticFieldAcceleratorResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateDrillClawResearch(){
+        Sc2TechService.tickSingleResearch(
+            drillClawData, drillClawResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateSmartServosResearch(){
+        Sc2TechService.tickSingleResearch(
+            smartServosData, smartServosResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBansheeCloakFieldResearch(){
+        Sc2TechService.tickSingleResearch(
+            bansheeCloakFieldData, bansheeCloakFieldResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBansheeAfterburnerResearch(){
+        Sc2TechService.tickSingleResearch(
+            bansheeAfterburnerData, bansheeAfterburnerResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateRavenMatrixTechResearch(){
+        Sc2TechService.tickSingleResearch(
+            ravenMatrixTechData, ravenMatrixTechResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateBattlecruiserWeaponRefitResearch(){
+        Sc2TechService.tickSingleResearch(
+            battlecruiserWeaponRefitData, battlecruiserWeaponRefitResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateMedivacCaduceusReactorResearch(){
+        Sc2TechService.tickSingleResearch(
+            medivacCaduceusReactorData, medivacCaduceusReactorResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static void updateLiberatorAdvancedBallisticsResearch(){
+        Sc2TechService.tickSingleResearch(
+            liberatorAdvancedBallisticsData, liberatorAdvancedBallisticsResearchTime,
+            data -> data.researching, (data, value) -> data.researching = value,
+            data -> data.level, (data, value) -> data.level = value,
+            data -> data.researchTime, (data, value) -> data.researchTime = value
+        );
+    }
+
+    private static @Nullable Unit transformMaceLocusUnit(Unit unit, UnitType targetType){
+        if(unit == null || targetType == null || unit.type == targetType) return unit;
+        if(net.client()) return unit;
+
+        float healthf = Mathf.clamp(unit.healthf());
+        float rotation = unit.rotation;
+        float x = unit.x;
+        float y = unit.y;
+        float shield = unit.shield;
+        float elevation = unit.elevation;
+
+        Unit transformed = targetType.create(unit.team);
+        transformed.set(x, y);
+        transformed.rotation(rotation);
+        transformed.elevation = elevation;
+        transformed.shield = shield;
+        transformed.health = Math.max(transformed.maxHealth * healthf, 1f);
+        transformed.add();
+
+        Fx.spawn.at(x, y, rotation, unit.team.color);
+        unit.remove();
+        return transformed;
+    }
+
+    private static void updateMaceLocusTransforms(){
+        Sc2TransformService.updateMaceLocusTransforms(
+            maceLocusTransformData,
+            UnitTypes::isMace,
+            UnitTypes::isLocus,
+            locus,
+            mace,
+            UnitTypes::transformMaceLocusUnit
+        );
+    }
+
+    private static boolean infantryWeaponCanBeginNow(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
+        if(level != infantryWeaponLevel(team) + 1) return false;
+        return infantryWeaponHasArmory(team);
+    }
+
+    private static boolean vehicleWeaponCanBeginNow(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > vehicleWeaponMaxLevel) return false;
+        if(level != vehicleWeaponLevel(team) + 1) return false;
+        if(!vehicleWeaponHasArmory(team)) return false;
+        return infantryWeaponLevel(team) >= level;
+    }
+
+    private static boolean vehicleArmorCanBeginNow(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > vehicleArmorMaxLevel) return false;
+        if(level != vehicleArmorLevel(team) + 1) return false;
+        return vehicleWeaponHasArmory(team);
+    }
+
+    private static boolean shipWeaponCanBeginNow(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > shipWeaponMaxLevel) return false;
+        if(level != shipWeaponLevel(team) + 1) return false;
+        return vehicleWeaponHasArmory(team);
+    }
+
+    private static boolean infantryArmorCanBeginNow(@Nullable Team team, int level){
+        if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
+        if(level != infantryArmorLevel(team) + 1) return false;
+        return infantryWeaponHasArmory(team);
+    }
+
+    private static boolean instantTrackingCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return instantTrackingLevel(team) <= 0 && !instantTrackingResearching(team);
+    }
+
+    private static boolean steelArmorCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return steelArmorLevel(team) <= 0 && !steelArmorResearching(team);
+    }
+
+    private static boolean barracksBlastShieldCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return barracksBlastShieldLevel(team) <= 0 && !barracksBlastShieldResearching(team) && barracksTeamHasTechAddon(team);
+    }
+
+    private static boolean barracksStimpackCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return barracksStimpackLevel(team) <= 0 && !barracksStimpackResearching(team) && barracksTeamHasTechAddon(team);
+    }
+
+    private static boolean barracksConcussiveCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return barracksConcussiveLevel(team) <= 0 && !barracksConcussiveResearching(team) && barracksTeamHasTechAddon(team);
+    }
+
+    private static boolean infernoPreheaterCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return infernoPreheaterLevel(team) <= 0 && !infernoPreheaterResearching(team) && heavyFactoryTeamHasTechAddon(team);
+    }
+
+    private static boolean electromagneticFieldAcceleratorCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return electromagneticFieldAcceleratorLevel(team) <= 0
+            && !electromagneticFieldAcceleratorResearching(team)
+            && heavyFactoryTeamHasTechAddon(team);
+    }
+
+    private static boolean drillClawCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return drillClawLevel(team) <= 0 && !drillClawResearching(team) && heavyFactoryTeamHasTechAddon(team);
+    }
+
+    private static boolean smartServosCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return smartServosLevel(team) <= 0 && !smartServosResearching(team) && heavyFactoryTeamHasTechAddon(team);
+    }
+
+    private static boolean bansheeCloakFieldCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return bansheeCloakFieldLevel(team) <= 0 && !bansheeCloakFieldResearching(team) && starportTeamHasTechAddon(team);
+    }
+
+    private static boolean bansheeAfterburnerCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return bansheeAfterburnerLevel(team) <= 0 && !bansheeAfterburnerResearching(team) && starportTeamHasTechAddon(team);
+    }
+
+    private static boolean ravenMatrixTechCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return ravenMatrixTechLevel(team) <= 0 && !ravenMatrixTechResearching(team) && starportTeamHasTechAddon(team);
+    }
+
+    private static boolean battlecruiserWeaponRefitCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return battlecruiserWeaponRefitLevel(team) <= 0 && !battlecruiserWeaponRefitResearching(team) && fusionCoreHas(team);
+    }
+
+    private static boolean medivacCaduceusReactorCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return medivacCaduceusReactorLevel(team) <= 0 && !medivacCaduceusReactorResearching(team) && fusionCoreHas(team);
+    }
+
+    private static boolean liberatorAdvancedBallisticsCanBeginNow(@Nullable Team team){
+        if(team == null) return false;
+        return liberatorAdvancedBallisticsLevel(team) <= 0 && !liberatorAdvancedBallisticsResearching(team) && fusionCoreHas(team);
+    }
+
+    private static boolean startInfantryWeaponResearchNow(@Nullable Team team, int level){
+        if(!infantryWeaponCanBeginNow(team, level)) return false;
+        InfantryWeaponData data = getInfantryWeaponData(team, true);
+        if(data == null) return false;
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startVehicleWeaponResearchNow(@Nullable Team team, int level){
+        if(!vehicleWeaponCanBeginNow(team, level)) return false;
+        VehicleWeaponData data = getVehicleWeaponData(team, true);
+        if(data == null) return false;
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startVehicleArmorResearchNow(@Nullable Team team, int level){
+        if(!vehicleArmorCanBeginNow(team, level)) return false;
+        VehicleArmorData data = getVehicleArmorData(team, true);
+        if(data == null) return false;
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startShipWeaponResearchNow(@Nullable Team team, int level){
+        if(!shipWeaponCanBeginNow(team, level)) return false;
+        ShipWeaponData data = getShipWeaponData(team, true);
+        if(data == null) return false;
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startInfantryArmorResearchNow(@Nullable Team team, int level){
+        if(!infantryArmorCanBeginNow(team, level)) return false;
+        InfantryArmorData data = getInfantryArmorData(team, true);
+        if(data == null) return false;
+        data.researchingLevel = level;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startInstantTrackingResearchNow(@Nullable Team team){
+        if(!instantTrackingCanBeginNow(team)) return false;
+        InstantTrackingData data = getInstantTrackingData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startSteelArmorResearchNow(@Nullable Team team){
+        if(!steelArmorCanBeginNow(team)) return false;
+        SteelArmorData data = getSteelArmorData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBarracksBlastShieldResearchNow(@Nullable Team team){
+        if(!barracksBlastShieldCanBeginNow(team)) return false;
+        BarracksBlastShieldData data = getBarracksBlastShieldData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBarracksStimpackResearchNow(@Nullable Team team){
+        if(!barracksStimpackCanBeginNow(team)) return false;
+        BarracksStimpackData data = getBarracksStimpackData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBarracksConcussiveResearchNow(@Nullable Team team){
+        if(!barracksConcussiveCanBeginNow(team)) return false;
+        BarracksConcussiveData data = getBarracksConcussiveData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startInfernoPreheaterResearchNow(@Nullable Team team){
+        if(!infernoPreheaterCanBeginNow(team)) return false;
+        InfernoPreheaterData data = getInfernoPreheaterData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startElectromagneticFieldAcceleratorResearchNow(@Nullable Team team){
+        if(!electromagneticFieldAcceleratorCanBeginNow(team)) return false;
+        ElectromagneticFieldAcceleratorData data = getElectromagneticFieldAcceleratorData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startDrillClawResearchNow(@Nullable Team team){
+        if(!drillClawCanBeginNow(team)) return false;
+        DrillClawData data = getDrillClawData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startSmartServosResearchNow(@Nullable Team team){
+        if(!smartServosCanBeginNow(team)) return false;
+        SmartServosData data = getSmartServosData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBansheeCloakFieldResearchNow(@Nullable Team team){
+        if(!bansheeCloakFieldCanBeginNow(team)) return false;
+        BansheeCloakFieldData data = getBansheeCloakFieldData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBansheeAfterburnerResearchNow(@Nullable Team team){
+        if(!bansheeAfterburnerCanBeginNow(team)) return false;
+        BansheeAfterburnerData data = getBansheeAfterburnerData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startRavenMatrixTechResearchNow(@Nullable Team team){
+        if(!ravenMatrixTechCanBeginNow(team)) return false;
+        RavenMatrixTechData data = getRavenMatrixTechData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startBattlecruiserWeaponRefitResearchNow(@Nullable Team team){
+        if(!battlecruiserWeaponRefitCanBeginNow(team)) return false;
+        BattlecruiserWeaponRefitData data = getBattlecruiserWeaponRefitData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startMedivacCaduceusReactorResearchNow(@Nullable Team team){
+        if(!medivacCaduceusReactorCanBeginNow(team)) return false;
+        MedivacCaduceusReactorData data = getMedivacCaduceusReactorData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static boolean startLiberatorAdvancedBallisticsResearchNow(@Nullable Team team){
+        if(!liberatorAdvancedBallisticsCanBeginNow(team)) return false;
+        LiberatorAdvancedBallisticsData data = getLiberatorAdvancedBallisticsData(team, true);
+        if(data == null) return false;
+        data.researching = true;
+        data.researchTime = 0f;
+        return true;
+    }
+
+    private static void refundArmoryQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        int level = queueCodeLevel(code);
+        if(type == armoryQueueVehicleWeapon){
+            vehicleWeaponRefund(team, level);
+        }else if(type == armoryQueueVehicleArmor){
+            vehicleArmorRefund(team, level);
+        }else if(type == armoryQueueShipWeapon){
+            shipWeaponRefund(team, level);
+        }
+    }
+
+    private static void refundEngineeringQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        int level = queueCodeLevel(code);
+        if(type == engineeringQueueInfantryWeapon || type == engineeringQueueInfantryArmor){
+            infantryUpgradeRefund(team, level);
+        }else if(type == engineeringQueueInstantTracking){
+            instantTrackingRefund(team);
+        }else if(type == engineeringQueueSteelArmor){
+            steelArmorRefund(team);
+        }
+    }
+
+    private static void refundBarracksQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        if(type == barracksQueueBlastShield){
+            barracksTechRefund(team, barracksBlastShieldCrystalCost, barracksBlastShieldGasCost);
+        }else if(type == barracksQueueStimpack){
+            barracksTechRefund(team, barracksStimpackCrystalCost, barracksStimpackGasCost);
+        }else if(type == barracksQueueConcussive){
+            barracksTechRefund(team, barracksConcussiveCrystalCost, barracksConcussiveGasCost);
+        }
+    }
+
+    private static void refundHeavyFactoryQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        if(type == heavyFactoryQueueInfernoPreheater){
+            barracksTechRefund(team, infernoPreheaterCrystalCost, infernoPreheaterGasCost);
+        }else if(type == heavyFactoryQueueElectromagneticFieldAccelerator){
+            barracksTechRefund(team, electromagneticFieldAcceleratorCrystalCost, electromagneticFieldAcceleratorGasCost);
+        }else if(type == heavyFactoryQueueDrillClaw){
+            barracksTechRefund(team, drillClawCrystalCost, drillClawGasCost);
+        }else if(type == heavyFactoryQueueSmartServos){
+            barracksTechRefund(team, smartServosCrystalCost, smartServosGasCost);
+        }
+    }
+
+    private static void refundStarportQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        if(type == starportQueueCloakField){
+            barracksTechRefund(team, bansheeCloakFieldCrystalCost, bansheeCloakFieldGasCost);
+        }else if(type == starportQueueAfterburner){
+            barracksTechRefund(team, bansheeAfterburnerCrystalCost, bansheeAfterburnerGasCost);
+        }else if(type == starportQueueMatrix){
+            barracksTechRefund(team, ravenMatrixTechCrystalCost, ravenMatrixTechGasCost);
+        }
+    }
+
+    private static void refundFusionCoreQueueCode(@Nullable Team team, int code){
+        int type = queueCodeType(code);
+        if(type == fusionCoreQueueWeaponRefit){
+            barracksTechRefund(team, battlecruiserWeaponRefitCrystalCost, battlecruiserWeaponRefitGasCost);
+        }else if(type == fusionCoreQueueCaduceusReactor){
+            barracksTechRefund(team, medivacCaduceusReactorCrystalCost, medivacCaduceusReactorGasCost);
+        }else if(type == fusionCoreQueueAdvancedBallistics){
+            barracksTechRefund(team, liberatorAdvancedBallisticsCrystalCost, liberatorAdvancedBallisticsGasCost);
+        }
+    }
+
+    private static void advanceQueuedResearch(){
+        advanceQueuedArmoryResearch();
+        advanceQueuedEngineeringResearch();
+        advanceQueuedBarracksResearch();
+        advanceQueuedHeavyFactoryResearch();
+        advanceQueuedStarportResearch();
+        advanceQueuedFusionCoreResearch();
+    }
+
+    private static void advanceQueuedArmoryResearch(){
+        Sc2TechService.advanceQueuedResearch(armoryResearchQueue, UnitTypes::armoryActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == armoryQueueVehicleWeapon || type == armoryQueueVehicleArmor || type == armoryQueueShipWeapon;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                int level = queueCodeLevel(code);
+                if(type == armoryQueueVehicleWeapon) return vehicleWeaponCanBeginNow(team, level);
+                if(type == armoryQueueVehicleArmor) return vehicleArmorCanBeginNow(team, level);
+                if(type == armoryQueueShipWeapon) return shipWeaponCanBeginNow(team, level);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                int level = queueCodeLevel(code);
+                if(type == armoryQueueVehicleWeapon) return startVehicleWeaponResearchNow(team, level);
+                if(type == armoryQueueVehicleArmor) return startVehicleArmorResearchNow(team, level);
+                if(type == armoryQueueShipWeapon) return startShipWeaponResearchNow(team, level);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundArmoryQueueCode(team, code);
+            }
+        });
+    }
+
+    private static void advanceQueuedEngineeringResearch(){
+        Sc2TechService.advanceQueuedResearch(engineeringResearchQueue, UnitTypes::engineeringActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == engineeringQueueInfantryWeapon
+                    || type == engineeringQueueInfantryArmor
+                    || type == engineeringQueueInstantTracking
+                    || type == engineeringQueueSteelArmor;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                int level = queueCodeLevel(code);
+                if(type == engineeringQueueInfantryWeapon) return infantryWeaponCanBeginNow(team, level);
+                if(type == engineeringQueueInfantryArmor) return infantryArmorCanBeginNow(team, level);
+                if(type == engineeringQueueInstantTracking) return instantTrackingCanBeginNow(team);
+                if(type == engineeringQueueSteelArmor) return steelArmorCanBeginNow(team);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                int level = queueCodeLevel(code);
+                if(type == engineeringQueueInfantryWeapon) return startInfantryWeaponResearchNow(team, level);
+                if(type == engineeringQueueInfantryArmor) return startInfantryArmorResearchNow(team, level);
+                if(type == engineeringQueueInstantTracking) return startInstantTrackingResearchNow(team);
+                if(type == engineeringQueueSteelArmor) return startSteelArmorResearchNow(team);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundEngineeringQueueCode(team, code);
+            }
+        });
+    }
+
+    private static void advanceQueuedBarracksResearch(){
+        Sc2TechService.advanceQueuedResearch(barracksResearchQueue, UnitTypes::barracksActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == barracksQueueBlastShield || type == barracksQueueStimpack || type == barracksQueueConcussive;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == barracksQueueBlastShield) return barracksBlastShieldCanBeginNow(team);
+                if(type == barracksQueueStimpack) return barracksStimpackCanBeginNow(team);
+                if(type == barracksQueueConcussive) return barracksConcussiveCanBeginNow(team);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == barracksQueueBlastShield) return startBarracksBlastShieldResearchNow(team);
+                if(type == barracksQueueStimpack) return startBarracksStimpackResearchNow(team);
+                if(type == barracksQueueConcussive) return startBarracksConcussiveResearchNow(team);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundBarracksQueueCode(team, code);
+            }
+        });
+    }
+
+    private static void advanceQueuedHeavyFactoryResearch(){
+        Sc2TechService.advanceQueuedResearch(heavyFactoryResearchQueue, UnitTypes::heavyFactoryActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == heavyFactoryQueueInfernoPreheater
+                    || type == heavyFactoryQueueElectromagneticFieldAccelerator
+                    || type == heavyFactoryQueueDrillClaw
+                    || type == heavyFactoryQueueSmartServos;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == heavyFactoryQueueInfernoPreheater) return infernoPreheaterCanBeginNow(team);
+                if(type == heavyFactoryQueueElectromagneticFieldAccelerator) return electromagneticFieldAcceleratorCanBeginNow(team);
+                if(type == heavyFactoryQueueDrillClaw) return drillClawCanBeginNow(team);
+                if(type == heavyFactoryQueueSmartServos) return smartServosCanBeginNow(team);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == heavyFactoryQueueInfernoPreheater) return startInfernoPreheaterResearchNow(team);
+                if(type == heavyFactoryQueueElectromagneticFieldAccelerator) return startElectromagneticFieldAcceleratorResearchNow(team);
+                if(type == heavyFactoryQueueDrillClaw) return startDrillClawResearchNow(team);
+                if(type == heavyFactoryQueueSmartServos) return startSmartServosResearchNow(team);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundHeavyFactoryQueueCode(team, code);
+            }
+        });
+    }
+
+    private static void advanceQueuedStarportResearch(){
+        Sc2TechService.advanceQueuedResearch(starportResearchQueue, UnitTypes::starportActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == starportQueueCloakField || type == starportQueueAfterburner || type == starportQueueMatrix;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == starportQueueCloakField) return bansheeCloakFieldCanBeginNow(team);
+                if(type == starportQueueAfterburner) return bansheeAfterburnerCanBeginNow(team);
+                if(type == starportQueueMatrix) return ravenMatrixTechCanBeginNow(team);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == starportQueueCloakField) return startBansheeCloakFieldResearchNow(team);
+                if(type == starportQueueAfterburner) return startBansheeAfterburnerResearchNow(team);
+                if(type == starportQueueMatrix) return startRavenMatrixTechResearchNow(team);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundStarportQueueCode(team, code);
+            }
+        });
+    }
+
+    private static void advanceQueuedFusionCoreResearch(){
+        Sc2TechService.advanceQueuedResearch(fusionCoreResearchQueue, UnitTypes::fusionCoreActiveResearching, new Sc2TechService.QueueEntryOps(){
+            @Override
+            public boolean canHandle(int code){
+                int type = queueCodeType(code);
+                return type == fusionCoreQueueWeaponRefit || type == fusionCoreQueueCaduceusReactor || type == fusionCoreQueueAdvancedBallistics;
+            }
+
+            @Override
+            public boolean canStart(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == fusionCoreQueueWeaponRefit) return battlecruiserWeaponRefitCanBeginNow(team);
+                if(type == fusionCoreQueueCaduceusReactor) return medivacCaduceusReactorCanBeginNow(team);
+                if(type == fusionCoreQueueAdvancedBallistics) return liberatorAdvancedBallisticsCanBeginNow(team);
+                return false;
+            }
+
+            @Override
+            public boolean start(Team team, int code){
+                int type = queueCodeType(code);
+                if(type == fusionCoreQueueWeaponRefit) return startBattlecruiserWeaponRefitResearchNow(team);
+                if(type == fusionCoreQueueCaduceusReactor) return startMedivacCaduceusReactorResearchNow(team);
+                if(type == fusionCoreQueueAdvancedBallistics) return startLiberatorAdvancedBallisticsResearchNow(team);
+                return false;
+            }
+
+            @Override
+            public void refund(Team team, int code){
+                refundFusionCoreQueueCode(team, code);
+            }
+        });
+    }
+
+    private static boolean cancelLastQueuedArmoryResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(armoryResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundArmoryQueueCode(team, code);
+        trimEmptyQueue(armoryResearchQueue, team);
+        return true;
+    }
+
+    private static boolean cancelLastQueuedEngineeringResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(engineeringResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundEngineeringQueueCode(team, code);
+        trimEmptyQueue(engineeringResearchQueue, team);
+        return true;
+    }
+
+    private static boolean cancelLastQueuedBarracksResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(barracksResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundBarracksQueueCode(team, code);
+        trimEmptyQueue(barracksResearchQueue, team);
+        return true;
+    }
+
+    private static boolean cancelLastQueuedHeavyFactoryResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(heavyFactoryResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundHeavyFactoryQueueCode(team, code);
+        trimEmptyQueue(heavyFactoryResearchQueue, team);
+        return true;
+    }
+
+    private static boolean cancelLastQueuedStarportResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(starportResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundStarportQueueCode(team, code);
+        trimEmptyQueue(starportResearchQueue, team);
+        return true;
+    }
+
+    private static boolean cancelLastQueuedFusionCoreResearch(@Nullable Team team){
+        IntSeq queue = getResearchQueue(fusionCoreResearchQueue, team, false);
+        if(queue == null || queue.size == 0) return false;
+        int code = queue.pop();
+        refundFusionCoreQueueCode(team, code);
+        trimEmptyQueue(fusionCoreResearchQueue, team);
+        return true;
+    }
+
+    private static void updateBarracksStimpackCooldowns(){
+        IntSeq remove = new IntSeq();
+        IntSeq updateKeys = new IntSeq();
+        FloatSeq updateValues = new FloatSeq();
+        for(IntFloatMap.Entry entry : barracksStimpackCooldowns.entries()){
+            int unitId = entry.key;
+            float cooldown = entry.value;
+            Unit unit = Groups.unit.getByID(unitId);
+            if(unit == null || !unit.isValid() || !isBarracksStimpackUnit(unit)){
+                remove.add(unitId);
+                continue;
+            }
+
+            cooldown = Math.max(0f, cooldown - Time.delta);
+            if(cooldown <= 0.001f){
+                remove.add(unitId);
+            }else{
+                updateKeys.add(unitId);
+                updateValues.add(cooldown);
+            }
+        }
+
+        for(int i = 0; i < updateKeys.size; i++){
+            barracksStimpackCooldowns.put(updateKeys.get(i), updateValues.get(i));
+        }
+        for(int i = 0; i < remove.size; i++){
+            barracksStimpackCooldowns.remove(remove.get(i), 0f);
+        }
+    }
+
+    private static void updateBarracksBlastShieldBonus(){
+        for(Unit unit : Groups.unit){
+            if(unit == null || !unit.isValid() || unit.type != dagger) continue;
+            float targetMax = dagger.health + barracksBlastShieldHpBonus(unit.team);
+            float prevMax = unit.maxHealth();
+            if(Mathf.equal(prevMax, targetMax, 0.001f)) continue;
+
+            float currentHealth = unit.health();
+            float delta = targetMax - prevMax;
+            unit.maxHealth(targetMax);
+            if(delta > 0f){
+                unit.health(Math.min(targetMax, currentHealth + delta));
+            }else{
+                unit.health(Math.min(currentHealth, targetMax));
             }
         }
     }
 
-    private static void updateGhostCamoResearch(){
-        for(IntMap.Entry<GhostCamoData> entry : ghostCamoData.entries()){
-            Team team = Team.get(entry.key);
-            GhostCamoData data = entry.value;
-            if(team == null || data == null || !data.researching) continue;
+    private static void updateBarracksConcussiveSlowEffect(){
+        for(Unit unit : Groups.unit){
+            if(unit == null || !unit.isValid()) continue;
+            if(!unit.hasEffect(StatusEffects.barracksConcussiveSlow)) continue;
 
-            data.researchTime += Time.delta;
-            if(data.researchTime >= ghostCamoResearchTime){
-                data.level = 1;
-                data.researching = false;
-                data.researchTime = 0f;
+            float cappedSpeed = Math.max(unit.speed() - barracksConcussiveSpeedPenalty, 0.1f);
+            float velocity = unit.vel.len();
+            if(velocity > cappedSpeed){
+                unit.vel.setLength(cappedSpeed);
             }
         }
     }
@@ -3650,8 +5577,69 @@ public class UnitTypes{
         return team != null && team.data().getCount(Blocks.launchPad) > 0;
     }
 
+    public static boolean barracksTeamHasTechAddon(@Nullable Team team){
+        if(team == null) return false;
+        for(Building build : Groups.build){
+            if(build == null || !build.isValid() || build.team != team) continue;
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(factory.block != Blocks.groundFactory) continue;
+            if(factory.hasTechAddon()) return true;
+        }
+        return false;
+    }
+
+    public static boolean heavyFactoryTeamHasTechAddon(@Nullable Team team){
+        if(team == null) return false;
+        for(Building build : Groups.build){
+            if(build == null || !build.isValid() || build.team != team) continue;
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(factory.block != Blocks.tankFabricator) continue;
+            if(factory.hasTechAddon()) return true;
+        }
+        return false;
+    }
+
+    public static boolean starportTeamHasTechAddon(@Nullable Team team){
+        if(team == null) return false;
+        for(Building build : Groups.build){
+            if(build == null || !build.isValid() || build.team != team) continue;
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(factory.block != Blocks.airFactory) continue;
+            if(factory.hasTechAddon()) return true;
+        }
+        return false;
+    }
+
+    public static boolean fusionCoreHas(@Nullable Team team){
+        return team != null && team.data().getCount(Blocks.surgeCrucible) > 0;
+    }
+
+    public static boolean barracksTechAnyResearching(@Nullable Team team){
+        return barracksActiveResearching(team) || barracksQueuedCount(team) > 0;
+    }
+
+    public static boolean heavyFactoryTechAnyResearching(@Nullable Team team){
+        return heavyFactoryActiveResearching(team) || heavyFactoryQueuedCount(team) > 0;
+    }
+
+    public static boolean starportTechAnyResearching(@Nullable Team team){
+        return starportActiveResearching(team) || starportQueuedCount(team) > 0;
+    }
+
+    public static boolean fusionCoreAnyResearching(@Nullable Team team){
+        return fusionCoreActiveResearching(team) || fusionCoreQueuedCount(team) > 0;
+    }
+
+    public static boolean factoryTechResearching(@Nullable UnitFactory.UnitFactoryBuild factory){
+        if(factory == null || !factory.isValid() || !factory.hasTechAddon()) return false;
+        if(factory.block == Blocks.groundFactory) return barracksTechAnyResearching(factory.team);
+        if(factory.block == Blocks.tankFabricator) return heavyFactoryTechAnyResearching(factory.team);
+        if(factory.block == Blocks.airFactory) return starportTechAnyResearching(factory.team);
+        return false;
+    }
+
     public static boolean infantryAnyResearching(@Nullable Team team){
-        return infantryWeaponResearching(team) || infantryArmorResearching(team) || instantTrackingResearching(team) || steelArmorResearching(team);
+        return engineeringActiveResearching(team) || engineeringQueuedCount(team) > 0;
     }
 
     public static boolean engineeringAnyResearching(@Nullable Team team){
@@ -3685,6 +5673,71 @@ public class UnitTypes{
 
     public static int instantTrackingLevel(@Nullable Team team){
         InstantTrackingData data = getInstantTrackingData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int barracksBlastShieldLevel(@Nullable Team team){
+        BarracksBlastShieldData data = getBarracksBlastShieldData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int barracksStimpackLevel(@Nullable Team team){
+        BarracksStimpackData data = getBarracksStimpackData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int barracksConcussiveLevel(@Nullable Team team){
+        BarracksConcussiveData data = getBarracksConcussiveData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int infernoPreheaterLevel(@Nullable Team team){
+        InfernoPreheaterData data = getInfernoPreheaterData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int electromagneticFieldAcceleratorLevel(@Nullable Team team){
+        ElectromagneticFieldAcceleratorData data = getElectromagneticFieldAcceleratorData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int drillClawLevel(@Nullable Team team){
+        DrillClawData data = getDrillClawData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int smartServosLevel(@Nullable Team team){
+        SmartServosData data = getSmartServosData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int bansheeCloakFieldLevel(@Nullable Team team){
+        BansheeCloakFieldData data = getBansheeCloakFieldData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int bansheeAfterburnerLevel(@Nullable Team team){
+        BansheeAfterburnerData data = getBansheeAfterburnerData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int ravenMatrixTechLevel(@Nullable Team team){
+        RavenMatrixTechData data = getRavenMatrixTechData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int battlecruiserWeaponRefitLevel(@Nullable Team team){
+        BattlecruiserWeaponRefitData data = getBattlecruiserWeaponRefitData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int medivacCaduceusReactorLevel(@Nullable Team team){
+        MedivacCaduceusReactorData data = getMedivacCaduceusReactorData(team, false);
+        return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
+    }
+
+    public static int liberatorAdvancedBallisticsLevel(@Nullable Team team){
+        LiberatorAdvancedBallisticsData data = getLiberatorAdvancedBallisticsData(team, false);
         return data == null ? 0 : Mathf.clamp(data.level, 0, 1);
     }
 
@@ -3745,7 +5798,7 @@ public class UnitTypes{
     }
 
     public static boolean armoryAnyResearching(@Nullable Team team){
-        return vehicleWeaponResearching(team) || shipWeaponResearching(team) || vehicleArmorResearching(team);
+        return armoryActiveResearching(team) || armoryQueuedCount(team) > 0;
     }
 
     public static boolean infantryArmorResearching(@Nullable Team team){
@@ -3764,6 +5817,71 @@ public class UnitTypes{
 
     public static boolean ghostCamoResearching(@Nullable Team team){
         GhostCamoData data = getGhostCamoData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean bansheeCloakFieldResearching(@Nullable Team team){
+        BansheeCloakFieldData data = getBansheeCloakFieldData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean bansheeAfterburnerResearching(@Nullable Team team){
+        BansheeAfterburnerData data = getBansheeAfterburnerData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean ravenMatrixTechResearching(@Nullable Team team){
+        RavenMatrixTechData data = getRavenMatrixTechData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean battlecruiserWeaponRefitResearching(@Nullable Team team){
+        BattlecruiserWeaponRefitData data = getBattlecruiserWeaponRefitData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean medivacCaduceusReactorResearching(@Nullable Team team){
+        MedivacCaduceusReactorData data = getMedivacCaduceusReactorData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean liberatorAdvancedBallisticsResearching(@Nullable Team team){
+        LiberatorAdvancedBallisticsData data = getLiberatorAdvancedBallisticsData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean barracksBlastShieldResearching(@Nullable Team team){
+        BarracksBlastShieldData data = getBarracksBlastShieldData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean barracksStimpackResearching(@Nullable Team team){
+        BarracksStimpackData data = getBarracksStimpackData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean barracksConcussiveResearching(@Nullable Team team){
+        BarracksConcussiveData data = getBarracksConcussiveData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean infernoPreheaterResearching(@Nullable Team team){
+        InfernoPreheaterData data = getInfernoPreheaterData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean electromagneticFieldAcceleratorResearching(@Nullable Team team){
+        ElectromagneticFieldAcceleratorData data = getElectromagneticFieldAcceleratorData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean drillClawResearching(@Nullable Team team){
+        DrillClawData data = getDrillClawData(team, false);
+        return data != null && data.researching;
+    }
+
+    public static boolean smartServosResearching(@Nullable Team team){
+        SmartServosData data = getSmartServosData(team, false);
         return data != null && data.researching;
     }
 
@@ -3825,69 +5943,172 @@ public class UnitTypes{
         return Mathf.clamp(data.researchTime / ghostCamoResearchTime);
     }
 
+    public static float bansheeCloakFieldResearchProgress(@Nullable Team team){
+        BansheeCloakFieldData data = getBansheeCloakFieldData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / bansheeCloakFieldResearchTime);
+    }
+
+    public static float bansheeAfterburnerResearchProgress(@Nullable Team team){
+        BansheeAfterburnerData data = getBansheeAfterburnerData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / bansheeAfterburnerResearchTime);
+    }
+
+    public static float ravenMatrixTechResearchProgress(@Nullable Team team){
+        RavenMatrixTechData data = getRavenMatrixTechData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / ravenMatrixTechResearchTime);
+    }
+
+    public static float battlecruiserWeaponRefitResearchProgress(@Nullable Team team){
+        BattlecruiserWeaponRefitData data = getBattlecruiserWeaponRefitData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / battlecruiserWeaponRefitResearchTime);
+    }
+
+    public static float medivacCaduceusReactorResearchProgress(@Nullable Team team){
+        MedivacCaduceusReactorData data = getMedivacCaduceusReactorData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / medivacCaduceusReactorResearchTime);
+    }
+
+    public static float liberatorAdvancedBallisticsResearchProgress(@Nullable Team team){
+        LiberatorAdvancedBallisticsData data = getLiberatorAdvancedBallisticsData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / liberatorAdvancedBallisticsResearchTime);
+    }
+
+    public static float barracksBlastShieldResearchProgress(@Nullable Team team){
+        BarracksBlastShieldData data = getBarracksBlastShieldData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / barracksBlastShieldResearchTime);
+    }
+
+    public static float barracksStimpackResearchProgress(@Nullable Team team){
+        BarracksStimpackData data = getBarracksStimpackData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / barracksStimpackResearchTime);
+    }
+
+    public static float barracksConcussiveResearchProgress(@Nullable Team team){
+        BarracksConcussiveData data = getBarracksConcussiveData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / barracksConcussiveResearchTime);
+    }
+
+    public static float infernoPreheaterResearchProgress(@Nullable Team team){
+        InfernoPreheaterData data = getInfernoPreheaterData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / infernoPreheaterResearchTime);
+    }
+
+    public static float electromagneticFieldAcceleratorResearchProgress(@Nullable Team team){
+        ElectromagneticFieldAcceleratorData data = getElectromagneticFieldAcceleratorData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / electromagneticFieldAcceleratorResearchTime);
+    }
+
+    public static float drillClawResearchProgress(@Nullable Team team){
+        DrillClawData data = getDrillClawData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / drillClawResearchTime);
+    }
+
+    public static float smartServosResearchProgress(@Nullable Team team){
+        SmartServosData data = getSmartServosData(team, false);
+        if(data == null || !data.researching) return 0f;
+        return Mathf.clamp(data.researchTime / smartServosResearchTime);
+    }
+
     public static int infantryWeaponDisplayLevel(@Nullable Team team){
-        int level = infantryWeaponLevel(team);
+        int level = plannedInfantryWeaponLevel(team);
         if(level >= infantryWeaponMaxLevel) return -1;
-
-        int researchingLevel = infantryWeaponResearchingLevel(team);
-        if(researchingLevel > 0){
-            int next = researchingLevel + 1;
-            return next > infantryWeaponMaxLevel ? -1 : next;
-        }
-
         return level + 1;
     }
 
     public static int vehicleWeaponDisplayLevel(@Nullable Team team){
-        int level = vehicleWeaponLevel(team);
+        int level = plannedVehicleWeaponLevel(team);
         if(level >= vehicleWeaponMaxLevel) return -1;
-
-        int researchingLevel = vehicleWeaponResearchingLevel(team);
-        if(researchingLevel > 0){
-            int next = researchingLevel + 1;
-            return next > vehicleWeaponMaxLevel ? -1 : next;
-        }
-
         return level + 1;
     }
 
     public static int shipWeaponDisplayLevel(@Nullable Team team){
-        int level = shipWeaponLevel(team);
+        int level = plannedShipWeaponLevel(team);
         if(level >= shipWeaponMaxLevel) return -1;
-
-        int researchingLevel = shipWeaponResearchingLevel(team);
-        if(researchingLevel > 0){
-            int next = researchingLevel + 1;
-            return next > shipWeaponMaxLevel ? -1 : next;
-        }
-
         return level + 1;
     }
 
     public static int vehicleArmorDisplayLevel(@Nullable Team team){
-        int level = vehicleArmorLevel(team);
+        int level = plannedVehicleArmorLevel(team);
         if(level >= vehicleArmorMaxLevel) return -1;
-
-        int researchingLevel = vehicleArmorResearchingLevel(team);
-        if(researchingLevel > 0){
-            int next = researchingLevel + 1;
-            return next > vehicleArmorMaxLevel ? -1 : next;
-        }
-
         return level + 1;
     }
 
     public static int infantryArmorDisplayLevel(@Nullable Team team){
-        int level = infantryArmorLevel(team);
+        int level = plannedInfantryArmorLevel(team);
         if(level >= infantryWeaponMaxLevel) return -1;
-
-        int researchingLevel = infantryArmorResearchingLevel(team);
-        if(researchingLevel > 0){
-            int next = researchingLevel + 1;
-            return next > infantryWeaponMaxLevel ? -1 : next;
-        }
-
         return level + 1;
+    }
+
+    public static boolean instantTrackingDisplayAvailable(@Nullable Team team){
+        return !instantTrackingPlanned(team);
+    }
+
+    public static boolean steelArmorDisplayAvailable(@Nullable Team team){
+        return !steelArmorPlanned(team);
+    }
+
+    public static boolean barracksBlastShieldDisplayAvailable(@Nullable Team team){
+        return !barracksBlastShieldPlanned(team);
+    }
+
+    public static boolean barracksStimpackDisplayAvailable(@Nullable Team team){
+        return !barracksStimpackPlanned(team);
+    }
+
+    public static boolean barracksConcussiveDisplayAvailable(@Nullable Team team){
+        return !barracksConcussivePlanned(team);
+    }
+
+    public static boolean infernoPreheaterDisplayAvailable(@Nullable Team team){
+        return !infernoPreheaterPlanned(team);
+    }
+
+    public static boolean electromagneticFieldAcceleratorDisplayAvailable(@Nullable Team team){
+        return !electromagneticFieldAcceleratorPlanned(team);
+    }
+
+    public static boolean drillClawDisplayAvailable(@Nullable Team team){
+        return !drillClawPlanned(team);
+    }
+
+    public static boolean smartServosDisplayAvailable(@Nullable Team team){
+        return !smartServosPlanned(team);
+    }
+
+    public static boolean bansheeCloakFieldDisplayAvailable(@Nullable Team team){
+        return !bansheeCloakFieldPlanned(team);
+    }
+
+    public static boolean bansheeAfterburnerDisplayAvailable(@Nullable Team team){
+        return !bansheeAfterburnerPlanned(team);
+    }
+
+    public static boolean ravenMatrixTechDisplayAvailable(@Nullable Team team){
+        return !ravenMatrixTechPlanned(team);
+    }
+
+    public static boolean battlecruiserWeaponRefitDisplayAvailable(@Nullable Team team){
+        return !battlecruiserWeaponRefitPlanned(team);
+    }
+
+    public static boolean medivacCaduceusReactorDisplayAvailable(@Nullable Team team){
+        return !medivacCaduceusReactorPlanned(team);
+    }
+
+    public static boolean liberatorAdvancedBallisticsDisplayAvailable(@Nullable Team team){
+        return !liberatorAdvancedBallisticsPlanned(team);
     }
 
     public static int infantryWeaponCrystalCost(int level){
@@ -3992,6 +6213,14 @@ public class UnitTypes{
         if(core == null) return false;
         return core.items.has(Items.graphite, ghostCamoCrystalCost)
             && core.items.has(Items.highEnergyGas, ghostCamoGasCost);
+    }
+
+    private static boolean barracksTechCanAfford(@Nullable Team team, int crystalCost, int gasCost){
+        if(team == null) return false;
+        Building core = team.core();
+        if(core == null) return false;
+        return core.items.has(Items.graphite, crystalCost)
+            && core.items.has(Items.highEnergyGas, gasCost);
     }
 
     private static void infantryUpgradeConsume(@Nullable Team team, int level){
@@ -4106,22 +6335,32 @@ public class UnitTypes{
         core.items.add(Items.highEnergyGas, ghostCamoGasCost);
     }
 
+    private static void barracksTechConsume(@Nullable Team team, int crystalCost, int gasCost){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.remove(Items.graphite, crystalCost);
+        core.items.remove(Items.highEnergyGas, gasCost);
+    }
+
+    private static void barracksTechRefund(@Nullable Team team, int crystalCost, int gasCost){
+        if(team == null) return;
+        Building core = team.core();
+        if(core == null) return;
+        core.items.add(Items.graphite, crystalCost);
+        core.items.add(Items.highEnergyGas, gasCost);
+    }
+
     public static boolean infantryWeaponCanStartResearch(@Nullable Team team, int level){
         if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
-        InfantryWeaponData data = getInfantryWeaponData(team, false);
-        if(data != null && data.researchingLevel > 0) return false;
-        if(engineeringAnyResearching(team)) return false;
-        if(level != infantryWeaponLevel(team) + 1) return false;
+        if(level != plannedInfantryWeaponLevel(team) + 1) return false;
         if(!infantryWeaponHasArmory(team)) return false;
         return infantryUpgradeCanAfford(team, level);
     }
 
     public static boolean vehicleWeaponCanStartResearch(@Nullable Team team, int level){
         if(team == null || level < 1 || level > vehicleWeaponMaxLevel) return false;
-        VehicleWeaponData data = getVehicleWeaponData(team, false);
-        if(data != null && data.researchingLevel > 0) return false;
-        if(armoryAnyResearching(team)) return false;
-        if(level != vehicleWeaponLevel(team) + 1) return false;
+        if(level != plannedVehicleWeaponLevel(team) + 1) return false;
         if(!vehicleWeaponHasArmory(team)) return false;
         if(infantryWeaponLevel(team) < level) return false;
         return vehicleWeaponCanAfford(team, level);
@@ -4129,47 +6368,34 @@ public class UnitTypes{
 
     public static boolean vehicleArmorCanStartResearch(@Nullable Team team, int level){
         if(team == null || level < 1 || level > vehicleArmorMaxLevel) return false;
-        VehicleArmorData data = getVehicleArmorData(team, false);
-        if(data != null && data.researchingLevel > 0) return false;
-        if(armoryAnyResearching(team)) return false;
-        if(level != vehicleArmorLevel(team) + 1) return false;
+        if(level != plannedVehicleArmorLevel(team) + 1) return false;
         if(!vehicleWeaponHasArmory(team)) return false;
         return vehicleArmorCanAfford(team, level);
     }
 
     public static boolean shipWeaponCanStartResearch(@Nullable Team team, int level){
         if(team == null || level < 1 || level > shipWeaponMaxLevel) return false;
-        ShipWeaponData data = getShipWeaponData(team, false);
-        if(data != null && data.researchingLevel > 0) return false;
-        if(armoryAnyResearching(team)) return false;
-        if(level != shipWeaponLevel(team) + 1) return false;
+        if(level != plannedShipWeaponLevel(team) + 1) return false;
         if(!vehicleWeaponHasArmory(team)) return false;
         return shipWeaponCanAfford(team, level);
     }
 
     public static boolean infantryArmorCanStartResearch(@Nullable Team team, int level){
         if(team == null || level < 1 || level > infantryWeaponMaxLevel) return false;
-        InfantryArmorData data = getInfantryArmorData(team, false);
-        if(data != null && data.researchingLevel > 0) return false;
-        if(engineeringAnyResearching(team)) return false;
-        if(level != infantryArmorLevel(team) + 1) return false;
+        if(level != plannedInfantryArmorLevel(team) + 1) return false;
         if(!infantryWeaponHasArmory(team)) return false;
         return infantryUpgradeCanAfford(team, level);
     }
 
     public static boolean instantTrackingCanStartResearch(@Nullable Team team){
         if(team == null) return false;
-        InstantTrackingData data = getInstantTrackingData(team, false);
-        if(data != null && (data.level >= 1 || data.researching)) return false;
-        if(engineeringAnyResearching(team)) return false;
+        if(instantTrackingPlanned(team)) return false;
         return instantTrackingCanAfford(team);
     }
 
     public static boolean steelArmorCanStartResearch(@Nullable Team team){
         if(team == null) return false;
-        SteelArmorData data = getSteelArmorData(team, false);
-        if(data != null && (data.level >= 1 || data.researching)) return false;
-        if(engineeringAnyResearching(team)) return false;
+        if(steelArmorPlanned(team)) return false;
         return steelArmorCanAfford(team);
     }
 
@@ -4181,74 +6407,172 @@ public class UnitTypes{
         return ghostCamoCanAfford(team);
     }
 
+    public static boolean barracksBlastShieldCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(barracksBlastShieldPlanned(team)) return false;
+        if(!barracksTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, barracksBlastShieldCrystalCost, barracksBlastShieldGasCost);
+    }
+
+    public static boolean barracksStimpackCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(barracksStimpackPlanned(team)) return false;
+        if(!barracksTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, barracksStimpackCrystalCost, barracksStimpackGasCost);
+    }
+
+    public static boolean barracksConcussiveCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(barracksConcussivePlanned(team)) return false;
+        if(!barracksTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, barracksConcussiveCrystalCost, barracksConcussiveGasCost);
+    }
+
+    public static boolean infernoPreheaterCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(infernoPreheaterPlanned(team)) return false;
+        if(!heavyFactoryTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, infernoPreheaterCrystalCost, infernoPreheaterGasCost);
+    }
+
+    public static boolean electromagneticFieldAcceleratorCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(electromagneticFieldAcceleratorPlanned(team)) return false;
+        if(!heavyFactoryTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, electromagneticFieldAcceleratorCrystalCost, electromagneticFieldAcceleratorGasCost);
+    }
+
+    public static boolean drillClawCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(drillClawPlanned(team)) return false;
+        if(!heavyFactoryTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, drillClawCrystalCost, drillClawGasCost);
+    }
+
+    public static boolean smartServosCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(smartServosPlanned(team)) return false;
+        if(!heavyFactoryTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, smartServosCrystalCost, smartServosGasCost);
+    }
+
+    public static boolean bansheeCloakFieldCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(bansheeCloakFieldPlanned(team)) return false;
+        if(!starportTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, bansheeCloakFieldCrystalCost, bansheeCloakFieldGasCost);
+    }
+
+    public static boolean bansheeAfterburnerCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(bansheeAfterburnerPlanned(team)) return false;
+        if(!starportTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, bansheeAfterburnerCrystalCost, bansheeAfterburnerGasCost);
+    }
+
+    public static boolean ravenMatrixTechCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(ravenMatrixTechPlanned(team)) return false;
+        if(!starportTeamHasTechAddon(team)) return false;
+        return barracksTechCanAfford(team, ravenMatrixTechCrystalCost, ravenMatrixTechGasCost);
+    }
+
+    public static boolean battlecruiserWeaponRefitCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(battlecruiserWeaponRefitPlanned(team)) return false;
+        if(!fusionCoreHas(team)) return false;
+        return barracksTechCanAfford(team, battlecruiserWeaponRefitCrystalCost, battlecruiserWeaponRefitGasCost);
+    }
+
+    public static boolean medivacCaduceusReactorCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(medivacCaduceusReactorPlanned(team)) return false;
+        if(!fusionCoreHas(team)) return false;
+        return barracksTechCanAfford(team, medivacCaduceusReactorCrystalCost, medivacCaduceusReactorGasCost);
+    }
+
+    public static boolean liberatorAdvancedBallisticsCanStartResearch(@Nullable Team team){
+        if(team == null) return false;
+        if(liberatorAdvancedBallisticsPlanned(team)) return false;
+        if(!fusionCoreHas(team)) return false;
+        return barracksTechCanAfford(team, liberatorAdvancedBallisticsCrystalCost, liberatorAdvancedBallisticsGasCost);
+    }
+
     public static boolean infantryWeaponStartResearch(@Nullable Team team, int level){
-        if(!infantryWeaponCanStartResearch(team, level)) return false;
-        InfantryWeaponData data = getInfantryWeaponData(team, true);
-        if(data == null) return false;
-        infantryUpgradeConsume(team, level);
-        data.researchingLevel = level;
-        data.researchTime = 0f;
-        return true;
+        return startLeveledResearchWithQueue(team, level,
+        UnitTypes::infantryWeaponCanStartResearch,
+        UnitTypes::infantryUpgradeConsume,
+        UnitTypes::engineeringActiveResearching,
+        engineeringResearchQueue,
+        engineeringQueueInfantryWeapon,
+        UnitTypes::startInfantryWeaponResearchNow,
+        UnitTypes::infantryUpgradeRefund);
     }
 
     public static boolean vehicleWeaponStartResearch(@Nullable Team team, int level){
-        if(!vehicleWeaponCanStartResearch(team, level)) return false;
-        VehicleWeaponData data = getVehicleWeaponData(team, true);
-        if(data == null) return false;
-        vehicleWeaponConsume(team, level);
-        data.researchingLevel = level;
-        data.researchTime = 0f;
-        return true;
+        return startLeveledResearchWithQueue(team, level,
+        UnitTypes::vehicleWeaponCanStartResearch,
+        UnitTypes::vehicleWeaponConsume,
+        UnitTypes::armoryActiveResearching,
+        armoryResearchQueue,
+        armoryQueueVehicleWeapon,
+        UnitTypes::startVehicleWeaponResearchNow,
+        UnitTypes::vehicleWeaponRefund);
     }
 
     public static boolean vehicleArmorStartResearch(@Nullable Team team, int level){
-        if(!vehicleArmorCanStartResearch(team, level)) return false;
-        VehicleArmorData data = getVehicleArmorData(team, true);
-        if(data == null) return false;
-        vehicleArmorConsume(team, level);
-        data.researchingLevel = level;
-        data.researchTime = 0f;
-        return true;
+        return startLeveledResearchWithQueue(team, level,
+        UnitTypes::vehicleArmorCanStartResearch,
+        UnitTypes::vehicleArmorConsume,
+        UnitTypes::armoryActiveResearching,
+        armoryResearchQueue,
+        armoryQueueVehicleArmor,
+        UnitTypes::startVehicleArmorResearchNow,
+        UnitTypes::vehicleArmorRefund);
     }
 
     public static boolean shipWeaponStartResearch(@Nullable Team team, int level){
-        if(!shipWeaponCanStartResearch(team, level)) return false;
-        ShipWeaponData data = getShipWeaponData(team, true);
-        if(data == null) return false;
-        shipWeaponConsume(team, level);
-        data.researchingLevel = level;
-        data.researchTime = 0f;
-        return true;
+        return startLeveledResearchWithQueue(team, level,
+        UnitTypes::shipWeaponCanStartResearch,
+        UnitTypes::shipWeaponConsume,
+        UnitTypes::armoryActiveResearching,
+        armoryResearchQueue,
+        armoryQueueShipWeapon,
+        UnitTypes::startShipWeaponResearchNow,
+        UnitTypes::shipWeaponRefund);
     }
 
     public static boolean infantryArmorStartResearch(@Nullable Team team, int level){
-        if(!infantryArmorCanStartResearch(team, level)) return false;
-        InfantryArmorData data = getInfantryArmorData(team, true);
-        if(data == null) return false;
-        infantryUpgradeConsume(team, level);
-        data.researchingLevel = level;
-        data.researchTime = 0f;
-        return true;
+        return startLeveledResearchWithQueue(team, level,
+        UnitTypes::infantryArmorCanStartResearch,
+        UnitTypes::infantryUpgradeConsume,
+        UnitTypes::engineeringActiveResearching,
+        engineeringResearchQueue,
+        engineeringQueueInfantryArmor,
+        UnitTypes::startInfantryArmorResearchNow,
+        UnitTypes::infantryUpgradeRefund);
     }
 
     public static boolean instantTrackingStartResearch(@Nullable Team team){
-        if(!instantTrackingCanStartResearch(team)) return false;
-        InstantTrackingData data = getInstantTrackingData(team, true);
-        if(data == null) return false;
-        instantTrackingConsume(team);
-        data.researching = true;
-        data.researchTime = 0f;
-        return true;
+        return startSingleResearchWithQueue(team,
+        UnitTypes::instantTrackingCanStartResearch,
+        UnitTypes::instantTrackingConsume,
+        UnitTypes::engineeringActiveResearching,
+        engineeringResearchQueue,
+        encodeQueueCode(engineeringQueueInstantTracking, 1),
+        UnitTypes::startInstantTrackingResearchNow,
+        UnitTypes::instantTrackingRefund);
     }
 
     public static boolean steelArmorStartResearch(@Nullable Team team){
-        if(!steelArmorCanStartResearch(team)) return false;
-        SteelArmorData data = getSteelArmorData(team, true);
-        if(data == null) return false;
-        steelArmorConsume(team);
-        data.researching = true;
-        data.researchTime = 0f;
-        return true;
+        return startSingleResearchWithQueue(team,
+        UnitTypes::steelArmorCanStartResearch,
+        UnitTypes::steelArmorConsume,
+        UnitTypes::engineeringActiveResearching,
+        engineeringResearchQueue,
+        encodeQueueCode(engineeringQueueSteelArmor, 1),
+        UnitTypes::startSteelArmorResearchNow,
+        UnitTypes::steelArmorRefund);
     }
 
     public static boolean ghostCamoStartResearch(@Nullable Team team){
@@ -4261,81 +6585,315 @@ public class UnitTypes{
         return true;
     }
 
+    public static boolean barracksBlastShieldStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::barracksBlastShieldCanStartResearch,
+        t -> barracksTechConsume(t, barracksBlastShieldCrystalCost, barracksBlastShieldGasCost),
+        UnitTypes::barracksActiveResearching,
+        barracksResearchQueue,
+        encodeQueueCode(barracksQueueBlastShield, 1),
+        UnitTypes::startBarracksBlastShieldResearchNow,
+        t -> barracksTechRefund(t, barracksBlastShieldCrystalCost, barracksBlastShieldGasCost));
+    }
+
+    public static boolean barracksStimpackStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::barracksStimpackCanStartResearch,
+        t -> barracksTechConsume(t, barracksStimpackCrystalCost, barracksStimpackGasCost),
+        UnitTypes::barracksActiveResearching,
+        barracksResearchQueue,
+        encodeQueueCode(barracksQueueStimpack, 1),
+        UnitTypes::startBarracksStimpackResearchNow,
+        t -> barracksTechRefund(t, barracksStimpackCrystalCost, barracksStimpackGasCost));
+    }
+
+    public static boolean barracksConcussiveStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::barracksConcussiveCanStartResearch,
+        t -> barracksTechConsume(t, barracksConcussiveCrystalCost, barracksConcussiveGasCost),
+        UnitTypes::barracksActiveResearching,
+        barracksResearchQueue,
+        encodeQueueCode(barracksQueueConcussive, 1),
+        UnitTypes::startBarracksConcussiveResearchNow,
+        t -> barracksTechRefund(t, barracksConcussiveCrystalCost, barracksConcussiveGasCost));
+    }
+
+    public static boolean infernoPreheaterStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::infernoPreheaterCanStartResearch,
+        t -> barracksTechConsume(t, infernoPreheaterCrystalCost, infernoPreheaterGasCost),
+        UnitTypes::heavyFactoryActiveResearching,
+        heavyFactoryResearchQueue,
+        encodeQueueCode(heavyFactoryQueueInfernoPreheater, 1),
+        UnitTypes::startInfernoPreheaterResearchNow,
+        t -> barracksTechRefund(t, infernoPreheaterCrystalCost, infernoPreheaterGasCost));
+    }
+
+    public static boolean electromagneticFieldAcceleratorStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::electromagneticFieldAcceleratorCanStartResearch,
+        t -> barracksTechConsume(t, electromagneticFieldAcceleratorCrystalCost, electromagneticFieldAcceleratorGasCost),
+        UnitTypes::heavyFactoryActiveResearching,
+        heavyFactoryResearchQueue,
+        encodeQueueCode(heavyFactoryQueueElectromagneticFieldAccelerator, 1),
+        UnitTypes::startElectromagneticFieldAcceleratorResearchNow,
+        t -> barracksTechRefund(t, electromagneticFieldAcceleratorCrystalCost, electromagneticFieldAcceleratorGasCost));
+    }
+
+    public static boolean drillClawStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::drillClawCanStartResearch,
+        t -> barracksTechConsume(t, drillClawCrystalCost, drillClawGasCost),
+        UnitTypes::heavyFactoryActiveResearching,
+        heavyFactoryResearchQueue,
+        encodeQueueCode(heavyFactoryQueueDrillClaw, 1),
+        UnitTypes::startDrillClawResearchNow,
+        t -> barracksTechRefund(t, drillClawCrystalCost, drillClawGasCost));
+    }
+
+    public static boolean smartServosStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::smartServosCanStartResearch,
+        t -> barracksTechConsume(t, smartServosCrystalCost, smartServosGasCost),
+        UnitTypes::heavyFactoryActiveResearching,
+        heavyFactoryResearchQueue,
+        encodeQueueCode(heavyFactoryQueueSmartServos, 1),
+        UnitTypes::startSmartServosResearchNow,
+        t -> barracksTechRefund(t, smartServosCrystalCost, smartServosGasCost));
+    }
+
+    public static boolean bansheeCloakFieldStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::bansheeCloakFieldCanStartResearch,
+        t -> barracksTechConsume(t, bansheeCloakFieldCrystalCost, bansheeCloakFieldGasCost),
+        UnitTypes::starportActiveResearching,
+        starportResearchQueue,
+        encodeQueueCode(starportQueueCloakField, 1),
+        UnitTypes::startBansheeCloakFieldResearchNow,
+        t -> barracksTechRefund(t, bansheeCloakFieldCrystalCost, bansheeCloakFieldGasCost));
+    }
+
+    public static boolean bansheeAfterburnerStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::bansheeAfterburnerCanStartResearch,
+        t -> barracksTechConsume(t, bansheeAfterburnerCrystalCost, bansheeAfterburnerGasCost),
+        UnitTypes::starportActiveResearching,
+        starportResearchQueue,
+        encodeQueueCode(starportQueueAfterburner, 1),
+        UnitTypes::startBansheeAfterburnerResearchNow,
+        t -> barracksTechRefund(t, bansheeAfterburnerCrystalCost, bansheeAfterburnerGasCost));
+    }
+
+    public static boolean ravenMatrixTechStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::ravenMatrixTechCanStartResearch,
+        t -> barracksTechConsume(t, ravenMatrixTechCrystalCost, ravenMatrixTechGasCost),
+        UnitTypes::starportActiveResearching,
+        starportResearchQueue,
+        encodeQueueCode(starportQueueMatrix, 1),
+        UnitTypes::startRavenMatrixTechResearchNow,
+        t -> barracksTechRefund(t, ravenMatrixTechCrystalCost, ravenMatrixTechGasCost));
+    }
+
+    public static boolean battlecruiserWeaponRefitStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::battlecruiserWeaponRefitCanStartResearch,
+        t -> barracksTechConsume(t, battlecruiserWeaponRefitCrystalCost, battlecruiserWeaponRefitGasCost),
+        UnitTypes::fusionCoreActiveResearching,
+        fusionCoreResearchQueue,
+        encodeQueueCode(fusionCoreQueueWeaponRefit, 1),
+        UnitTypes::startBattlecruiserWeaponRefitResearchNow,
+        t -> barracksTechRefund(t, battlecruiserWeaponRefitCrystalCost, battlecruiserWeaponRefitGasCost));
+    }
+
+    public static boolean medivacCaduceusReactorStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::medivacCaduceusReactorCanStartResearch,
+        t -> barracksTechConsume(t, medivacCaduceusReactorCrystalCost, medivacCaduceusReactorGasCost),
+        UnitTypes::fusionCoreActiveResearching,
+        fusionCoreResearchQueue,
+        encodeQueueCode(fusionCoreQueueCaduceusReactor, 1),
+        UnitTypes::startMedivacCaduceusReactorResearchNow,
+        t -> barracksTechRefund(t, medivacCaduceusReactorCrystalCost, medivacCaduceusReactorGasCost));
+    }
+
+    public static boolean liberatorAdvancedBallisticsStartResearch(@Nullable Team team){
+        return startSingleResearchWithQueue(team,
+        UnitTypes::liberatorAdvancedBallisticsCanStartResearch,
+        t -> barracksTechConsume(t, liberatorAdvancedBallisticsCrystalCost, liberatorAdvancedBallisticsGasCost),
+        UnitTypes::fusionCoreActiveResearching,
+        fusionCoreResearchQueue,
+        encodeQueueCode(fusionCoreQueueAdvancedBallistics, 1),
+        UnitTypes::startLiberatorAdvancedBallisticsResearchNow,
+        t -> barracksTechRefund(t, liberatorAdvancedBallisticsCrystalCost, liberatorAdvancedBallisticsGasCost));
+    }
+
     public static boolean infantryWeaponCancelResearch(@Nullable Team team){
-        InfantryWeaponData data = getInfantryWeaponData(team, false);
-        if(team == null || data == null || data.researchingLevel <= 0) return false;
-        int level = data.researchingLevel;
-        data.researchingLevel = 0;
-        data.researchTime = 0f;
-        infantryUpgradeRefund(team, level);
-        return true;
+        return cancelLeveledResearch(team, getInfantryWeaponData(team, false),
+        data -> data.researchingLevel,
+        (data, value) -> data.researchingLevel = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::infantryUpgradeRefund);
     }
 
     public static boolean vehicleWeaponCancelResearch(@Nullable Team team){
-        VehicleWeaponData data = getVehicleWeaponData(team, false);
-        if(team == null || data == null || data.researchingLevel <= 0) return false;
-        int level = data.researchingLevel;
-        data.researchingLevel = 0;
-        data.researchTime = 0f;
-        vehicleWeaponRefund(team, level);
-        return true;
+        return cancelLeveledResearch(team, getVehicleWeaponData(team, false),
+        data -> data.researchingLevel,
+        (data, value) -> data.researchingLevel = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::vehicleWeaponRefund);
     }
 
     public static boolean vehicleArmorCancelResearch(@Nullable Team team){
-        VehicleArmorData data = getVehicleArmorData(team, false);
-        if(team == null || data == null || data.researchingLevel <= 0) return false;
-        int level = data.researchingLevel;
-        data.researchingLevel = 0;
-        data.researchTime = 0f;
-        vehicleArmorRefund(team, level);
-        return true;
+        return cancelLeveledResearch(team, getVehicleArmorData(team, false),
+        data -> data.researchingLevel,
+        (data, value) -> data.researchingLevel = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::vehicleArmorRefund);
     }
 
     public static boolean shipWeaponCancelResearch(@Nullable Team team){
-        ShipWeaponData data = getShipWeaponData(team, false);
-        if(team == null || data == null || data.researchingLevel <= 0) return false;
-        int level = data.researchingLevel;
-        data.researchingLevel = 0;
-        data.researchTime = 0f;
-        shipWeaponRefund(team, level);
-        return true;
+        return cancelLeveledResearch(team, getShipWeaponData(team, false),
+        data -> data.researchingLevel,
+        (data, value) -> data.researchingLevel = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::shipWeaponRefund);
     }
 
     public static boolean infantryArmorCancelResearch(@Nullable Team team){
-        InfantryArmorData data = getInfantryArmorData(team, false);
-        if(team == null || data == null || data.researchingLevel <= 0) return false;
-        int level = data.researchingLevel;
-        data.researchingLevel = 0;
-        data.researchTime = 0f;
-        infantryUpgradeRefund(team, level);
-        return true;
+        return cancelLeveledResearch(team, getInfantryArmorData(team, false),
+        data -> data.researchingLevel,
+        (data, value) -> data.researchingLevel = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::infantryUpgradeRefund);
     }
 
     public static boolean instantTrackingCancelResearch(@Nullable Team team){
-        InstantTrackingData data = getInstantTrackingData(team, false);
-        if(team == null || data == null || !data.researching) return false;
-        data.researching = false;
-        data.researchTime = 0f;
-        instantTrackingRefund(team);
-        return true;
+        return cancelSingleResearch(team, getInstantTrackingData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::instantTrackingRefund);
     }
 
     public static boolean steelArmorCancelResearch(@Nullable Team team){
-        SteelArmorData data = getSteelArmorData(team, false);
-        if(team == null || data == null || !data.researching) return false;
-        data.researching = false;
-        data.researchTime = 0f;
-        steelArmorRefund(team);
-        return true;
+        return cancelSingleResearch(team, getSteelArmorData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::steelArmorRefund);
     }
 
     public static boolean ghostCamoCancelResearch(@Nullable Team team){
-        GhostCamoData data = getGhostCamoData(team, false);
-        if(team == null || data == null || !data.researching) return false;
-        data.researching = false;
-        data.researchTime = 0f;
-        ghostCamoRefund(team);
-        return true;
+        return cancelSingleResearch(team, getGhostCamoData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        UnitTypes::ghostCamoRefund);
+    }
+
+    public static boolean barracksBlastShieldCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBarracksBlastShieldData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, barracksBlastShieldCrystalCost, barracksBlastShieldGasCost));
+    }
+
+    public static boolean barracksStimpackCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBarracksStimpackData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, barracksStimpackCrystalCost, barracksStimpackGasCost));
+    }
+
+    public static boolean barracksConcussiveCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBarracksConcussiveData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, barracksConcussiveCrystalCost, barracksConcussiveGasCost));
+    }
+
+    public static boolean infernoPreheaterCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getInfernoPreheaterData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, infernoPreheaterCrystalCost, infernoPreheaterGasCost));
+    }
+
+    public static boolean electromagneticFieldAcceleratorCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getElectromagneticFieldAcceleratorData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, electromagneticFieldAcceleratorCrystalCost, electromagneticFieldAcceleratorGasCost));
+    }
+
+    public static boolean drillClawCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getDrillClawData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, drillClawCrystalCost, drillClawGasCost));
+    }
+
+    public static boolean smartServosCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getSmartServosData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, smartServosCrystalCost, smartServosGasCost));
+    }
+
+    public static boolean bansheeCloakFieldCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBansheeCloakFieldData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, bansheeCloakFieldCrystalCost, bansheeCloakFieldGasCost));
+    }
+
+    public static boolean bansheeAfterburnerCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBansheeAfterburnerData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, bansheeAfterburnerCrystalCost, bansheeAfterburnerGasCost));
+    }
+
+    public static boolean ravenMatrixTechCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getRavenMatrixTechData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, ravenMatrixTechCrystalCost, ravenMatrixTechGasCost));
+    }
+
+    public static boolean battlecruiserWeaponRefitCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getBattlecruiserWeaponRefitData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, battlecruiserWeaponRefitCrystalCost, battlecruiserWeaponRefitGasCost));
+    }
+
+    public static boolean medivacCaduceusReactorCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getMedivacCaduceusReactorData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, medivacCaduceusReactorCrystalCost, medivacCaduceusReactorGasCost));
+    }
+
+    public static boolean liberatorAdvancedBallisticsCancelResearch(@Nullable Team team){
+        return cancelSingleResearch(team, getLiberatorAdvancedBallisticsData(team, false),
+        data -> data.researching,
+        (data, value) -> data.researching = value,
+        (data, value) -> data.researchTime = value,
+        t -> barracksTechRefund(t, liberatorAdvancedBallisticsCrystalCost, liberatorAdvancedBallisticsGasCost));
     }
 
     public static boolean ghostCamoAnyResearching(@Nullable Team team){
@@ -4346,8 +6904,53 @@ public class UnitTypes{
         return ghostCamoCancelResearch(team);
     }
 
+    public static boolean armoryCancelAnyResearch(@Nullable Team team){
+        if(vehicleWeaponCancelResearch(team) || vehicleArmorCancelResearch(team) || shipWeaponCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedArmoryResearch(team);
+    }
+
     public static boolean infantryCancelAnyResearch(@Nullable Team team){
-        return infantryWeaponCancelResearch(team) || infantryArmorCancelResearch(team) || instantTrackingCancelResearch(team) || steelArmorCancelResearch(team);
+        if(infantryWeaponCancelResearch(team) || infantryArmorCancelResearch(team) || instantTrackingCancelResearch(team) || steelArmorCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedEngineeringResearch(team);
+    }
+
+    public static boolean barracksTechCancelAnyResearch(@Nullable Team team){
+        if(barracksBlastShieldCancelResearch(team) || barracksStimpackCancelResearch(team) || barracksConcussiveCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedBarracksResearch(team);
+    }
+
+    public static boolean heavyFactoryTechCancelAnyResearch(@Nullable Team team){
+        if(infernoPreheaterCancelResearch(team)
+            || electromagneticFieldAcceleratorCancelResearch(team)
+            || drillClawCancelResearch(team)
+            || smartServosCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedHeavyFactoryResearch(team);
+    }
+
+    public static boolean starportTechCancelAnyResearch(@Nullable Team team){
+        if(bansheeCloakFieldCancelResearch(team)
+            || bansheeAfterburnerCancelResearch(team)
+            || ravenMatrixTechCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedStarportResearch(team);
+    }
+
+    public static boolean fusionCoreCancelAnyResearch(@Nullable Team team){
+        if(battlecruiserWeaponRefitCancelResearch(team)
+            || medivacCaduceusReactorCancelResearch(team)
+            || liberatorAdvancedBallisticsCancelResearch(team)){
+            return true;
+        }
+        return cancelLastQueuedFusionCoreResearch(team);
     }
 
     public static int infantryWeaponBaseDamageBonus(@Nullable Team team){
@@ -4364,6 +6967,14 @@ public class UnitTypes{
 
     public static int vehicleWeaponLocusLightBonus(@Nullable Team team){
         return vehicleWeaponLevel(team) * 2;
+    }
+
+    public static int infernoPreheaterLocusLightBonus(@Nullable Team team){
+        return infernoPreheaterLevel(team) > 0 ? infernoPreheaterLocusLightBonusAmount : 0;
+    }
+
+    public static int infernoPreheaterMaceLightBonus(@Nullable Team team){
+        return infernoPreheaterLevel(team) > 0 ? infernoPreheaterMaceLightBonusAmount : 0;
     }
 
     public static int vehicleWeaponHurricaneBaseBonus(@Nullable Team team){
@@ -4454,6 +7065,10 @@ public class UnitTypes{
         return infantryArmorLevel(team);
     }
 
+    public static float barracksBlastShieldHpBonus(@Nullable Team team){
+        return barracksBlastShieldLevel(team) > 0 ? barracksBlastShieldHpBonus : 0f;
+    }
+
     public static int vehicleArmorBonus(@Nullable Team team){
         return vehicleArmorLevel(team);
     }
@@ -4526,6 +7141,162 @@ public class UnitTypes{
         return ghostWarheadBuildTime;
     }
 
+    public static int barracksBlastShieldCrystalCost(){
+        return barracksBlastShieldCrystalCost;
+    }
+
+    public static int barracksBlastShieldGasCost(){
+        return barracksBlastShieldGasCost;
+    }
+
+    public static float barracksBlastShieldResearchDuration(){
+        return barracksBlastShieldResearchTime;
+    }
+
+    public static int barracksStimpackCrystalCost(){
+        return barracksStimpackCrystalCost;
+    }
+
+    public static int barracksStimpackGasCost(){
+        return barracksStimpackGasCost;
+    }
+
+    public static float barracksStimpackResearchDuration(){
+        return barracksStimpackResearchTime;
+    }
+
+    public static int barracksConcussiveCrystalCost(){
+        return barracksConcussiveCrystalCost;
+    }
+
+    public static int barracksConcussiveGasCost(){
+        return barracksConcussiveGasCost;
+    }
+
+    public static float barracksConcussiveResearchDuration(){
+        return barracksConcussiveResearchTime;
+    }
+
+    public static int infernoPreheaterCrystalCost(){
+        return infernoPreheaterCrystalCost;
+    }
+
+    public static int infernoPreheaterGasCost(){
+        return infernoPreheaterGasCost;
+    }
+
+    public static float infernoPreheaterResearchDuration(){
+        return infernoPreheaterResearchTime;
+    }
+
+    public static int electromagneticFieldAcceleratorCrystalCost(){
+        return electromagneticFieldAcceleratorCrystalCost;
+    }
+
+    public static int electromagneticFieldAcceleratorGasCost(){
+        return electromagneticFieldAcceleratorGasCost;
+    }
+
+    public static float electromagneticFieldAcceleratorResearchDuration(){
+        return electromagneticFieldAcceleratorResearchTime;
+    }
+
+    public static int drillClawCrystalCost(){
+        return drillClawCrystalCost;
+    }
+
+    public static int drillClawGasCost(){
+        return drillClawGasCost;
+    }
+
+    public static float drillClawResearchDuration(){
+        return drillClawResearchTime;
+    }
+
+    public static int smartServosCrystalCost(){
+        return smartServosCrystalCost;
+    }
+
+    public static int smartServosGasCost(){
+        return smartServosGasCost;
+    }
+
+    public static float smartServosResearchDuration(){
+        return smartServosResearchTime;
+    }
+
+    public static int bansheeCloakFieldCrystalCost(){
+        return bansheeCloakFieldCrystalCost;
+    }
+
+    public static int bansheeCloakFieldGasCost(){
+        return bansheeCloakFieldGasCost;
+    }
+
+    public static float bansheeCloakFieldResearchDuration(){
+        return bansheeCloakFieldResearchTime;
+    }
+
+    public static int bansheeAfterburnerCrystalCost(){
+        return bansheeAfterburnerCrystalCost;
+    }
+
+    public static int bansheeAfterburnerGasCost(){
+        return bansheeAfterburnerGasCost;
+    }
+
+    public static float bansheeAfterburnerResearchDuration(){
+        return bansheeAfterburnerResearchTime;
+    }
+
+    public static int ravenMatrixTechCrystalCost(){
+        return ravenMatrixTechCrystalCost;
+    }
+
+    public static int ravenMatrixTechGasCost(){
+        return ravenMatrixTechGasCost;
+    }
+
+    public static float ravenMatrixTechResearchDuration(){
+        return ravenMatrixTechResearchTime;
+    }
+
+    public static int battlecruiserWeaponRefitCrystalCost(){
+        return battlecruiserWeaponRefitCrystalCost;
+    }
+
+    public static int battlecruiserWeaponRefitGasCost(){
+        return battlecruiserWeaponRefitGasCost;
+    }
+
+    public static float battlecruiserWeaponRefitResearchDuration(){
+        return battlecruiserWeaponRefitResearchTime;
+    }
+
+    public static int medivacCaduceusReactorCrystalCost(){
+        return medivacCaduceusReactorCrystalCost;
+    }
+
+    public static int medivacCaduceusReactorGasCost(){
+        return medivacCaduceusReactorGasCost;
+    }
+
+    public static float medivacCaduceusReactorResearchDuration(){
+        return medivacCaduceusReactorResearchTime;
+    }
+
+    public static int liberatorAdvancedBallisticsCrystalCost(){
+        return liberatorAdvancedBallisticsCrystalCost;
+    }
+
+    public static int liberatorAdvancedBallisticsGasCost(){
+        return liberatorAdvancedBallisticsGasCost;
+    }
+
+    public static float liberatorAdvancedBallisticsResearchDuration(){
+        return liberatorAdvancedBallisticsResearchTime;
+    }
+
     public static boolean ravenCanDeployTurret(@Nullable Unit unit){
         return isRaven(unit)
             && !ravenMatrixDisabled(unit)
@@ -4542,13 +7313,25 @@ public class UnitTypes{
         return isRaven(unit)
             && !ravenMatrixDisabled(unit)
             && unit.energy >= ravenMatrixCost
-            && ravenTeamHasTechAddon(unit.team);
+            && ravenMatrixTechLevel(unit.team) > 0;
     }
 
     public static boolean ravenMatrixValidTarget(@Nullable Unit target, Team team){
         return target != null
             && target.isValid()
             && (target.type.unitClasses.contains(UnitClass.mechanical) || target.type.unitClasses.contains(UnitClass.psionic));
+    }
+
+    public static boolean allowFireWhileMoving(@Nullable Unit unit){
+        return unit != null && unit.hasEffect(StatusEffects.combatMobility);
+    }
+
+    public static boolean allowRotateWhileMoving(@Nullable Unit unit){
+        return unit != null && unit.hasEffect(StatusEffects.combatMobility);
+    }
+
+    public static boolean allowMoveWhileShooting(@Nullable Unit unit){
+        return unit != null && unit.hasEffect(StatusEffects.combatMobility);
     }
 
     public static float ravenTurretLifeProgress(@Nullable Unit unit){
@@ -4963,7 +7746,24 @@ public class UnitTypes{
         }
         };
 
-        mace = new UnitType("mace"){{
+        mace = new UnitType("mace"){
+            @Override
+            public void update(Unit unit){
+                super.update(unit);
+                if(maceLocusTransforming(unit)){
+                    unit.vel.setZero();
+                    if(unit.controller() instanceof CommandAI ai){
+                        ai.clearCommands();
+                    }
+                }
+            }
+
+            @Override
+            public void killed(Unit unit){
+                clearMaceLocusTransformData(unit);
+            }
+
+            {
             speed = 3.15f;
             hitSize = 10f;
             health = 135f;
@@ -4981,7 +7781,7 @@ public class UnitTypes{
                 private void applyConeDamage(Bullet b){
                     float coneRange = 2f * tilesize;
                     float halfAngle = 60f;
-                    float damage = (b.damage + vehicleWeaponMaceBaseBonus(b.team)) * b.damageMultiplier();
+                    float baseDamage = (b.damage + vehicleWeaponMaceBaseBonus(b.team)) * b.damageMultiplier();
 
                     Units.nearby((Team)null, b.x - coneRange, b.y - coneRange, coneRange * 2f, coneRange * 2f, u -> {
                         if(!canDamageFriendlyOnlyWhenForced(b, u)) return;
@@ -4989,6 +7789,10 @@ public class UnitTypes{
                         if(!u.within(b.x, b.y, coneRange + u.hitSize / 2f)) return;
                         if(!Angles.within(b.rotation(), b.angleTo(u), halfAngle)) return;
 
+                        float damage = baseDamage;
+                        if(u.type.armorType == ArmorType.light){
+                            damage += infernoPreheaterMaceLightBonus(b.team);
+                        }
                         u.damage(damage);
                         Fx.hitFlameSmall.at(u.x, u.y);
                     });
@@ -4999,7 +7803,7 @@ public class UnitTypes{
                         if(Mathf.dst(b.x, b.y, build.x, build.y) > coneRange + build.hitSize() / 2f) return;
                         if(!Angles.within(b.rotation(), Angles.angle(b.x, b.y, build.x, build.y), halfAngle)) return;
 
-                        build.damage(damage * b.type.buildingDamageMultiplier);
+                        build.damage(baseDamage * b.type.buildingDamageMultiplier);
                         Fx.hitFlameSmall.at(build.x, build.y);
                     });
                 }
@@ -5054,7 +7858,8 @@ public class UnitTypes{
                     }};
                 }
             });
-        }};
+            }
+        };
 
         ravenTurret = new UnitType("raven-turret"){
             @Override
@@ -5252,6 +8057,9 @@ public class UnitTypes{
                             b.damage = prev + 10f + infantryWeaponFortressHeavyBonus(b.team);
                         }
                         super.hitEntity(b, entity, health);
+                        if(entity instanceof Unit u && u.team != b.team && barracksConcussiveLevel(b.team) > 0){
+                            u.apply(StatusEffects.barracksConcussiveSlow, barracksConcussiveDuration);
+                        }
                         b.damage = prev;
                     }
 
@@ -5308,9 +8116,6 @@ public class UnitTypes{
                                 data.lastInRangeY = ty;
                                 b.aimX = tx;
                                 b.aimY = ty;
-                            }else{
-                                validTarget = false;
-                                data.target = null;
                             }
                         }else{
                             data.target = null;
@@ -7489,7 +10294,7 @@ public class UnitTypes{
                     @Override
                     protected Teamc findTarget(Unit unit, float x, float y, float range, boolean air, boolean ground){
                         if(!liberatorIsDefending(unit)) return null;
-                        return Units.closestEnemy(unit.team, unit.x, unit.y, liberatorDefenseRange(),
+                        return Units.closestEnemy(unit.team, unit.x, unit.y, liberatorDefenseAcquireRange(unit.team),
                         u -> !u.isFlying() && liberatorTargetInZone(unit, u));
                     }
 
@@ -7521,6 +10326,8 @@ public class UnitTypes{
                         recoil = 1f;
 
                         bullet = new BasicBulletType(13.333f, 75f){
+                            private final Color advancedColor = Color.valueOf("5fb4ff");
+
                             @Override
                             public void hitEntity(Bullet b, Hitboxc entity, float health){
                                 float prev = b.damage;
@@ -7532,6 +10339,28 @@ public class UnitTypes{
                             @Override
                             public float buildingDamage(Bullet b){
                                 return b.damage + shipWeaponLiberatorDefenseBonus(b.team);
+                            }
+
+                            @Override
+                            public void draw(Bullet b){
+                                Color prevBack = backColor;
+                                Color prevFront = frontColor;
+                                Color prevTrail = trailColor;
+                                Color prevHit = hitColor;
+
+                                if(liberatorAdvancedBallisticsLevel(b.team) > 0){
+                                    backColor = advancedColor;
+                                    trailColor = advancedColor;
+                                    hitColor = advancedColor;
+                                    frontColor = Color.white;
+                                }
+
+                                super.draw(b);
+
+                                backColor = prevBack;
+                                frontColor = prevFront;
+                                trailColor = prevTrail;
+                                hitColor = prevHit;
                             }
 
                             {
@@ -7575,6 +10404,7 @@ public class UnitTypes{
             public void update(Unit unit){
                 super.update(unit);
                 updateBanshee(unit);
+                updateBansheeAfterburner(unit);
             }
 
             {
@@ -8339,6 +11169,7 @@ public class UnitTypes{
             @Override
             public void update(Unit unit){
                 super.update(unit);
+                updateMedivacCaduceusReactor(unit);
                 if(unit.controller() instanceof CommandAI ai && ai.command != UnitCommand.unloadPayloadCommand){
                     clearMedivacData(unit);
                 }
@@ -9657,6 +12488,22 @@ public class UnitTypes{
                 drawShadowExplicit(shadowRegion, unit, shadowElevation, shadowElevationScl);
             }
 
+            @Override
+            public void update(Unit unit){
+                super.update(unit);
+                if(maceLocusTransforming(unit)){
+                    unit.vel.setZero();
+                    if(unit.controller() instanceof CommandAI ai){
+                        ai.clearCommands();
+                    }
+                }
+            }
+
+            @Override
+            public void killed(Unit unit){
+                clearMaceLocusTransformData(unit);
+            }
+
             {
                 hitSize = 18f;
                 speed = 5.95f;
@@ -9846,7 +12693,7 @@ public class UnitTypes{
                         float baseDamage = prev + vehicleWeaponLocusBaseBonus(b.team);
                         b.damage = baseDamage;
                         if(entity instanceof Unit && ((Unit)entity).type.armorType == ArmorType.light){
-                            b.damage = lightArmorDamage + vehicleWeaponLocusLightBonus(b.team);
+                            b.damage = lightArmorDamage + vehicleWeaponLocusLightBonus(b.team) + infernoPreheaterLocusLightBonus(b.team);
                         }
                         super.hitEntity(b, entity, health);
                         b.damage = prev;
@@ -10008,9 +12855,9 @@ public class UnitTypes{
 
                             @Override
                             public void hitEntity(Bullet b, Hitboxc entity, float health){
-                                float amount = damage + vehicleWeaponPreceptMobileBaseBonus(b.team);
+                                float amount = 15f + vehicleWeaponPreceptMobileBaseBonus(b.team);
                                 if(entity instanceof Unit u && u.type.armorType == ArmorType.heavy){
-                                    amount = damage + 10f + vehicleWeaponPreceptMobileHeavyBonus(b.team);
+                                    amount = 25f + vehicleWeaponPreceptMobileHeavyBonus(b.team);
                                 }
 
                                 if(entity instanceof Healthc h){
@@ -10030,7 +12877,7 @@ public class UnitTypes{
 
                             @Override
                             public float buildingDamage(Bullet b){
-                                return damage + vehicleWeaponPreceptMobileBaseBonus(b.team);
+                                return 15f + vehicleWeaponPreceptMobileBaseBonus(b.team);
                             }
                         };
                     }
@@ -10099,9 +12946,9 @@ public class UnitTypes{
 
                             @Override
                             public void hitEntity(Bullet b, Hitboxc entity, float health){
-                                float amount = damage + vehicleWeaponPreceptSiegeBaseBonus(b.team);
+                                float amount = 40f + vehicleWeaponPreceptSiegeBaseBonus(b.team);
                                 if(entity instanceof Unit u && u.type.armorType == ArmorType.heavy){
-                                    amount = damage + 30f + vehicleWeaponPreceptSiegeHeavyBonus(b.team);
+                                    amount = 70f + vehicleWeaponPreceptSiegeHeavyBonus(b.team);
                                 }
 
                                 if(entity instanceof Healthc h){
@@ -10128,7 +12975,7 @@ public class UnitTypes{
 
                             @Override
                             public float buildingDamage(Bullet b){
-                                return damage + vehicleWeaponPreceptSiegeBaseBonus(b.team);
+                                return 40f + vehicleWeaponPreceptSiegeBaseBonus(b.team);
                             }
 
                             @Override
@@ -10482,7 +13329,7 @@ public class UnitTypes{
 
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
                                     hit(b, tx, ty);
-                                    float amount = lockedShot ? 20f : 18f;
+                                    float amount = hurricaneMissileDamage(b.team, lockedShot);
                                     if(target instanceof Unit u){
                                         u.damage(amount);
                                     }else if(target instanceof Building build && build.team != b.team){

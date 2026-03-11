@@ -309,6 +309,12 @@ public class BulletType extends Content implements Cloneable{
     public float homingDelay = -1f;
     /** Speed at which bullet rotates to follow cursor. <= 0 to disable. */
     public float followAimSpeed = 0f;
+    /** Whether this bullet should track its originally assigned target after firing. */
+    public boolean ballisticTracking = false;
+    /** Turn rate for ballistic tracking, in degrees per tick. */
+    public float ballisticTurnRate = 3f;
+    /** Lifetime used for ballistic tracking bullets to effectively disable expiry. */
+    public float ballisticLifetime = 60f * 60f * 10f;
 
     /** Range of healing block suppression effect. */
     public float suppressionRange = -1f;
@@ -706,12 +712,40 @@ public class BulletType extends Content implements Cloneable{
 
     public void update(Bullet b){
         updateTrail(b);
-        updateHoming(b);
+        if(ballisticTracking){
+            updateBallisticTracking(b);
+        }else{
+            updateHoming(b);
+        }
         updateWeaving(b);
         updateTrailEffects(b);
         updateBulletInterval(b);
     }
 
+    public void updateBallisticTracking(Bullet b){
+        if(!ballisticTracking) return;
+        //update last known target position
+        if(b.lockedTarget != null){
+            if(b.lockedTarget instanceof Healthc h){
+                if(h.isValid()){
+                    b.lockedX = b.lockedTarget.x();
+                    b.lockedY = b.lockedTarget.y();
+                    b.lockedPosValid = true;
+                }else{
+                    b.lockedTarget = null;
+                }
+            }else{
+                b.lockedX = b.lockedTarget.x();
+                b.lockedY = b.lockedTarget.y();
+                b.lockedPosValid = true;
+            }
+        }
+
+        if(!b.lockedPosValid) return;
+
+        float angle = b.angleTo(b.lockedX, b.lockedY);
+        b.vel.setAngle(Angles.moveToward(b.vel.angle(), angle, ballisticTurnRate * Time.delta));
+    }
     public void updateBulletInterval(Bullet b){
         if(intervalBullet != null && b.time >= intervalDelay && b.timer.get(2, bulletInterval)){
             float ang = b.rotation();
@@ -959,6 +993,9 @@ public class BulletType extends Content implements Cloneable{
         bullet.lastX = x;
         bullet.lastY = y;
         bullet.lifetime = lifetime * lifetimeScl * (lifeScaleRandMin != 1f || lifeScaleRandMax != 1f ? Mathf.random(lifeScaleRandMin, lifeScaleRandMax) : 1f);
+        if(ballisticTracking){
+            bullet.lifetime = Math.max(bullet.lifetime, ballisticLifetime);
+        }
         bullet.data = data;
         bullet.hitSize = hitSize;
         bullet.mover = mover;
@@ -970,6 +1007,20 @@ public class BulletType extends Content implements Cloneable{
         bullet.add();
 
         if(keepVelocity && owner instanceof Velc v) bullet.vel.add(v.vel());
+        if(ballisticTracking){
+            bullet.lockedTarget = target;
+            if(target != null){
+                bullet.lockedX = target.getX();
+                bullet.lockedY = target.getY();
+                bullet.lockedPosValid = true;
+            }else if(!(aimX == -1f && aimY == -1f)){
+                bullet.lockedX = aimX;
+                bullet.lockedY = aimY;
+                bullet.lockedPosValid = true;
+            }else{
+                bullet.lockedPosValid = false;
+            }
+        }
         return bullet;
     }
 

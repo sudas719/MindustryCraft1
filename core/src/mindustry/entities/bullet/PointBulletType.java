@@ -24,9 +24,22 @@ public class PointBulletType extends BulletType{
     public void init(Bullet b){
         super.init(b);
 
-        float px = b.x + b.lifetime * b.vel.x,
-            py = b.y + b.lifetime * b.vel.y,
+        float px, py,
             rot = b.rotation();
+        Teamc target = b.data instanceof Teamc t ? t : null;
+        if(target instanceof Healthc h && !h.isValid()){
+            target = null;
+        }
+        if(target != null){
+            px = target.x();
+            py = target.y();
+        }else if(!(Float.isNaN(b.aimX) || Float.isNaN(b.aimY)) && !(b.aimX == -1f && b.aimY == -1f)){
+            px = b.aimX;
+            py = b.aimY;
+        }else{
+            px = b.x + b.lifetime * b.vel.x;
+            py = b.y + b.lifetime * b.vel.y;
+        }
 
         Geometry.iterateLine(0f, b.x, b.y, px, py, trailSpacing, (x, y) -> {
             trailEffect.at(x, y, rot);

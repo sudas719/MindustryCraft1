@@ -5,6 +5,7 @@ import arc.math.geom.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.async.*;
+import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.game.*;
 import mindustry.gen.*;
@@ -50,6 +51,10 @@ public class AIController implements UnitController{
 
         updateVisuals();
         updateTargeting();
+        if(unit.isShooting && !canMoveWhileShooting()){
+            unit.vel.setZero();
+            return;
+        }
         updateMovement();
     }
 
@@ -163,6 +168,7 @@ public class AIController implements UnitController{
     public void updateWeapons(){
         float rotation = unit.rotation - 90;
         boolean ret = retarget();
+        boolean rotationAllowed = shouldRotateWeapons();
 
         if(ret){
             target = findMainTarget(unit.x, unit.y, unit.range(), unit.type.targetAir, unit.type.targetGround);
@@ -229,10 +235,13 @@ public class AIController implements UnitController{
             if(!shouldFire()){
                 mount.shoot = false;
             }
+            if(!rotationAllowed){
+                mount.rotate = false;
+            }
 
             unit.isShooting |= mount.shoot;
 
-            if(mount.target == null && !shoot && !Angles.within(mount.rotation, mount.weapon.baseRotation, 0.01f) && noTargetTime >= rotateBackTimer){
+            if(rotationAllowed && mount.target == null && !shoot && !Angles.within(mount.rotation, mount.weapon.baseRotation, 0.01f) && noTargetTime >= rotateBackTimer){
                 mount.rotate = true;
                 Tmp.v1.trns(unit.rotation + mount.weapon.baseRotation, 5f);
                 mount.aimX = mountX + Tmp.v1.x;
@@ -269,6 +278,14 @@ public class AIController implements UnitController{
 
     public boolean shouldShoot(){
         return true;
+    }
+
+    public boolean shouldRotateWeapons(){
+        return true;
+    }
+
+    public boolean canMoveWhileShooting(){
+        return UnitTypes.allowMoveWhileShooting(unit);
     }
 
     public Teamc targetFlag(float x, float y, BlockFlag flag, boolean enemy){

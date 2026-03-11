@@ -114,7 +114,7 @@ public class Packets{
         public int version;
         public String versionType;
         public Seq<String> mods;
-        public String name, locale, uuid, usid, deviceHash;
+        public String name, locale, uuid, usid, deviceHash, deviceKey;
         public boolean mobile;
         public int color;
 
@@ -126,6 +126,7 @@ public class Packets{
             TypeIO.writeString(buffer, locale);
             TypeIO.writeString(buffer, usid);
             TypeIO.writeString(buffer, deviceHash);
+            TypeIO.writeString(buffer, deviceKey);
 
             byte[] b = Base64Coder.decode(uuid);
             buffer.b(b);
@@ -149,6 +150,7 @@ public class Packets{
             locale = TypeIO.readString(buffer);
             usid = TypeIO.readString(buffer);
             deviceHash = TypeIO.readString(buffer);
+            deviceKey = TypeIO.readString(buffer);
             byte[] idbytes =  buffer.b(16);
             uuid = new String(Base64Coder.encode(idbytes));
             mobile = buffer.b() == 1;

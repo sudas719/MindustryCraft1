@@ -60,9 +60,15 @@ public class ChatFragment extends Table{
         });
 
         update(() -> {
-
-            if(net.active() && input.keyTap(Binding.chat) && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null || ui.minimapfrag.shown()) && !ui.consolefrag.shown()){
-                toggle();
+            if(net.active() && input.keyTap(Binding.chat) && !ui.consolefrag.shown()){
+                if(shown){
+                    toggle();
+                }else{
+                    Element focus = scene.getKeyboardFocus();
+                    if(focus == chatfield || focus == null || ui.minimapfrag.shown() || !scene.hasField()){
+                        toggle();
+                    }
+                }
             }
 
             if(shown){

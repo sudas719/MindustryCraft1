@@ -517,11 +517,20 @@ public class CommandAI extends AIController{
                     target = attackTarget;
                     circleAttack(unit.type.circleTargetRadius);
                 }else{
-                    moveTo(vecOut,
-                    withinAttackRange ? engageRange :
-                    unit.isGrounded() ? 0f :
-                    attackTarget != null && !ramming ? engageRange : 0f,
-                    unit.isFlying() ? 40f : 100f, false, null, isFinalPoint || alwaysArrive);
+                    boolean rotateAllowed = !moveOnlyCommandActive() || UnitTypes.allowRotateWhileMoving(unit);
+                    if(!rotateAllowed){
+                        moveToNoRotate(vecOut,
+                        withinAttackRange ? engageRange :
+                        unit.isGrounded() ? 0f :
+                        attackTarget != null && !ramming ? engageRange : 0f,
+                        unit.isFlying() ? 40f : 100f, null, isFinalPoint || alwaysArrive);
+                    }else{
+                        moveTo(vecOut,
+                        withinAttackRange ? engageRange :
+                        unit.isGrounded() ? 0f :
+                        attackTarget != null && !ramming ? engageRange : 0f,
+                        unit.isFlying() ? 40f : 100f, false, null, isFinalPoint || alwaysArrive);
+                    }
                 }
             }
 
@@ -531,27 +540,40 @@ public class CommandAI extends AIController{
             }
 
             boolean battlecruiser = UnitTypes.isBattlecruiser(unit);
-            if(unit.isFlying()){
+            boolean rotateAllowed = !moveOnlyCommandActive() || UnitTypes.allowRotateWhileMoving(unit);
+            if(moveOnlyCommandActive() && unit.moving()){
+                unit.lookAt(unit.vel().angle());
+            }else if(unit.isFlying()){
                 if(attackTarget != null){
                     if(battlecruiser){
-                        if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
-                            unit.lookAt(vecMovePos);
-                        }else if(unit.moving()){
-                            unit.lookAt(unit.vel().angle());
+                        if(rotateAllowed){
+                            if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
+                                unit.lookAt(vecMovePos);
+                            }else if(unit.moving()){
+                                unit.lookAt(unit.vel().angle());
+                            }
                         }
                     }else{
-                        unit.lookAt(attackTarget);
+                        if(rotateAllowed){
+                            unit.lookAt(attackTarget);
+                        }
                     }
                 }else if(move && !(unit.type.circleTarget && !unit.type.omniMovement)){
-                    unit.lookAt(vecMovePos);
+                    if(rotateAllowed){
+                        unit.lookAt(vecMovePos);
+                    }
                 }else{
-                    faceTarget();
+                    if(rotateAllowed){
+                        faceTarget();
+                    }
                 }
             }else{
-                if(attackTarget != null){
-                    unit.lookAt(attackTarget);
-                }else{
-                    faceTarget();
+                if(rotateAllowed){
+                    if(attackTarget != null){
+                        unit.lookAt(attackTarget);
+                    }else{
+                        faceTarget();
+                    }
                 }
             }
 
@@ -597,9 +619,48 @@ public class CommandAI extends AIController{
             if(unit.type.circleTarget && shouldFire()){
                 circleAttack(unit.type.circleTargetRadius);
             }else{
-                faceTarget();
+                if(!moveOnlyCommandActive() || UnitTypes.allowRotateWhileMoving(unit)){
+                    faceTarget();
+                }
             }
         }
+    }
+
+    @Override
+    public void updateVisuals(){
+        if(moveOnlyCommandActive() && !UnitTypes.allowRotateWhileMoving(unit)) return;
+        super.updateVisuals();
+    }
+
+    private void moveToNoRotate(Position target, float circleLength, float smooth, @Nullable Vec2 offset, boolean arrive){
+        if(target == null) return;
+
+        float speed = prefSpeed();
+
+        vec.set(target).sub(unit);
+
+        float length = circleLength <= 0.001f ? 1f : Mathf.clamp((unit.dst(target) - circleLength) / smooth, -1f, 1f);
+        vec.setLength(speed * length);
+
+        if(arrive && length > 0){
+            Tmp.v3.set(-unit.vel.x / unit.type.accel * 2f, -unit.vel.y / unit.type.accel * 2f).add((target.getX() - unit.x), (target.getY() - unit.y));
+            vec.add(Tmp.v3).limit(speed * length);
+        }
+
+        if(length < -0.5f){
+            vec.setZero();
+        }else if(length < 0){
+            vec.setZero();
+        }
+
+        if(offset != null){
+            vec.add(offset);
+            vec.setLength(speed * length);
+        }
+
+        if(vec.isNaN() || vec.isInfinite() || vec.isZero()) return;
+
+        unit.moveAt(vec);
     }
 
     /** Sets a crystal harvest target for this unit, forcing the harvest command. */
@@ -897,7 +958,28 @@ public class CommandAI extends AIController{
 
     @Override
     public boolean shouldFire(){
-        return !hasStance(UnitStance.holdFire);
+        if(hasStance(UnitStance.holdFire)) return false;
+        if(moveOnlyCommandActive() && !UnitTypes.allowFireWhileMoving(unit)) return false;
+        return true;
+    }
+
+    @Override
+    public boolean shouldShoot(){
+        if(moveOnlyCommandActive() && !UnitTypes.allowFireWhileMoving(unit)) return false;
+        return true;
+    }
+
+    @Override
+    public boolean shouldRotateWeapons(){
+        if(moveOnlyCommandActive() && !UnitTypes.allowRotateWhileMoving(unit)) return false;
+        return true;
+    }
+
+    public boolean moveOnlyCommandActive(){
+        return currentCommand() == UnitCommand.moveCommand
+            && targetPos != null
+            && attackTarget == null
+            && !attackMovePosition;
     }
 
     @Override

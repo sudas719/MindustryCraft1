@@ -18,7 +18,8 @@ public class StatusEffects{
     widowBurrowing, widowBuried, widowUnburrowing, widowReloading,
     preceptSieging, preceptSieged, preceptUnsieging, scepterSwitching,
     liberatorDeploying, liberatorDefending, liberatorUndeploying,
-    medivacAfterburner, ravenAntiArmor, ravenMatrixLock, ravenTurretLifetime, bansheeCloak, ghostEmpReveal;
+    medivacAfterburner, ravenAntiArmor, ravenMatrixLock, ravenTurretLifetime, bansheeCloak, bansheeAfterburner, ghostEmpReveal, combatMobility,
+    barracksStimpackMarine, barracksStimpackMarauder, barracksConcussiveSlow;
 
     public static void load(){
 
@@ -150,6 +151,25 @@ public class StatusEffects{
             speedMultiplier = 1.6971428f; // 3.5 -> 5.94 tiles/s
         }};
 
+        barracksStimpackMarine = new StatusEffect("barracks-stimpack-marine"){{
+            show = false;
+            color = Color.valueOf("8cc4ff");
+            speedMultiplier = 1.4984127f; // 3.15 -> 4.72 (+1.57)
+            reloadMultiplier = 1.525f; // 0.61s -> 0.4s
+        }};
+
+        barracksStimpackMarauder = new StatusEffect("barracks-stimpack-marauder"){{
+            show = false;
+            color = Color.valueOf("8cc4ff");
+            speedMultiplier = 1.4984127f; // 3.15 -> 4.72 (+1.57)
+            reloadMultiplier = 1.5070423f; // 1.07s -> 0.71s
+        }};
+
+        barracksConcussiveSlow = new StatusEffect("barracks-concussive-slow"){{
+            show = false;
+            color = Color.valueOf("86a7c8");
+        }};
+
         ravenAntiArmor = new StatusEffect("raven-anti-armor"){{
             show = false;
             color = Color.valueOf("5a0f12");
@@ -201,6 +221,17 @@ public class StatusEffects{
             show = false;
             color = Color.valueOf("3d4c66");
             permanent = true;
+        }};
+
+        bansheeAfterburner = new StatusEffect("banshee-afterburner"){{
+            show = false;
+            color = Color.valueOf("8cc4ff");
+            speedMultiplier = 5.25f / 3.85f;
+        }};
+
+        combatMobility = new StatusEffect("combat-mobility"){{
+            show = false;
+            color = Color.valueOf("6ec7ff");
         }};
 
         ghostEmpReveal = new StatusEffect("ghost-emp-reveal"){{

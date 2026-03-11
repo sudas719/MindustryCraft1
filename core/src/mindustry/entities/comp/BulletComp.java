@@ -53,6 +53,9 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
 
     transient Posc stickyTarget;
     transient float stickyX, stickyY, stickyRotation, stickyRotationOffset;
+    transient @Nullable Teamc lockedTarget;
+    transient float lockedX, lockedY;
+    transient boolean lockedPosValid;
 
     @Override
     public void getCollisions(Cons<QuadTree> consumer){
@@ -173,6 +176,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
 
     @Override
     public void update(){
+        float prevX = x, prevY = y;
         //for one frame, bullets do not move - this is because bullet.update() is called immediately after the weapon updates
         //if the bullet moved immediately, it would spawn visually offset from the weapon at low FPS values
         if(!justSpawned){
@@ -199,6 +203,32 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 set(Tmp.v1.set(stickyX, stickyY).rotate(rotate).add(stickyTarget));
                 this.rotation = rotate + stickyRotationOffset;
                 vel.setAngle(this.rotation);
+            }
+        }else if(type.ballisticTracking && lockedTarget == null && lockedPosValid){
+            float dx = x - prevX, dy = y - prevY;
+            float hitRadius = hitSize();
+            float dst2 = Mathf.dst2(x, y, lockedX, lockedY);
+            boolean reached = dst2 <= hitRadius * hitRadius;
+            if(!reached){
+                float tx = lockedX - prevX, ty = lockedY - prevY;
+                float len2 = dx * dx + dy * dy;
+                if(len2 > 0.0001f){
+                    float proj = (tx * dx + ty * dy) / len2;
+                    if(proj >= 0f && proj <= 1f){
+                        float cx = prevX + proj * dx;
+                        float cy = prevY + proj * dy;
+                        float cdx = lockedX - cx, cdy = lockedY - cy;
+                        reached = cdx * cdx + cdy * cdy <= hitRadius * hitRadius;
+                    }
+                }
+            }
+            if(reached){
+                x = lockedX;
+                y = lockedY;
+                type.hit(self(), x, y);
+                hit = true;
+                remove();
+                return;
             }
         }else if(type.collidesTiles && type.collides && (type.collidesGround || type.collidesAir)){
             tileRaycast(World.toTile(lastX), World.toTile(lastY), tileX(), tileY());

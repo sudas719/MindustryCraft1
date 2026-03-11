@@ -580,9 +580,7 @@ public class JoinDialog extends BaseDialog{
     }
 
     public void connect(String ip, int port){
-        if(!DeviceIdentity.canJoinServers()){
-            DeviceIdentity.showConsentDialogIfNeeded();
-            DeviceIdentity.showJoinBlockedMessage();
+        if(!DeviceIdentity.prepareForServerJoin()){
             return;
         }
 

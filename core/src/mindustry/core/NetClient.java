@@ -78,6 +78,9 @@ public class NetClient implements ApplicationListener{
     public NetClient(){
         addPacketHandler("identity-ping", nonce -> {
             String hash = DeviceIdentity.getIdentityHashFromUserFile();
+            if(hash == null){
+                hash = DeviceIdentity.getIdentityHash();
+            }
             Call.serverPacketReliable("identity-pong", (nonce == null ? "" : nonce) + "|" + (hash == null ? "" : hash));
         });
 
@@ -118,6 +121,7 @@ public class NetClient implements ApplicationListener{
             c.usid = getUsid(packet.addressTCP);
             c.uuid = platform.getUUID();
             c.deviceHash = DeviceIdentity.getIdentityHash();
+            c.deviceKey = DeviceIdentity.getIdentityKey();
 
             if(c.uuid == null){
                 ui.showErrorMessage("@invalidid");
@@ -126,7 +130,7 @@ public class NetClient implements ApplicationListener{
                 return;
             }
 
-            if(c.deviceHash == null){
+            if(c.deviceHash == null || c.deviceKey == null){
                 DeviceIdentity.showJoinBlockedMessage();
                 ui.loadfrag.hide();
                 disconnectQuietly();

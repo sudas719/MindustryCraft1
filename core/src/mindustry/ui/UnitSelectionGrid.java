@@ -47,10 +47,14 @@ public class UnitSelectionGrid extends Table{
     private int lastFactoryQueueHash = -1;
     private int lastArmoryId = -1;
     private int lastArmoryQueueHash = -1;
+    private int lastFusionCoreId = -1;
+    private int lastFusionCoreQueueHash = -1;
     private int lastEngineeringId = -1;
     private int lastEngineeringQueueHash = -1;
     private int lastGhostAcademyId = -1;
     private int lastGhostAcademyQueueHash = -1;
+    private int lastTechLabId = -1;
+    private int lastTechLabQueueHash = -1;
     private int lastMedivacId = -1;
     private int lastMedivacPayloadHash = -1;
 
@@ -314,10 +318,14 @@ public class UnitSelectionGrid extends Table{
                     lastFactoryQueueHash = -1;
                     lastArmoryId = -1;
                     lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastEngineeringId = -1;
                     lastEngineeringQueueHash = -1;
                     lastGhostAcademyId = -1;
                     lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }else if(selected instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
@@ -332,10 +340,14 @@ public class UnitSelectionGrid extends Table{
                     lastCoreQueueHash = -1;
                     lastArmoryId = -1;
                     lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastEngineeringId = -1;
                     lastEngineeringQueueHash = -1;
                     lastGhostAcademyId = -1;
                     lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }else if(selected.block == Blocks.siliconCrucible){
@@ -345,6 +357,8 @@ public class UnitSelectionGrid extends Table{
                     }
                     lastArmoryId = selected.id;
                     lastArmoryQueueHash = queueHash;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastCoreId = -1;
                     lastCoreBuildPage = false;
                     lastCoreQueueHash = -1;
@@ -354,6 +368,30 @@ public class UnitSelectionGrid extends Table{
                     lastEngineeringQueueHash = -1;
                     lastGhostAcademyId = -1;
                     lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
+                }else if(selected.block == Blocks.surgeCrucible){
+                    int queueHash = fusionCoreQueueHash(selected.team);
+                    if(selected.id != lastFusionCoreId || queueHash != lastFusionCoreQueueHash){
+                        forceRebuild = true;
+                    }
+                    lastFusionCoreId = selected.id;
+                    lastFusionCoreQueueHash = queueHash;
+                    lastCoreId = -1;
+                    lastCoreBuildPage = false;
+                    lastCoreQueueHash = -1;
+                    lastFactoryId = -1;
+                    lastFactoryQueueHash = -1;
+                    lastArmoryId = -1;
+                    lastArmoryQueueHash = -1;
+                    lastEngineeringId = -1;
+                    lastEngineeringQueueHash = -1;
+                    lastGhostAcademyId = -1;
+                    lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }else if(selected.block == Blocks.multiPress){
@@ -370,8 +408,12 @@ public class UnitSelectionGrid extends Table{
                     lastFactoryQueueHash = -1;
                     lastArmoryId = -1;
                     lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastGhostAcademyId = -1;
                     lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }else if(selected.block == Blocks.launchPad){
@@ -388,8 +430,34 @@ public class UnitSelectionGrid extends Table{
                     lastFactoryQueueHash = -1;
                     lastArmoryId = -1;
                     lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastEngineeringId = -1;
                     lastEngineeringQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
+                    lastMedivacId = -1;
+                    lastMedivacPayloadHash = -1;
+                }else if(selected.block == Blocks.memoryBank){
+                    int queueHash = techLabQueueHash(selected);
+                    if(selected.id != lastTechLabId || queueHash != lastTechLabQueueHash){
+                        forceRebuild = true;
+                    }
+                    lastTechLabId = selected.id;
+                    lastTechLabQueueHash = queueHash;
+                    lastCoreId = -1;
+                    lastCoreBuildPage = false;
+                    lastCoreQueueHash = -1;
+                    lastFactoryId = -1;
+                    lastFactoryQueueHash = -1;
+                    lastArmoryId = -1;
+                    lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
+                    lastEngineeringId = -1;
+                    lastEngineeringQueueHash = -1;
+                    lastGhostAcademyId = -1;
+                    lastGhostAcademyQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }else{
@@ -400,10 +468,14 @@ public class UnitSelectionGrid extends Table{
                     lastFactoryQueueHash = -1;
                     lastArmoryId = -1;
                     lastArmoryQueueHash = -1;
+                    lastFusionCoreId = -1;
+                    lastFusionCoreQueueHash = -1;
                     lastEngineeringId = -1;
                     lastEngineeringQueueHash = -1;
                     lastGhostAcademyId = -1;
                     lastGhostAcademyQueueHash = -1;
+                    lastTechLabId = -1;
+                    lastTechLabQueueHash = -1;
                     lastMedivacId = -1;
                     lastMedivacPayloadHash = -1;
                 }
@@ -415,10 +487,14 @@ public class UnitSelectionGrid extends Table{
                 lastFactoryQueueHash = -1;
                 lastArmoryId = -1;
                 lastArmoryQueueHash = -1;
+                lastFusionCoreId = -1;
+                lastFusionCoreQueueHash = -1;
                 lastEngineeringId = -1;
                 lastEngineeringQueueHash = -1;
                 lastGhostAcademyId = -1;
                 lastGhostAcademyQueueHash = -1;
+                lastTechLabId = -1;
+                lastTechLabQueueHash = -1;
 
                 if(control.input.selectedUnits.size == 1 && control.input.commandBuildings.isEmpty()){
                     Unit unit = control.input.selectedUnits.first();
@@ -865,8 +941,10 @@ public class UnitSelectionGrid extends Table{
         UnitFactory.UnitFactoryBuild factory = building instanceof UnitFactory.UnitFactoryBuild ? (UnitFactory.UnitFactoryBuild)building : null;
         boolean showFactoryQueue = factory != null && factory.sc2QueueEnabled();
         boolean showArmoryQueue = building.block == Blocks.siliconCrucible && armoryQueueActive(building.team);
+        boolean showFusionCoreQueue = building.block == Blocks.surgeCrucible && fusionCoreQueueActive(building.team);
         boolean showEngineeringQueue = building.block == Blocks.multiPress && engineeringQueueActive(building.team);
         boolean showGhostAcademyQueue = building.block == Blocks.launchPad && ghostAcademyQueueActive(building);
+        boolean showTechLabQueue = techLabQueueActive(building);
 
         gridTable.table(panel -> {
             panel.background(Styles.black6);
@@ -919,10 +997,14 @@ public class UnitSelectionGrid extends Table{
                     buildFactoryQueuePanel(rightHalf, factory);
                 }else if(showArmoryQueue){
                     buildArmoryQueuePanel(rightHalf, building.team);
+                }else if(showFusionCoreQueue){
+                    buildFusionCoreQueuePanel(rightHalf, building.team);
                 }else if(showEngineeringQueue){
                     buildEngineeringQueuePanel(rightHalf, building.team);
                 }else if(showGhostAcademyQueue){
                     buildGhostAcademyQueuePanel(rightHalf, building);
+                }else if(showTechLabQueue){
+                    buildTechLabQueuePanel(rightHalf, building);
                 }else if(incomplete){
                     buildConstructProgressPanel(rightHalf, cons);
                 }else{
@@ -1153,7 +1235,11 @@ public class UnitSelectionGrid extends Table{
     }
 
     private boolean armoryQueueActive(@Nullable Team team){
-        return UnitTypes.armoryAnyResearching(team);
+        return ResearchQueueService.armoryAnyResearching(team);
+    }
+
+    private boolean fusionCoreQueueActive(@Nullable Team team){
+        return ResearchQueueService.fusionCoreAnyResearching(team);
     }
 
     private void buildArmoryQueuePanel(Table rightHalf, Team team){
@@ -1163,80 +1249,97 @@ public class UnitSelectionGrid extends Table{
 
         rightHalf.table(queueRoot -> {
             queueRoot.defaults().center();
+            boolean added = false;
 
-            int weaponLevel = UnitTypes.vehicleWeaponResearchingLevel(team);
-            int shipLevel = UnitTypes.shipWeaponResearchingLevel(team);
-            int armorLevel = UnitTypes.vehicleArmorResearchingLevel(team);
-            boolean weaponResearch = weaponLevel > 0;
-            boolean shipResearch = shipLevel > 0;
-            boolean armorResearch = armorLevel > 0;
-            if(!weaponResearch && !shipResearch && !armorResearch) return;
+            Block activeBlock = ResearchQueueService.armoryActiveResearchBlock(team);
+            Floatp activeProgress = () -> ResearchQueueService.armoryActiveResearchProgress(team);
+            float activeTotal = ResearchQueueService.armoryActiveResearchDuration(team) / 60f;
 
-            Block block;
-            Floatp progress;
-            float total;
-            if(weaponResearch){
-                block = Blocks.siliconCrucible;
-                progress = () -> UnitTypes.vehicleWeaponResearchProgress(team);
-                total = UnitTypes.vehicleWeaponResearchDuration(weaponLevel) / 60f;
-            }else if(shipResearch){
-                block = Blocks.shipFabricator;
-                progress = () -> UnitTypes.shipWeaponResearchProgress(team);
-                total = UnitTypes.shipWeaponResearchDuration(shipLevel) / 60f;
-            }else{
-                block = Blocks.surgeCrucible;
-                progress = () -> UnitTypes.vehicleArmorResearchProgress(team);
-                total = UnitTypes.vehicleArmorResearchDuration(armorLevel) / 60f;
+            if(activeBlock != null){
+                Table row1 = new Table();
+                row1.defaults().size(slotSize).pad(2f);
+                Floatp progress = activeProgress;
+                float total = activeTotal;
+                row1.add(buildQueueSlot(activeBlock, slotSize));
+                row1.add(buildQueueProgress(
+                    progress,
+                    () -> progress.get() * total,
+                    () -> total,
+                    barWidth, barHeight
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                queueRoot.add(row1).row();
+                added = true;
             }
 
-            Table row = new Table();
-            row.defaults().size(slotSize).pad(2f);
-            row.add(buildQueueSlot(block, slotSize));
-            row.add(buildQueueProgress(
-                progress,
-                () -> progress.get() * total,
-                () -> total,
-                barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            int queued = ResearchQueueService.armoryQueuedCount(team);
+            if(queued > 0){
+                Table row2 = new Table();
+                row2.defaults().size(slotSize).pad(2f);
+                for(int i = 0; i < queued; i++){
+                    row2.add(buildQueueSlot(ResearchQueueService.armoryQueuedBlock(team, i), slotSize));
+                }
+                queueRoot.add(row2);
+                added = true;
+            }
 
-            queueRoot.add(row);
+            if(!added){
+                queueRoot.add();
+            }
+        });
+    }
+
+    private void buildFusionCoreQueuePanel(Table rightHalf, Team team){
+        float slotSize = 34f;
+        float barWidth = 180f;
+        float barHeight = 3f;
+
+        rightHalf.table(queueRoot -> {
+            queueRoot.defaults().center();
+            boolean added = false;
+
+            Sc2ResearchSpec activeSpec = ResearchQueueService.fusionCoreActiveResearch(team);
+            if(activeSpec != null){
+                Table row1 = new Table();
+                row1.defaults().size(slotSize).pad(2f);
+                Floatp progress = () -> activeSpec.progress(team);
+                float total = activeSpec.duration(team) / 60f;
+                row1.add(buildQueueSlot(activeSpec.iconUnit(), slotSize));
+                row1.add(buildQueueProgress(
+                    progress,
+                    () -> progress.get() * total,
+                    () -> total,
+                    barWidth, barHeight
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                queueRoot.add(row1).row();
+                added = true;
+            }
+
+            int queued = ResearchQueueService.fusionCoreQueuedCount(team);
+            if(queued > 0){
+                Table row2 = new Table();
+                row2.defaults().size(slotSize).pad(2f);
+                for(int i = 0; i < queued; i++){
+                    UnitType queuedType = ResearchQueueService.fusionCoreQueuedUnit(team, i);
+                    row2.add(buildQueueSlot(queuedType, slotSize));
+                }
+                queueRoot.add(row2);
+                added = true;
+            }
+
+            if(!added){
+                queueRoot.add();
+            }
         });
     }
 
     private boolean engineeringQueueActive(@Nullable Team team){
-        return UnitTypes.infantryAnyResearching(team);
+        return ResearchQueueService.engineeringAnyResearching(team);
     }
 
     private boolean ghostAcademyQueueActive(@Nullable Building build){
         return build != null
             && build.block == Blocks.launchPad
             && (UnitTypes.ghostCamoAnyResearching(build.team) || UnitTypes.ghostWarheadProducing(build));
-    }
-
-    private @Nullable Block engineeringQueueBlock(@Nullable Team team){
-        if(UnitTypes.steelArmorResearching(team)) return Blocks.atmosphericConcentrator;
-        if(UnitTypes.infantryWeaponResearching(team)) return Blocks.siliconCrucible;
-        if(UnitTypes.infantryArmorResearching(team)) return Blocks.multiPress;
-        if(UnitTypes.instantTrackingResearching(team)) return Blocks.swarmer;
-        return null;
-    }
-
-    private float engineeringQueueProgress(@Nullable Team team){
-        if(UnitTypes.steelArmorResearching(team)) return UnitTypes.steelArmorResearchProgress(team);
-        if(UnitTypes.infantryWeaponResearching(team)) return UnitTypes.infantryWeaponResearchProgress(team);
-        if(UnitTypes.infantryArmorResearching(team)) return UnitTypes.infantryArmorResearchProgress(team);
-        if(UnitTypes.instantTrackingResearching(team)) return UnitTypes.instantTrackingResearchProgress(team);
-        return 0f;
-    }
-
-    private float engineeringQueueTotalSeconds(@Nullable Team team){
-        if(UnitTypes.steelArmorResearching(team)) return UnitTypes.steelArmorResearchDuration() / 60f;
-        int weaponLevel = UnitTypes.infantryWeaponResearchingLevel(team);
-        if(weaponLevel > 0) return UnitTypes.infantryWeaponResearchDuration(weaponLevel) / 60f;
-        int armorLevel = UnitTypes.infantryArmorResearchingLevel(team);
-        if(armorLevel > 0) return UnitTypes.infantryWeaponResearchDuration(armorLevel) / 60f;
-        if(UnitTypes.instantTrackingResearching(team)) return UnitTypes.instantTrackingResearchDuration() / 60f;
-        return 0f;
     }
 
     private void buildEngineeringQueuePanel(Table rightHalf, Team team){
@@ -1246,21 +1349,116 @@ public class UnitSelectionGrid extends Table{
 
         rightHalf.table(queueRoot -> {
             queueRoot.defaults().center();
+            boolean added = false;
 
-            Block block = engineeringQueueBlock(team);
-            if(block == null) return;
+            Block activeBlock = ResearchQueueService.engineeringActiveResearchBlock(team);
+            Floatp activeProgress = () -> ResearchQueueService.engineeringActiveResearchProgress(team);
+            float activeTotal = ResearchQueueService.engineeringActiveResearchDuration(team) / 60f;
 
-            Table row = new Table();
-            row.defaults().size(slotSize).pad(2f);
-            row.add(buildQueueSlot(block, slotSize));
-            row.add(buildQueueProgress(
-                () -> engineeringQueueProgress(team),
-                () -> engineeringQueueProgress(team) * engineeringQueueTotalSeconds(team),
-                () -> engineeringQueueTotalSeconds(team),
-                barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            if(activeBlock != null){
+                Table row1 = new Table();
+                row1.defaults().size(slotSize).pad(2f);
+                Floatp progress = activeProgress;
+                float total = activeTotal;
+                row1.add(buildQueueSlot(activeBlock, slotSize));
+                row1.add(buildQueueProgress(
+                    progress,
+                    () -> progress.get() * total,
+                    () -> total,
+                    barWidth, barHeight
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                queueRoot.add(row1).row();
+                added = true;
+            }
 
-            queueRoot.add(row);
+            int queued = ResearchQueueService.engineeringQueuedCount(team);
+            if(queued > 0){
+                Table row2 = new Table();
+                row2.defaults().size(slotSize).pad(2f);
+                for(int i = 0; i < queued; i++){
+                    row2.add(buildQueueSlot(ResearchQueueService.engineeringQueuedBlock(team, i), slotSize));
+                }
+                queueRoot.add(row2);
+                added = true;
+            }
+
+            if(!added){
+                queueRoot.add();
+            }
+        });
+    }
+
+    private boolean techLabQueueActive(@Nullable Building build){
+        if(build == null || build.block != Blocks.memoryBank) return false;
+        UnitFactory.UnitFactoryBuild attached = attachedFactoryForTechLab(build);
+        if(attached == null) return false;
+        return ResearchQueueService.techLabAnyResearching(build.team, attached.block);
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild attachedFactoryForTechLab(@Nullable Building techLab){
+        if(techLab == null || !techLab.isValid() || techLab.block != Blocks.memoryBank) return null;
+
+        for(Building build : Groups.build){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(!factory.isValid() || factory.team != techLab.team || !factory.hasTechAddon()) continue;
+
+            int size = factory.block.size;
+            int baseX = factory.tile.x - (size - 1) / 2;
+            int baseY = factory.tile.y - (size - 1) / 2;
+            Tile addonTile = world.tile(baseX + size, baseY);
+            if(addonTile == null) continue;
+            if(addonTile.build == techLab){
+                return factory;
+            }
+        }
+
+        return null;
+    }
+
+    private void buildTechLabQueuePanel(Table rightHalf, Building build){
+        float slotSize = 34f;
+        float barWidth = 180f;
+        float barHeight = 3f;
+        Team team = build.team;
+        UnitFactory.UnitFactoryBuild attached = attachedFactoryForTechLab(build);
+        Block attachedFactory = attached == null ? null : attached.block;
+
+        rightHalf.table(queueRoot -> {
+            queueRoot.defaults().center();
+            boolean added = false;
+
+            Sc2ResearchSpec activeSpec = ResearchQueueService.techLabActiveResearch(team, attachedFactory);
+            if(activeSpec != null){
+                Table row1 = new Table();
+                row1.defaults().size(slotSize).pad(2f);
+                Floatp progress = () -> activeSpec.progress(team);
+                float total = activeSpec.duration(team) / 60f;
+                row1.add(buildQueueSlot(activeSpec.iconUnit(), slotSize));
+                row1.add(buildQueueProgress(
+                    progress,
+                    () -> progress.get() * total,
+                    () -> total,
+                    barWidth, barHeight
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                queueRoot.add(row1).row();
+                added = true;
+            }
+
+            int queued = ResearchQueueService.techLabQueuedCount(team, attachedFactory);
+            if(queued > 0){
+                Table row2 = new Table();
+                row2.defaults().size(slotSize).pad(2f);
+                for(int i = 0; i < queued; i++){
+                    UnitType queuedType = ResearchQueueService.techLabQueuedUnit(team, attachedFactory, i);
+                    row2.add(buildQueueSlot(queuedType, slotSize));
+                }
+                queueRoot.add(row2);
+                added = true;
+            }
+
+            if(!added){
+                queueRoot.add();
+            }
         });
     }
 
@@ -1521,7 +1719,7 @@ public class UnitSelectionGrid extends Table{
         }
 
         if(UnitTypes.isHurricane(unit)){
-            return UnitTypes.hurricaneLockActive(unit) ? 20f : 18f;
+            return UnitTypes.hurricaneMissileDamage(unit.team, UnitTypes.hurricaneLockActive(unit));
         }
         if(UnitTypes.isSiegeTank(unit)){
             if("precept-siege-weapon".equals(weapon.name)){
@@ -1556,8 +1754,14 @@ public class UnitSelectionGrid extends Table{
         Seq<String> lines = new Seq<>();
         if(unit == null || weapon == null || weapon.bullet == null) return lines;
 
+        if(unit.type == UnitTypes.mace){
+            float special = weapon.bullet.damage + UnitTypes.vehicleWeaponMaceBaseBonus(unit.team) + UnitTypes.infernoPreheaterMaceLightBonus(unit.team);
+            lines.add("vs " + armorTypeName(ArmorType.light) + ": " + fixed2(special));
+            return lines;
+        }
+
         if(unit.type == UnitTypes.locus && "locus-weapon".equals(weapon.name)){
-            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team);
+            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team) + UnitTypes.infernoPreheaterLocusLightBonus(unit.team);
             lines.add("对" + armorTypeName(ArmorType.light) + ": " + fixed2(special));
             return lines;
         }
@@ -1608,7 +1812,7 @@ public class UnitSelectionGrid extends Table{
         }
 
         if(unit.type == UnitTypes.locus && "locus-weapon".equals(weapon.name)){
-            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team);
+            float special = 14f + UnitTypes.vehicleWeaponLocusLightBonus(unit.team) + UnitTypes.infernoPreheaterLocusLightBonus(unit.team);
             lines.add("对" + armorTypeName(ArmorType.light) + "(护甲): " + fixed2(special));
             return lines;
         }
@@ -1720,24 +1924,24 @@ public class UnitSelectionGrid extends Table{
 
     private int armoryQueueHash(@Nullable Team team){
         if(team == null) return 0;
-        int hash = 1;
-        hash = 31 * hash + UnitTypes.vehicleWeaponLevel(team);
-        hash = 31 * hash + UnitTypes.vehicleWeaponResearchingLevel(team);
-        hash = 31 * hash + UnitTypes.shipWeaponLevel(team);
-        hash = 31 * hash + UnitTypes.shipWeaponResearchingLevel(team);
-        hash = 31 * hash + UnitTypes.vehicleArmorLevel(team);
-        hash = 31 * hash + UnitTypes.vehicleArmorResearchingLevel(team);
-        return hash;
+        return ResearchQueueService.armoryQueueHash(team, 1);
+    }
+
+    private int fusionCoreQueueHash(@Nullable Team team){
+        if(team == null) return 0;
+        return ResearchQueueService.fusionCoreQueueHash(team, 1);
     }
 
     private int engineeringQueueHash(@Nullable Team team){
         if(team == null) return 0;
-        int hash = 1;
-        hash = 31 * hash + UnitTypes.infantryWeaponResearchingLevel(team);
-        hash = 31 * hash + UnitTypes.infantryArmorResearchingLevel(team);
-        hash = 31 * hash + (UnitTypes.instantTrackingResearching(team) ? 1 : 0);
-        hash = 31 * hash + (UnitTypes.steelArmorResearching(team) ? 1 : 0);
-        return hash;
+        return ResearchQueueService.engineeringQueueHash(team, 1);
+    }
+
+    private int techLabQueueHash(@Nullable Building build){
+        if(build == null || build.block != Blocks.memoryBank) return 0;
+        UnitFactory.UnitFactoryBuild attached = attachedFactoryForTechLab(build);
+        if(attached == null) return 0;
+        return ResearchQueueService.techLabQueueHash(build.team, attached.block, build.pos());
     }
 
     private int ghostAcademyQueueHash(@Nullable Building build){

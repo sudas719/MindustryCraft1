@@ -24,6 +24,7 @@ import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
 import mindustry.game.EventType.*;
+import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.input.*;
@@ -216,6 +217,10 @@ public class UnitAbilityPanel extends Table{
                         handleNovaHotkeys();
                     }else if(isOnlyWidowSelected()){
                         handleWidowHotkeys();
+                    }else if(isOnlyMaceSelected()){
+                        handleMaceHotkeys();
+                    }else if(isOnlyLocusSelected()){
+                        handleLocusHotkeys();
                     }else if(isOnlySiegeTankSelected()){
                         handlePreceptHotkeys();
                     }else if(isOnlyHurricaneSelected()){
@@ -236,6 +241,8 @@ public class UnitAbilityPanel extends Table{
                         handleBansheeHotkeys();
                     }else if(isOnlyRavenSelected()){
                         handleRavenHotkeys();
+                    }else if(isOnlyBarracksStimpackSelected()){
+                        handleBarracksStimpackHotkeys();
                     }else if(isOnlyCoreFlyerSelected()){
                         handleCoreFlyerHotkeys();
                     }else if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size > 0){
@@ -345,10 +352,16 @@ public class UnitAbilityPanel extends Table{
             buildCoreTargetPanel("防卫模式", "左键选择防卫区域");
         }else if(isOnlyLiberatorSelected()){
             buildLiberatorPanel();
+        }else if(isOnlyBarracksStimpackSelected()){
+            buildBarracksStimpackPanel();
         }else if(isOnlyCoreFlyerSelected()){
             buildCoreFlyerPanel();
         }else if(isOnlyWidowSelected()){
             buildWidowPanel();
+        }else if(isOnlyMaceSelected()){
+            buildMacePanel();
+        }else if(isOnlyLocusSelected()){
+            buildLocusPanel();
         }else if(isOnlySiegeTankSelected()){
             buildPreceptPanel();
         }else if(isOnlyHurricaneSelected()){
@@ -441,6 +454,38 @@ public class UnitAbilityPanel extends Table{
         for(int i = 0; i < COLS; i++){
             add().size(abilityButtonSize).pad(2f);
         }
+    }
+
+    private void buildBarracksStimpackPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addBattlecruiserCooldownButton(grid, "t", Icon.upOpen, this::anyBarracksStimpackSelectedCanUse,
+        this::issueBarracksStimpackCommand,
+        this::selectedBarracksStimpackCooldown, UnitTypes::barracksStimpackCooldownDuration);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
     }
 
     private void buildWidowPanel(){
@@ -688,6 +733,74 @@ public class UnitAbilityPanel extends Table{
         }else{
             addEmpty(grid);
         }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildMacePanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addIconButton(
+            grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
+            () -> issueMaceLocusModeCommand(true),
+            makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.")
+        );
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildLocusPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addEmpty(grid);
+        addIconButton(
+            grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
+            () -> issueMaceLocusModeCommand(false),
+            makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.")
+        );
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -1066,6 +1179,11 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
+        if(isOnlyFusionCoreSelected()){
+            buildFusionCorePanel();
+            return;
+        }
+
         if(isOnlyEngineeringSelected()){
             buildEngineeringPanel();
             return;
@@ -1073,6 +1191,11 @@ public class UnitAbilityPanel extends Table{
 
         if(isOnlyGhostAcademySelected()){
             buildGhostAcademyPanel();
+            return;
+        }
+
+        if(isOnlyTechLabSelected()){
+            buildTechLabPanel();
             return;
         }
 
@@ -1333,82 +1456,37 @@ public class UnitAbilityPanel extends Table{
         Table info = buildBuildInfoTable();
         Table grid = new Table();
 
-        int weaponDisplayLevel = UnitTypes.vehicleWeaponDisplayLevel(player.team());
-        if(weaponDisplayLevel > 0){
-            BuildInfo upgradeInfo = makeVehicleWeaponUpgradeInfo("e", weaponDisplayLevel);
-            Button upgradeButton = addIconButton(grid, "e", new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon),
-                () -> UnitTypes.vehicleWeaponCanStartResearch(player.team(), weaponDisplayLevel),
-                this::tryStartVehicleWeaponResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
-        }
+        Seq<Sc2ResearchSpec> specs = ResearchQueueService.armorySpecs();
+        Block[] icons = {Blocks.siliconCrucible, Blocks.surgeCrucible, Blocks.shipFabricator};
+        int[] slots = {0, 1, 5};
 
-        int armorDisplayLevel = UnitTypes.vehicleArmorDisplayLevel(player.team());
-        if(armorDisplayLevel > 0){
-            BuildInfo upgradeInfo = makeVehicleArmorUpgradeInfo("a", armorDisplayLevel);
-            Button upgradeButton = addIconButton(grid, "a", new TextureRegionDrawable(Blocks.surgeCrucible.uiIcon),
-                () -> UnitTypes.vehicleArmorCanStartResearch(player.team(), armorDisplayLevel),
-                this::tryStartVehicleArmorResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
+        for(int slot = 0; slot < COLS * ROWS; slot++){
+            if(slot == COLS * (ROWS - 1) + (COLS - 1)){
+                if(ResearchQueueService.armoryAnyResearching(player.team())){
+                    BuildInfo researchInfo = makeArmoryAnyResearchInfo("Esc", specs, icons);
+                    Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelArmoryResearch);
+                    cancelButton.update(() -> {
+                        if(cancelButton.isOver()){
+                            hoverBuildInfo = researchInfo;
+                        }else if(hoverBuildInfo == researchInfo){
+                            hoverBuildInfo = null;
+                        }
+                    });
+                }else{
+                    addEmpty(grid);
                 }
-            });
-        }else{
-            addEmpty(grid);
-        }
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        grid.row();
+            }else{
+                int specIndex = specSlotIndex(slot, slots);
+                if(specIndex >= 0 && specIndex < specs.size){
+                    addCatalogResearchButton(grid, specs.get(specIndex), icons[specIndex]);
+                }else{
+                    addEmpty(grid);
+                }
+            }
 
-        int shipDisplayLevel = UnitTypes.shipWeaponDisplayLevel(player.team());
-        if(shipDisplayLevel > 0){
-            BuildInfo upgradeInfo = makeShipWeaponUpgradeInfo("h", shipDisplayLevel);
-            Button upgradeButton = addIconButton(grid, "h", new TextureRegionDrawable(Blocks.shipFabricator.uiIcon),
-                () -> UnitTypes.shipWeaponCanStartResearch(player.team(), shipDisplayLevel),
-                this::tryStartShipWeaponResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
-        }
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        grid.row();
-
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        if(UnitTypes.armoryAnyResearching(player.team())){
-            BuildInfo researchInfo = makeArmoryAnyResearchInfo("Esc");
-            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelArmoryResearch);
-            cancelButton.update(() -> {
-                if(cancelButton.isOver()){
-                    hoverBuildInfo = researchInfo;
-                }else if(hoverBuildInfo == researchInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
+            if(slot % COLS == COLS - 1){
+                grid.row();
+            }
         }
 
         Table root = new Table();
@@ -1422,102 +1500,83 @@ public class UnitAbilityPanel extends Table{
         Table info = buildBuildInfoTable();
         Table grid = new Table();
 
-        int weaponDisplayLevel = UnitTypes.infantryWeaponDisplayLevel(player.team());
-        if(weaponDisplayLevel > 0){
-            BuildInfo upgradeInfo = makeInfantryWeaponUpgradeInfo("e", weaponDisplayLevel);
-            Button upgradeButton = addIconButton(grid, "e", new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon),
-                () -> UnitTypes.infantryWeaponCanStartResearch(player.team(), weaponDisplayLevel),
-                this::tryStartInfantryWeaponResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
-        }
+        Seq<Sc2ResearchSpec> specs = ResearchQueueService.engineeringSpecs();
+        Block[] icons = {Blocks.siliconCrucible, Blocks.multiPress, Blocks.swarmer, Blocks.atmosphericConcentrator};
+        int[] slots = {0, 1, 5, 6};
 
-        int armorDisplayLevel = UnitTypes.infantryArmorDisplayLevel(player.team());
-        if(armorDisplayLevel > 0){
-            BuildInfo upgradeInfo = makeInfantryArmorUpgradeInfo("a", armorDisplayLevel);
-            Button upgradeButton = addIconButton(grid, "a", new TextureRegionDrawable(Blocks.multiPress.uiIcon),
-                () -> UnitTypes.infantryArmorCanStartResearch(player.team(), armorDisplayLevel),
-                this::tryStartInfantryArmorResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
+        for(int slot = 0; slot < COLS * ROWS; slot++){
+            if(slot == COLS * (ROWS - 1) + (COLS - 1)){
+                if(ResearchQueueService.engineeringAnyResearching(player.team())){
+                    BuildInfo researchInfo = makeInfantryAnyResearchInfo("Esc", specs, icons);
+                    Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelInfantryResearch);
+                    cancelButton.update(() -> {
+                        if(cancelButton.isOver()){
+                            hoverBuildInfo = researchInfo;
+                        }else if(hoverBuildInfo == researchInfo){
+                            hoverBuildInfo = null;
+                        }
+                    });
+                }else{
+                    addEmpty(grid);
                 }
-            });
-        }else{
-            addEmpty(grid);
-        }
+            }else{
+                int specIndex = specSlotIndex(slot, slots);
+                if(specIndex >= 0 && specIndex < specs.size){
+                    addCatalogResearchButton(grid, specs.get(specIndex), icons[specIndex]);
+                }else{
+                    addEmpty(grid);
+                }
+            }
 
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        grid.row();
-
-        if(UnitTypes.instantTrackingLevel(player.team()) <= 0){
-            BuildInfo upgradeInfo = makeInstantTrackingUpgradeInfo("h");
-            Button upgradeButton = addIconButton(grid, "h", new TextureRegionDrawable(Blocks.swarmer.uiIcon),
-                () -> UnitTypes.instantTrackingCanStartResearch(player.team()),
-                this::tryStartInstantTrackingResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
-        }
-        if(UnitTypes.steelArmorLevel(player.team()) <= 0){
-            BuildInfo upgradeInfo = makeSteelArmorUpgradeInfo("b");
-            Button upgradeButton = addIconButton(grid, "b", new TextureRegionDrawable(Blocks.atmosphericConcentrator.uiIcon),
-                () -> UnitTypes.steelArmorCanStartResearch(player.team()),
-                this::tryStartSteelArmorResearch);
-            upgradeButton.update(() -> {
-                if(upgradeButton.isOver()){
-                    hoverBuildInfo = upgradeInfo;
-                }else if(hoverBuildInfo == upgradeInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
-        }
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        grid.row();
-
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        addEmpty(grid);
-        if(UnitTypes.infantryAnyResearching(player.team())){
-            BuildInfo researchInfo = makeInfantryAnyResearchInfo("Esc");
-            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelInfantryResearch);
-            cancelButton.update(() -> {
-                if(cancelButton.isOver()){
-                    hoverBuildInfo = researchInfo;
-                }else if(hoverBuildInfo == researchInfo){
-                    hoverBuildInfo = null;
-                }
-            });
-        }else{
-            addEmpty(grid);
+            if(slot % COLS == COLS - 1){
+                grid.row();
+            }
         }
 
         Table root = new Table();
         root.add(info).growX().padBottom(4f).row();
         root.add(grid);
         add(root);
+    }
+
+    private int specSlotIndex(int slot, int[] slots){
+        for(int i = 0; i < slots.length; i++){
+            if(slots[i] == slot) return i;
+        }
+        return -1;
+    }
+
+    private void addCatalogResearchButton(Table grid, Sc2ResearchSpec spec, Block iconBlock){
+        if(spec.displayAvailable(player.team())){
+            BuildInfo upgradeInfo = makeCatalogResearchInfo(spec, spec.hotkey, iconBlock);
+            Button upgradeButton = addIconButton(grid, spec.hotkey, new TextureRegionDrawable(iconBlock.uiIcon),
+                () -> spec.canStart(player.team()),
+                () -> tryStartResearchSpec(spec));
+            upgradeButton.update(() -> {
+                if(upgradeButton.isOver()){
+                    hoverBuildInfo = upgradeInfo;
+                }else if(hoverBuildInfo == upgradeInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+    }
+
+    private BuildInfo makeCatalogResearchInfo(Sc2ResearchSpec spec, String key, Block iconBlock){
+        BuildInfo info = new BuildInfo();
+        info.block = iconBlock;
+        info.key = key;
+        info.name = spec.name(player.team());
+        info.crystalCost = spec.crystalCost(player.team());
+        info.gasCost = spec.gasCost(player.team());
+        info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
+        info.progress = () -> spec.progress(player.team());
+        info.progressVisible = () -> spec.researching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(iconBlock.uiIcon);
+        return info;
     }
 
     private void buildGhostAcademyPanel(){
@@ -1568,6 +1627,141 @@ public class UnitAbilityPanel extends Table{
                 if(cancelButton.isOver()){
                     hoverBuildInfo = researchInfo;
                 }else if(hoverBuildInfo == researchInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildFusionCorePanel(){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+        Team team = player.team();
+
+        Seq<Sc2ResearchSpec> specs = ResearchQueueService.fusionCoreSpecs();
+        int col = 0;
+        for(int i = 0; i < specs.size && col < COLS; i++, col++){
+            Sc2ResearchSpec spec = specs.get(i);
+            if(spec.displayAvailable(team)){
+                BuildInfo researchInfo = makeFusionCoreResearchInfo(spec, spec.hotkey);
+                UnitType iconUnit = spec.iconUnit();
+                Drawable icon = new TextureRegionDrawable(iconUnit == null ? Blocks.surgeCrucible.uiIcon : iconUnit.uiIcon);
+                Button researchButton = addIconButton(grid, spec.hotkey, icon,
+                    () -> spec.canStart(team),
+                    () -> tryStartResearchSpec(spec));
+                researchButton.update(() -> {
+                    if(researchButton.isOver()){
+                        hoverBuildInfo = researchInfo;
+                    }else if(hoverBuildInfo == researchInfo){
+                        hoverBuildInfo = null;
+                    }
+                });
+            }else{
+                addEmpty(grid);
+            }
+        }
+        for(; col < COLS; col++){
+            addEmpty(grid);
+        }
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(ResearchQueueService.fusionCoreAnyResearching(team)){
+            BuildInfo cancelInfo = makeFusionCoreAnyResearchInfo("Esc");
+            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, this::cancelFusionCoreResearch);
+            cancelButton.update(() -> {
+                if(cancelButton.isOver()){
+                    hoverBuildInfo = cancelInfo;
+                }else if(hoverBuildInfo == cancelInfo){
+                    hoverBuildInfo = null;
+                }
+            });
+        }else{
+            addEmpty(grid);
+        }
+
+        Table root = new Table();
+        root.add(info).growX().padBottom(4f).row();
+        root.add(grid);
+        add(root);
+    }
+
+    private void buildTechLabPanel(){
+        Block attached = selectedTechLabAttachedFactoryBlock();
+        Seq<Sc2ResearchSpec> specs = ResearchQueueService.techLabSpecs(attached);
+        if(specs.any()){
+            buildTechLabPanelForFactory(attached, specs);
+            return;
+        }
+
+        setPanelRows(3);
+        Table grid = new Table();
+        fillRow(grid, 0, 0);
+        grid.row();
+        fillRow(grid, 1, 0);
+        grid.row();
+        fillRow(grid, 2, 0);
+        add(grid);
+    }
+
+    private void buildTechLabPanelForFactory(@Nullable Block attachedFactory, Seq<Sc2ResearchSpec> specs){
+        setPanelRows(3);
+        Table info = buildBuildInfoTable();
+        Table grid = new Table();
+        Team team = player.team();
+
+        int col = 0;
+        for(int i = 0; i < specs.size && col < COLS; i++, col++){
+            Sc2ResearchSpec spec = specs.get(i);
+            if(spec.displayAvailable(team)){
+                BuildInfo researchInfo = makeTechLabResearchInfo(spec, spec.hotkey);
+                UnitType iconUnit = spec.iconUnit();
+                Drawable icon = new TextureRegionDrawable(iconUnit == null ? Blocks.memoryBank.uiIcon : iconUnit.uiIcon);
+                Button researchButton = addIconButton(grid, spec.hotkey, icon,
+                    () -> spec.canStart(team),
+                    () -> tryStartTechLabResearch(attachedFactory, spec));
+                researchButton.update(() -> {
+                    if(researchButton.isOver()){
+                        hoverBuildInfo = researchInfo;
+                    }else if(hoverBuildInfo == researchInfo){
+                        hoverBuildInfo = null;
+                    }
+                });
+            }else{
+                addEmpty(grid);
+            }
+        }
+        for(; col < COLS; col++){
+            addEmpty(grid);
+        }
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        if(ResearchQueueService.techLabAnyResearching(team, attachedFactory)){
+            BuildInfo cancelInfo = makeTechLabAnyResearchInfo(attachedFactory, "Esc");
+            Button cancelButton = addIconButton(grid, "Esc", Icon.cancel, () -> true, () -> cancelTechLabResearch(attachedFactory));
+            cancelButton.update(() -> {
+                if(cancelButton.isOver()){
+                    hoverBuildInfo = cancelInfo;
+                }else if(hoverBuildInfo == cancelInfo){
                     hoverBuildInfo = null;
                 }
             });
@@ -2467,107 +2661,78 @@ public class UnitAbilityPanel extends Table{
         return makeUpgradeInfo(Blocks.corePlanetaryFortress, key, CoreBlock.fortressUpgradeCost, CoreBlock.fortressUpgradeGasCost, CoreBlock.fortressUpgradeTime, core::fortressUpgradeFraction, core::isUpgradingFortress);
     }
 
-    private BuildInfo makeVehicleWeaponUpgradeInfo(String key, int level){
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.siliconCrucible;
-        info.key = key;
-        info.name = "Vehicle Weapons Lv." + level;
-        info.crystalCost = UnitTypes.vehicleWeaponCrystalCost(level);
-        info.gasCost = UnitTypes.vehicleWeaponGasCost(level);
-        info.timeSeconds = Math.round(UnitTypes.vehicleWeaponResearchDuration(level) / 60f);
-        return info;
-    }
-
-    private BuildInfo makeVehicleWeaponResearchInfo(String key){
-        int level = UnitTypes.vehicleWeaponResearchingLevel(player.team());
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.siliconCrucible;
-        info.key = key;
-        info.name = level > 0 ? "Vehicle Weapons Lv." + level : "Vehicle Weapons";
-        info.crystalCost = level > 0 ? UnitTypes.vehicleWeaponCrystalCost(level) : 0;
-        info.gasCost = level > 0 ? UnitTypes.vehicleWeaponGasCost(level) : 0;
-        info.timeSeconds = level > 0 ? Math.round(UnitTypes.vehicleWeaponResearchDuration(level) / 60f) : 0;
-        info.progress = () -> UnitTypes.vehicleWeaponResearchProgress(player.team());
-        info.progressVisible = () -> UnitTypes.vehicleWeaponResearching(player.team());
-        info.progressColor = Color.cyan;
-        info.progressIcon = new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon);
-        return info;
-    }
-
-    private BuildInfo makeVehicleArmorUpgradeInfo(String key, int level){
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.siliconCrucible;
-        info.key = key;
-        info.name = "Vehicle/Ship Plating Lv." + level;
-        info.crystalCost = UnitTypes.vehicleArmorCrystalCost(level);
-        info.gasCost = UnitTypes.vehicleArmorGasCost(level);
-        info.timeSeconds = Math.round(UnitTypes.vehicleArmorResearchDuration(level) / 60f);
-        return info;
-    }
-
-    private BuildInfo makeVehicleArmorResearchInfo(String key){
-        int level = UnitTypes.vehicleArmorResearchingLevel(player.team());
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.siliconCrucible;
-        info.key = key;
-        info.name = level > 0 ? "Vehicle/Ship Plating Lv." + level : "Vehicle/Ship Plating";
-        info.crystalCost = level > 0 ? UnitTypes.vehicleArmorCrystalCost(level) : 0;
-        info.gasCost = level > 0 ? UnitTypes.vehicleArmorGasCost(level) : 0;
-        info.timeSeconds = level > 0 ? Math.round(UnitTypes.vehicleArmorResearchDuration(level) / 60f) : 0;
-        info.progress = () -> UnitTypes.vehicleArmorResearchProgress(player.team());
-        info.progressVisible = () -> UnitTypes.vehicleArmorResearching(player.team());
-        info.progressColor = Color.cyan;
-        info.progressIcon = new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon);
-        return info;
-    }
-
-    private BuildInfo makeShipWeaponUpgradeInfo(String key, int level){
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.shipFabricator;
-        info.key = key;
-        info.name = "Ship Weapons Lv." + level;
-        info.crystalCost = UnitTypes.shipWeaponCrystalCost(level);
-        info.gasCost = UnitTypes.shipWeaponGasCost(level);
-        info.timeSeconds = Math.round(UnitTypes.shipWeaponResearchDuration(level) / 60f);
-        return info;
-    }
-
-    private BuildInfo makeShipWeaponResearchInfo(String key){
-        int level = UnitTypes.shipWeaponResearchingLevel(player.team());
-        BuildInfo info = new BuildInfo();
-        info.block = Blocks.shipFabricator;
-        info.key = key;
-        info.name = level > 0 ? "Ship Weapons Lv." + level : "Ship Weapons";
-        info.crystalCost = level > 0 ? UnitTypes.shipWeaponCrystalCost(level) : 0;
-        info.gasCost = level > 0 ? UnitTypes.shipWeaponGasCost(level) : 0;
-        info.timeSeconds = level > 0 ? Math.round(UnitTypes.shipWeaponResearchDuration(level) / 60f) : 0;
-        info.progress = () -> UnitTypes.shipWeaponResearchProgress(player.team());
-        info.progressVisible = () -> UnitTypes.shipWeaponResearching(player.team());
-        info.progressColor = Color.cyan;
-        info.progressIcon = new TextureRegionDrawable(Blocks.shipFabricator.uiIcon);
-        return info;
-    }
-
-    private BuildInfo makeArmoryAnyResearchInfo(String key){
-        if(UnitTypes.vehicleWeaponResearching(player.team())){
-            return makeVehicleWeaponResearchInfo(key);
+    private @Nullable Block findCatalogIconBlock(Sc2ResearchSpec active, Seq<Sc2ResearchSpec> specs, Block[] icons){
+        for(int i = 0; i < specs.size; i++){
+            if(specs.get(i) == active){
+                return i < icons.length ? icons[i] : null;
+            }
         }
-        if(UnitTypes.shipWeaponResearching(player.team())){
-            return makeShipWeaponResearchInfo(key);
-        }
-        if(UnitTypes.vehicleArmorResearching(player.team())){
-            return makeVehicleArmorResearchInfo(key);
+        return null;
+    }
+
+    private BuildInfo makeArmoryAnyResearchInfo(String key, Seq<Sc2ResearchSpec> specs, Block[] icons){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.siliconCrucible;
+        info.key = key;
+        info.progressColor = Color.cyan;
+
+        Team team = player.team();
+        Sc2ResearchSpec active = ResearchQueueService.armoryActiveResearch(team);
+        Block iconBlock = active == null ? Blocks.siliconCrucible : findCatalogIconBlock(active, specs, icons);
+        if(iconBlock == null) iconBlock = Blocks.siliconCrucible;
+
+        if(active != null){
+            info.name = active.name(team);
+            info.crystalCost = active.crystalCost(team);
+            info.gasCost = active.gasCost(team);
+            info.timeSeconds = Math.round(active.duration(team) / 60f);
+            info.progressIcon = new TextureRegionDrawable(iconBlock.uiIcon);
+        }else{
+            info.name = "Armory Upgrade";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.siliconCrucible.uiIcon);
         }
 
+        info.progress = () -> {
+            Sc2ResearchSpec spec = ResearchQueueService.armoryActiveResearch(player.team());
+            return spec == null ? 0f : spec.progress(player.team());
+        };
+        info.progressVisible = () -> ResearchQueueService.armoryAnyResearching(player.team());
+        return info;
+    }
+
+    private BuildInfo makeInfantryAnyResearchInfo(String key, Seq<Sc2ResearchSpec> specs, Block[] icons){
         BuildInfo info = new BuildInfo();
-        info.block = Blocks.siliconCrucible;
+        info.block = Blocks.multiPress;
         info.key = key;
-        info.name = "Armory Upgrade";
-        info.crystalCost = 0;
-        info.gasCost = 0;
-        info.timeSeconds = 0;
-        info.progress = () -> 0f;
-        info.progressVisible = () -> false;
+        info.progressColor = Color.cyan;
+
+        Team team = player.team();
+        Sc2ResearchSpec active = ResearchQueueService.engineeringActiveResearch(team);
+        Block iconBlock = active == null ? Blocks.multiPress : findCatalogIconBlock(active, specs, icons);
+        if(iconBlock == null) iconBlock = Blocks.multiPress;
+
+        if(active != null){
+            info.name = active.name(team);
+            info.crystalCost = active.crystalCost(team);
+            info.gasCost = active.gasCost(team);
+            info.timeSeconds = Math.round(active.duration(team) / 60f);
+            info.progressIcon = new TextureRegionDrawable(iconBlock.uiIcon);
+        }else{
+            info.name = "Engineering Upgrade";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
+        }
+
+        info.progress = () -> {
+            Sc2ResearchSpec spec = ResearchQueueService.engineeringActiveResearch(player.team());
+            return spec == null ? 0f : spec.progress(player.team());
+        };
+        info.progressVisible = () -> ResearchQueueService.engineeringAnyResearching(player.team());
         return info;
     }
 
@@ -2669,6 +2834,298 @@ public class UnitAbilityPanel extends Table{
         info.progressVisible = this::anyGhostAcademyProducingWarhead;
         info.progressColor = Color.cyan;
         info.progressIcon = new TextureRegionDrawable(Blocks.launchPad.uiIcon);
+        return info;
+    }
+
+    /* Legacy hardcoded tech-lab build info helpers retained for migration reference.
+    private BuildInfo makeBarracksBlastShieldInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "防爆护盾";
+        info.crystalCost = UnitTypes.barracksBlastShieldCrystalCost();
+        info.gasCost = UnitTypes.barracksBlastShieldGasCost();
+        info.timeSeconds = Math.round(UnitTypes.barracksBlastShieldResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.barracksBlastShieldResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.barracksBlastShieldResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.dagger.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeBarracksStimpackResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "强化剂";
+        info.crystalCost = UnitTypes.barracksStimpackCrystalCost();
+        info.gasCost = UnitTypes.barracksStimpackGasCost();
+        info.timeSeconds = Math.round(UnitTypes.barracksStimpackResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.barracksStimpackResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.barracksStimpackResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.fortress.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeBarracksConcussiveResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "震荡弹";
+        info.crystalCost = UnitTypes.barracksConcussiveCrystalCost();
+        info.gasCost = UnitTypes.barracksConcussiveGasCost();
+        info.timeSeconds = Math.round(UnitTypes.barracksConcussiveResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.barracksConcussiveResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.barracksConcussiveResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.fortress.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeBarracksAnyResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.progressColor = Color.cyan;
+
+        if(UnitTypes.barracksBlastShieldResearching(player.team())){
+            info.name = "防爆护盾";
+            info.crystalCost = UnitTypes.barracksBlastShieldCrystalCost();
+            info.gasCost = UnitTypes.barracksBlastShieldGasCost();
+            info.timeSeconds = Math.round(UnitTypes.barracksBlastShieldResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.dagger.uiIcon);
+        }else if(UnitTypes.barracksStimpackResearching(player.team())){
+            info.name = "强化剂";
+            info.crystalCost = UnitTypes.barracksStimpackCrystalCost();
+            info.gasCost = UnitTypes.barracksStimpackGasCost();
+            info.timeSeconds = Math.round(UnitTypes.barracksStimpackResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.fortress.uiIcon);
+        }else if(UnitTypes.barracksConcussiveResearching(player.team())){
+            info.name = "震荡弹";
+            info.crystalCost = UnitTypes.barracksConcussiveCrystalCost();
+            info.gasCost = UnitTypes.barracksConcussiveGasCost();
+            info.timeSeconds = Math.round(UnitTypes.barracksConcussiveResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.fortress.uiIcon);
+        }else{
+            info.name = "Barracks Tech";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.memoryBank.uiIcon);
+        }
+
+        info.progress = () -> {
+            if(UnitTypes.barracksBlastShieldResearching(player.team())) return UnitTypes.barracksBlastShieldResearchProgress(player.team());
+            if(UnitTypes.barracksStimpackResearching(player.team())) return UnitTypes.barracksStimpackResearchProgress(player.team());
+            if(UnitTypes.barracksConcussiveResearching(player.team())) return UnitTypes.barracksConcussiveResearchProgress(player.team());
+            return 0f;
+        };
+        info.progressVisible = () -> UnitTypes.barracksTechAnyResearching(player.team());
+        return info;
+    }
+
+    private BuildInfo makeInfernoPreheaterResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "Inferno Pre-Igniter";
+        info.crystalCost = UnitTypes.infernoPreheaterCrystalCost();
+        info.gasCost = UnitTypes.infernoPreheaterGasCost();
+        info.timeSeconds = Math.round(UnitTypes.infernoPreheaterResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.infernoPreheaterResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.infernoPreheaterResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.locus.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeElectromagneticFieldAcceleratorResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "Electromagnetic Field Accelerator";
+        info.crystalCost = UnitTypes.electromagneticFieldAcceleratorCrystalCost();
+        info.gasCost = UnitTypes.electromagneticFieldAcceleratorGasCost();
+        info.timeSeconds = Math.round(UnitTypes.electromagneticFieldAcceleratorResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.electromagneticFieldAcceleratorResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.electromagneticFieldAcceleratorResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.hurricane.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeDrillClawResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "Drilling Claws";
+        info.crystalCost = UnitTypes.drillClawCrystalCost();
+        info.gasCost = UnitTypes.drillClawGasCost();
+        info.timeSeconds = Math.round(UnitTypes.drillClawResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.drillClawResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.drillClawResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.crawler.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeSmartServosResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.name = "Smart Servos";
+        info.crystalCost = UnitTypes.smartServosCrystalCost();
+        info.gasCost = UnitTypes.smartServosGasCost();
+        info.timeSeconds = Math.round(UnitTypes.smartServosResearchDuration() / 60f);
+        info.progress = () -> UnitTypes.smartServosResearchProgress(player.team());
+        info.progressVisible = () -> UnitTypes.smartServosResearching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(UnitTypes.mace.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeHeavyFactoryAnyResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.progressColor = Color.cyan;
+
+        if(UnitTypes.infernoPreheaterResearching(player.team())){
+            info.name = "Inferno Pre-Igniter";
+            info.crystalCost = UnitTypes.infernoPreheaterCrystalCost();
+            info.gasCost = UnitTypes.infernoPreheaterGasCost();
+            info.timeSeconds = Math.round(UnitTypes.infernoPreheaterResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.locus.uiIcon);
+        }else if(UnitTypes.electromagneticFieldAcceleratorResearching(player.team())){
+            info.name = "Electromagnetic Field Accelerator";
+            info.crystalCost = UnitTypes.electromagneticFieldAcceleratorCrystalCost();
+            info.gasCost = UnitTypes.electromagneticFieldAcceleratorGasCost();
+            info.timeSeconds = Math.round(UnitTypes.electromagneticFieldAcceleratorResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.hurricane.uiIcon);
+        }else if(UnitTypes.drillClawResearching(player.team())){
+            info.name = "Drilling Claws";
+            info.crystalCost = UnitTypes.drillClawCrystalCost();
+            info.gasCost = UnitTypes.drillClawGasCost();
+            info.timeSeconds = Math.round(UnitTypes.drillClawResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.crawler.uiIcon);
+        }else if(UnitTypes.smartServosResearching(player.team())){
+            info.name = "Smart Servos";
+            info.crystalCost = UnitTypes.smartServosCrystalCost();
+            info.gasCost = UnitTypes.smartServosGasCost();
+            info.timeSeconds = Math.round(UnitTypes.smartServosResearchDuration() / 60f);
+            info.progressIcon = new TextureRegionDrawable(UnitTypes.mace.uiIcon);
+        }else{
+            info.name = "Heavy Factory Tech";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.memoryBank.uiIcon);
+        }
+
+        info.progress = () -> {
+            if(UnitTypes.infernoPreheaterResearching(player.team())) return UnitTypes.infernoPreheaterResearchProgress(player.team());
+            if(UnitTypes.electromagneticFieldAcceleratorResearching(player.team())) return UnitTypes.electromagneticFieldAcceleratorResearchProgress(player.team());
+            if(UnitTypes.drillClawResearching(player.team())) return UnitTypes.drillClawResearchProgress(player.team());
+            if(UnitTypes.smartServosResearching(player.team())) return UnitTypes.smartServosResearchProgress(player.team());
+            return 0f;
+        };
+        info.progressVisible = () -> UnitTypes.heavyFactoryTechAnyResearching(player.team());
+        return info;
+    }
+
+    */
+    private BuildInfo makeTechLabResearchInfo(Sc2ResearchSpec spec, String key){
+        BuildInfo info = new BuildInfo();
+        UnitType iconUnit = spec.iconUnit();
+        info.block = Blocks.memoryBank;
+        info.unit = iconUnit;
+        info.key = key;
+        info.name = spec.name(player.team());
+        info.crystalCost = spec.crystalCost(player.team());
+        info.gasCost = spec.gasCost(player.team());
+        info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
+        info.progress = () -> spec.progress(player.team());
+        info.progressVisible = () -> spec.researching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(iconUnit == null ? Blocks.memoryBank.uiIcon : iconUnit.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeFusionCoreResearchInfo(Sc2ResearchSpec spec, String key){
+        BuildInfo info = new BuildInfo();
+        UnitType iconUnit = spec.iconUnit();
+        info.block = Blocks.surgeCrucible;
+        info.unit = iconUnit;
+        info.key = key;
+        info.name = spec.name(player.team());
+        info.crystalCost = spec.crystalCost(player.team());
+        info.gasCost = spec.gasCost(player.team());
+        info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
+        info.progress = () -> spec.progress(player.team());
+        info.progressVisible = () -> spec.researching(player.team());
+        info.progressColor = Color.cyan;
+        info.progressIcon = new TextureRegionDrawable(iconUnit == null ? Blocks.surgeCrucible.uiIcon : iconUnit.uiIcon);
+        return info;
+    }
+
+    private BuildInfo makeTechLabAnyResearchInfo(@Nullable Block attachedFactory, String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.memoryBank;
+        info.key = key;
+        info.progressColor = Color.cyan;
+        Sc2ResearchSpec active = ResearchQueueService.techLabActiveResearch(player.team(), attachedFactory);
+
+        if(active != null){
+            UnitType iconUnit = active.iconUnit();
+            info.name = active.name(player.team());
+            info.crystalCost = active.crystalCost(player.team());
+            info.gasCost = active.gasCost(player.team());
+            info.timeSeconds = Math.round(active.duration(player.team()) / 60f);
+            info.progressIcon = new TextureRegionDrawable(iconUnit == null ? Blocks.memoryBank.uiIcon : iconUnit.uiIcon);
+        }else{
+            info.name = attachedFactory == Blocks.groundFactory ? "Barracks Tech" : "Heavy Factory Tech";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.memoryBank.uiIcon);
+        }
+
+        info.progress = () -> {
+            Sc2ResearchSpec spec = ResearchQueueService.techLabActiveResearch(player.team(), attachedFactory);
+            return spec == null ? 0f : spec.progress(player.team());
+        };
+        info.progressVisible = () -> ResearchQueueService.techLabAnyResearching(player.team(), attachedFactory);
+        return info;
+    }
+
+    private BuildInfo makeFusionCoreAnyResearchInfo(String key){
+        BuildInfo info = new BuildInfo();
+        info.block = Blocks.surgeCrucible;
+        info.key = key;
+        info.progressColor = Color.cyan;
+        Sc2ResearchSpec active = ResearchQueueService.fusionCoreActiveResearch(player.team());
+
+        if(active != null){
+            UnitType iconUnit = active.iconUnit();
+            info.name = active.name(player.team());
+            info.crystalCost = active.crystalCost(player.team());
+            info.gasCost = active.gasCost(player.team());
+            info.timeSeconds = Math.round(active.duration(player.team()) / 60f);
+            info.progressIcon = new TextureRegionDrawable(iconUnit == null ? Blocks.surgeCrucible.uiIcon : iconUnit.uiIcon);
+        }else{
+            info.name = "Fusion Core Upgrade";
+            info.crystalCost = 0;
+            info.gasCost = 0;
+            info.timeSeconds = 0;
+            info.progressIcon = new TextureRegionDrawable(Blocks.surgeCrucible.uiIcon);
+        }
+
+        info.progress = () -> {
+            Sc2ResearchSpec spec = ResearchQueueService.fusionCoreActiveResearch(player.team());
+            return spec == null ? 0f : spec.progress(player.team());
+        };
+        info.progressVisible = () -> ResearchQueueService.fusionCoreAnyResearching(player.team());
         return info;
     }
 
@@ -2882,6 +3339,37 @@ public class UnitAbilityPanel extends Table{
         }
         if(ids.size > 0){
             Call.commandHurricaneLock(player, ids.toArray());
+        }
+    }
+
+    private boolean anyBarracksStimpackSelectedCanUse(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
+            if(UnitTypes.barracksStimpackCanUse(unit)) return true;
+        }
+        return false;
+    }
+
+    private float selectedBarracksStimpackCooldown(){
+        float result = 0f;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
+            result = Math.max(result, UnitTypes.barracksStimpackCooldown(unit));
+        }
+        return result;
+    }
+
+    private void issueBarracksStimpackCommand(){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
+            if(!UnitTypes.barracksStimpackCanUse(unit)) continue;
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandBarracksStimpack(player, ids.toArray());
+        }else if(UnitTypes.barracksStimpackLevel(player.team()) <= 0){
+            ui.hudfrag.setHudText("Requires Stimpack");
         }
     }
 
@@ -3159,6 +3647,38 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private boolean anyMaceCanTransformToLocus(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMace(unit)) continue;
+            if(UnitTypes.maceCanTransformToLocus(unit)) return true;
+        }
+        return false;
+    }
+
+    private boolean anyLocusCanTransformToMace(){
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLocus(unit)) continue;
+            if(UnitTypes.locusCanTransformToMace(unit)) return true;
+        }
+        return false;
+    }
+
+    private void issueMaceLocusModeCommand(boolean toLocus){
+        IntSeq ids = new IntSeq();
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid()) continue;
+            if(toLocus){
+                if(!UnitTypes.isMace(unit) || !UnitTypes.maceCanTransformToLocus(unit)) continue;
+            }else{
+                if(!UnitTypes.isLocus(unit) || !UnitTypes.locusCanTransformToMace(unit)) continue;
+            }
+            ids.add(unit.id);
+        }
+        if(ids.size > 0){
+            Call.commandMaceLocusMode(player, ids.toArray(), toLocus);
+        }
+    }
+
     private boolean anyVikingCanSwitchToMech(){
         for(Unit unit : control.input.selectedUnits){
             if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
@@ -3370,7 +3890,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyRavenCanUseMatrix(){
-        if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
+        if(UnitTypes.ravenMatrixTechLevel(player.team()) <= 0){
             return false;
         }
         for(Unit unit : control.input.selectedUnits){
@@ -3569,6 +4089,22 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyMaceSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMace(unit)) return false;
+        }
+        return true;
+    }
+
+    private boolean isOnlyLocusSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLocus(unit)) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyBattlecruiserSelected(){
         if(control.input.selectedUnits.isEmpty()) return false;
         for(Unit unit : control.input.selectedUnits){
@@ -3625,6 +4161,14 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyBarracksStimpackSelected(){
+        if(control.input.selectedUnits.isEmpty()) return false;
+        for(Unit unit : control.input.selectedUnits){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlySupplySelected(){
         if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
         for(Building build : control.input.commandBuildings){
@@ -3665,12 +4209,63 @@ public class UnitAbilityPanel extends Table{
         return true;
     }
 
+    private boolean isOnlyFusionCoreSelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.surgeCrucible) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyGhostAcademySelected(){
         if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
         for(Building build : control.input.commandBuildings){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) return false;
         }
         return true;
+    }
+
+    private boolean isOnlyTechLabSelected(){
+        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build == null || !build.isValid() || build.block != Blocks.memoryBank) return false;
+        }
+        return true;
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild attachedFactoryForTechLab(@Nullable Building techLab){
+        if(techLab == null || !techLab.isValid() || techLab.block != Blocks.memoryBank) return null;
+
+        for(Building build : Groups.build){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(!factory.isValid() || factory.team != techLab.team || !factory.hasTechAddon()) continue;
+
+            int size = factory.block.size;
+            int baseX = factory.tile.x - (size - 1) / 2;
+            int baseY = factory.tile.y - (size - 1) / 2;
+            Tile addonTile = world.tile(baseX + size, baseY);
+            if(addonTile == null) continue;
+            if(addonTile.build == techLab){
+                return factory;
+            }
+        }
+
+        return null;
+    }
+
+    private @Nullable Block selectedTechLabAttachedFactoryBlock(){
+        if(!isOnlyTechLabSelected()) return null;
+        Block block = null;
+        for(Building build : control.input.commandBuildings){
+            UnitFactory.UnitFactoryBuild factory = attachedFactoryForTechLab(build);
+            if(factory == null) return null;
+            if(block == null){
+                block = factory.block;
+            }else if(block != factory.block){
+                return null;
+            }
+        }
+        return block;
     }
 
     private boolean anyRadarCanStartRecycle(){
@@ -3814,6 +4409,26 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private void handleMaceHotkeys(){
+        if(Core.input.keyTap(KeyCode.e)){
+            if(anyMaceCanTransformToLocus()){
+                issueMaceLocusModeCommand(true);
+            }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+                ui.hudfrag.setHudText("Requires Armory");
+            }
+        }
+    }
+
+    private void handleLocusHotkeys(){
+        if(Core.input.keyTap(KeyCode.d)){
+            if(anyLocusCanTransformToMace()){
+                issueMaceLocusModeCommand(false);
+            }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+                ui.hudfrag.setHudText("Requires Armory");
+            }
+        }
+    }
+
     private void handlePreceptHotkeys(){
         if(Core.input.keyTap(KeyCode.e)){
             issuePreceptSiegeCommand(true);
@@ -3944,7 +4559,7 @@ public class UnitAbilityPanel extends Table{
             if(anyBattlecruiserCanUseYamato()){
                 enterCommandMode(CommandMode.BATTLECRUISER_YAMATO);
             }else if(!UnitTypes.battlecruiserHasYamatoTech(player.team())){
-                ui.hudfrag.setHudText("Requires Fusion Core");
+                ui.hudfrag.setHudText("Requires Weapon Refit");
             }
         }else if(Core.input.keyTap(KeyCode.t) && anyBattlecruiserCanUseWarp()){
             enterCommandMode(CommandMode.BATTLECRUISER_WARP);
@@ -3955,8 +4570,8 @@ public class UnitAbilityPanel extends Table{
         if(Core.input.keyTap(KeyCode.c)){
             if(anyBansheeCanToggleCloak()){
                 issueBansheeCloakCommand();
-            }else if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
-                ui.hudfrag.setHudText("Requires Ship Tech Lab");
+            }else if(UnitTypes.bansheeCloakFieldLevel(player.team()) <= 0){
+                ui.hudfrag.setHudText("Requires Cloaking Field");
             }
         }
     }
@@ -3976,9 +4591,15 @@ public class UnitAbilityPanel extends Table{
         }else if(Core.input.keyTap(KeyCode.c)){
             if(anyRavenCanUseMatrix()){
                 enterCommandMode(CommandMode.RAVEN_MATRIX);
-            }else if(!UnitTypes.ravenTeamHasTechAddon(player.team())){
-                ui.hudfrag.setHudText("Requires Ship Tech Lab");
+            }else if(UnitTypes.ravenMatrixTechLevel(player.team()) <= 0){
+                ui.hudfrag.setHudText("Requires Interference Matrix");
             }
+        }
+    }
+
+    private void handleBarracksStimpackHotkeys(){
+        if(Core.input.keyTap(KeyCode.t)){
+            issueBarracksStimpackCommand();
         }
     }
 
@@ -4145,124 +4766,16 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
-    private void tryStartVehicleWeaponResearch(){
-        int level = UnitTypes.vehicleWeaponLevel(player.team()) + 1;
-        if(level > 3){
-            ui.hudfrag.setHudText("Already fully upgraded");
-            return;
-        }
-        if(UnitTypes.armoryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(UnitTypes.infantryWeaponLevel(player.team()) < level){
-            ui.hudfrag.setHudText("Requires Infantry Weapons Lv." + level);
-            return;
-        }
-        if(!UnitTypes.vehicleWeaponStartResearch(player.team(), level)){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
-
-    private void tryStartVehicleArmorResearch(){
-        int level = UnitTypes.vehicleArmorLevel(player.team()) + 1;
-        if(level > 3){
-            ui.hudfrag.setHudText("Already fully upgraded");
-            return;
-        }
-        if(UnitTypes.armoryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.vehicleArmorStartResearch(player.team(), level)){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
-
-    private void tryStartShipWeaponResearch(){
-        int level = UnitTypes.shipWeaponLevel(player.team()) + 1;
-        if(level > 3){
-            ui.hudfrag.setHudText("Already fully upgraded");
-            return;
-        }
-        if(UnitTypes.armoryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.shipWeaponStartResearch(player.team(), level)){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
 
     private void cancelArmoryResearch(){
-        if(UnitTypes.vehicleWeaponCancelResearch(player.team()) || UnitTypes.shipWeaponCancelResearch(player.team()) || UnitTypes.vehicleArmorCancelResearch(player.team())){
+        if(UnitTypes.armoryCancelAnyResearch(player.team())){
             ui.hudfrag.setHudText("Research cancelled");
         }
     }
 
-    private void tryStartInfantryWeaponResearch(){
-        int level = UnitTypes.infantryWeaponLevel(player.team()) + 1;
-        if(level > 3){
-            ui.hudfrag.setHudText("Already fully upgraded");
-            return;
-        }
-        if(UnitTypes.infantryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.infantryWeaponHasArmory(player.team())){
-            ui.hudfrag.setHudText("Requires Armory");
-            return;
-        }
-        if(!UnitTypes.infantryWeaponStartResearch(player.team(), level)){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
-
-    private void tryStartInfantryArmorResearch(){
-        int level = UnitTypes.infantryArmorLevel(player.team()) + 1;
-        if(level > 3){
-            ui.hudfrag.setHudText("Already fully upgraded");
-            return;
-        }
-        if(UnitTypes.infantryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.infantryWeaponHasArmory(player.team())){
-            ui.hudfrag.setHudText("Requires Armory");
-            return;
-        }
-        if(!UnitTypes.infantryArmorStartResearch(player.team(), level)){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
-
-    private void tryStartInstantTrackingResearch(){
-        if(UnitTypes.instantTrackingLevel(player.team()) > 0){
-            ui.hudfrag.setHudText("Already researched");
-            return;
-        }
-        if(UnitTypes.infantryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.instantTrackingStartResearch(player.team())){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-        }
-    }
-
-    private void tryStartSteelArmorResearch(){
-        if(UnitTypes.steelArmorLevel(player.team()) > 0){
-            ui.hudfrag.setHudText("Already researched");
-            return;
-        }
-        if(UnitTypes.infantryAnyResearching(player.team())){
-            ui.hudfrag.setHudText("Research already in progress");
-            return;
-        }
-        if(!UnitTypes.steelArmorStartResearch(player.team())){
-            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+    private void cancelFusionCoreResearch(){
+        if(ResearchQueueService.fusionCoreCancelAnyResearch(player.team())){
+            ui.hudfrag.setHudText("Research cancelled");
         }
     }
 
@@ -4280,8 +4793,40 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private void tryStartResearchSpec(Sc2ResearchSpec spec){
+        Team team = player.team();
+        if(!spec.displayAvailable(team)){
+            ui.hudfrag.setHudText(spec.alreadyMessage);
+            return;
+        }
+
+        String blocked = spec.blockedReason(team);
+        if(blocked != null && !blocked.isEmpty()){
+            ui.hudfrag.setHudText(blocked);
+            return;
+        }
+
+        if(!spec.startResearch(team)){
+            ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+        }
+    }
+
+    private void tryStartTechLabResearch(@Nullable Block attachedFactory, Sc2ResearchSpec spec){
+        if(selectedTechLabAttachedFactoryBlock() != attachedFactory){
+            ui.hudfrag.setHudText(ResearchQueueService.techLabRequirementText(attachedFactory));
+            return;
+        }
+        tryStartResearchSpec(spec);
+    }
+
     private void cancelGhostCamoResearch(){
         if(UnitTypes.ghostCamoCancelAnyResearch(player.team())){
+            ui.hudfrag.setHudText("Research cancelled");
+        }
+    }
+
+    private void cancelTechLabResearch(@Nullable Block attachedFactory){
+        if(ResearchQueueService.techLabCancelAny(player.team(), attachedFactory)){
             ui.hudfrag.setHudText("Research cancelled");
         }
     }
@@ -4289,6 +4834,18 @@ public class UnitAbilityPanel extends Table{
     private void cancelInfantryResearch(){
         if(UnitTypes.infantryCancelAnyResearch(player.team())){
             ui.hudfrag.setHudText("Research cancelled");
+        }
+    }
+
+    private boolean researchHotkeyTapped(String hotkey){
+        if(hotkey == null || hotkey.isEmpty()) return false;
+        if(hotkey.equalsIgnoreCase("esc")) return Core.input.keyTap(KeyCode.escape);
+        if(hotkey.length() != 1) return false;
+
+        try{
+            return Core.input.keyTap(KeyCode.valueOf(hotkey.toLowerCase()));
+        }catch(IllegalArgumentException ignored){
+            return false;
         }
     }
 
@@ -4324,27 +4881,41 @@ public class UnitAbilityPanel extends Table{
             return;
         }
         if(isOnlyArmorySelected()){
-            if(Core.input.keyTap(KeyCode.e)){
-                tryStartVehicleWeaponResearch();
-            }else if(Core.input.keyTap(KeyCode.a)){
-                tryStartVehicleArmorResearch();
-            }else if(Core.input.keyTap(KeyCode.h)){
-                tryStartShipWeaponResearch();
+            Seq<Sc2ResearchSpec> specs = ResearchQueueService.armorySpecs();
+            for(int i = 0; i < specs.size; i++){
+                Sc2ResearchSpec spec = specs.get(i);
+                if(researchHotkeyTapped(spec.hotkey)){
+                    tryStartResearchSpec(spec);
+                    break;
+                }
             }
             if(Core.input.keyTap(KeyCode.escape)){
                 cancelArmoryResearch();
             }
             return;
         }
+        if(isOnlyFusionCoreSelected()){
+            Seq<Sc2ResearchSpec> specs = ResearchQueueService.fusionCoreSpecs();
+            for(int i = 0; i < specs.size; i++){
+                Sc2ResearchSpec spec = specs.get(i);
+                if(researchHotkeyTapped(spec.hotkey)){
+                    tryStartResearchSpec(spec);
+                    break;
+                }
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                cancelFusionCoreResearch();
+            }
+            return;
+        }
         if(isOnlyEngineeringSelected()){
-            if(Core.input.keyTap(KeyCode.e)){
-                tryStartInfantryWeaponResearch();
-            }else if(Core.input.keyTap(KeyCode.a)){
-                tryStartInfantryArmorResearch();
-            }else if(Core.input.keyTap(KeyCode.h)){
-                tryStartInstantTrackingResearch();
-            }else if(Core.input.keyTap(KeyCode.b)){
-                tryStartSteelArmorResearch();
+            Seq<Sc2ResearchSpec> specs = ResearchQueueService.engineeringSpecs();
+            for(int i = 0; i < specs.size; i++){
+                Sc2ResearchSpec spec = specs.get(i);
+                if(researchHotkeyTapped(spec.hotkey)){
+                    tryStartResearchSpec(spec);
+                    break;
+                }
             }
             if(Core.input.keyTap(KeyCode.escape)){
                 cancelInfantryResearch();
@@ -4359,6 +4930,21 @@ public class UnitAbilityPanel extends Table{
             }
             if(Core.input.keyTap(KeyCode.escape)){
                 cancelGhostCamoResearch();
+            }
+            return;
+        }
+        if(isOnlyTechLabSelected()){
+            Block attached = selectedTechLabAttachedFactoryBlock();
+            Seq<Sc2ResearchSpec> specs = ResearchQueueService.techLabSpecs(attached);
+            for(int i = 0; i < specs.size; i++){
+                Sc2ResearchSpec spec = specs.get(i);
+                if(researchHotkeyTapped(spec.hotkey)){
+                    tryStartTechLabResearch(attached, spec);
+                    break;
+                }
+            }
+            if(Core.input.keyTap(KeyCode.escape)){
+                cancelTechLabResearch(attached);
             }
             return;
         }
@@ -4439,7 +5025,7 @@ public class UnitAbilityPanel extends Table{
                 if(factory.canLift()){
                     queueFactoryLift(factory);
                 }else{
-                    ui.hudfrag.setHudText("Cannot lift while training");
+                    showFactoryCannotLiftReason(factory);
                 }
             }
 
@@ -4565,8 +5151,21 @@ public class UnitAbilityPanel extends Table{
         });
     }
 
+    private void showFactoryCannotLiftReason(UnitFactory.UnitFactoryBuild factory){
+        if(factory == null) return;
+        if(UnitTypes.factoryTechResearching(factory)){
+            ui.hudfrag.setHudText("Cannot lift while tech research is in progress");
+        }else{
+            ui.hudfrag.setHudText("Cannot lift while training");
+        }
+    }
+
     private void queueFactoryLift(UnitFactory.UnitFactoryBuild factory){
         if(factory == null) return;
+        if(!factory.canLift()){
+            showFactoryCannotLiftReason(factory);
+            return;
+        }
         triggerFactoryLiftPrep(factory);
         Time.run(60f, () -> {
             if(factory.isValid() && factory.canLift()){
