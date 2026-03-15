@@ -4,6 +4,7 @@ import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
+import mindustry.ai.*;
 import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.units.*;
@@ -19,7 +20,7 @@ public class RepairAI extends AIController{
     private static final int repairTargetNone = 0;
     private static final int repairTargetUnit = 1;
     private static final int repairTargetBuilding = 2;
-    private static final float scvRepairRange = 1.5f * tilesize;
+    private static final float scvRepairRange = 0.95f;
     private static final float scvRepairUnitPercentPerSecond = 0.01f;
     private static final float scvRepairBuildingsPerSecond = 21f;
     private static final float scvRepairCostScale = 0.75f;
@@ -33,6 +34,9 @@ public class RepairAI extends AIController{
     int repairCostTargetBuilding = -1;
     float repairCostHealed = 0f;
     IntIntMap repairCostPaid = new IntIntMap();
+    int scvHealTargetKind = repairTargetNone;
+    int scvHealTargetId = -1;
+    float scvHealCarry = 0f;
 
     @Override
     public void commandTarget(Teamc moveTo){
@@ -53,6 +57,9 @@ public class RepairAI extends AIController{
         repairCostTargetBuilding = -1;
         repairCostHealed = 0f;
         repairCostPaid.clear();
+        scvHealTargetKind = repairTargetNone;
+        scvHealTargetId = -1;
+        scvHealCarry = 0f;
     }
 
     private void ensureRepairCostTarget(int kind, int id){
@@ -76,6 +83,13 @@ public class RepairAI extends AIController{
         }
     }
 
+    private void ensureScvHealTarget(int kind, int id){
+        if(scvHealTargetKind == kind && scvHealTargetId == id) return;
+        scvHealTargetKind = kind;
+        scvHealTargetId = id;
+        scvHealCarry = 0f;
+    }
+
     private boolean isScv(){
         return unit != null && unit.type == UnitTypes.nova;
     }
@@ -87,12 +101,12 @@ public class RepairAI extends AIController{
         if(value instanceof Unit ally){
             return ally.isValid()
                 && ally != unit
-                && ally.damaged()
+                && ally.health < ally.maxHealth() - 0.001f
                 && ally.type.unitClasses.contains(UnitClass.mechanical);
         }
 
         if(value instanceof Building build){
-            return build.isValid() && build.team == unit.team && build.damaged() && !(build instanceof ConstructBuild);
+            return build.isValid() && build.team == unit.team && !(build instanceof ConstructBuild);
         }
 
         return false;
@@ -105,8 +119,105 @@ public class RepairAI extends AIController{
         return 4f;
     }
 
+    private float scvRepairApproach(@Nullable Teamc value){
+        if(unit == null) return 0f;
+        return scvRepairRange + targetRadius(value) + unit.hitSize / 2f;
+    }
+
+    private boolean isRepairTargetFull(@Nullable Teamc value){
+        if(value instanceof Unit ally){
+            return ally.health >= ally.maxHealth() - 0.001f;
+        }
+        if(value instanceof Building build){
+            return build.health >= build.maxHealth() - 0.001f;
+        }
+        return true;
+    }
+
+    private void moveToScvRepairTarget(Teamc value){
+        if(unit == null || value == null) return;
+
+        if(value instanceof Building build){
+            float tx = build.x, ty = build.y;
+            float desired = build.hitSize() / 2f + unit.hitSize / 2f;
+            if(unit.dst2(tx, ty) <= desired * desired) return;
+
+            Tmp.v1.set(unit.x - tx, unit.y - ty);
+            if(Tmp.v1.isZero(0.001f)){
+                Tmp.v1.set(1f, 0f);
+            }
+            Tmp.v1.setLength(desired);
+            Tmp.v2.set(tx + Tmp.v1.x, ty + Tmp.v1.y);
+            moveTo(Tmp.v2, 0f, 20f);
+            return;
+        }
+
+        float approach = scvRepairApproach(value);
+        if(!value.within(unit, approach)){
+            moveTo(value, approach, 20f);
+        }
+    }
+
     private void updateScvMovement(){
         unit.controlWeapons(false);
+
+        if(unit.controller() instanceof CommandAI ai){
+            Teamc active = target != null ? target : forcedTarget;
+            if(active != null && isRepairTargetFull(active) && ai.commandQueue.size > 0){
+                target = null;
+                forcedTarget = null;
+            }
+        }
+
+        if((target == null || !validScvRepairTarget(target)) && (forcedTarget == null || !validScvRepairTarget(forcedTarget))){
+            if(unit.controller() instanceof CommandAI ai && ai.commandQueue.size > 0){
+                while(ai.commandQueue.size > 0){
+                    Position next = ai.commandQueue.remove(0);
+                    if(next instanceof Teamc teamc){
+                        if(teamc.team() == unit.team){
+                            forcedTarget = teamc;
+                            target = teamc;
+                            break;
+                        }else{
+                            //Non-friendly queued command: hand control back to CommandAI.
+                            ai.command(UnitCommand.moveCommand);
+                            ai.commandTarget(teamc, ai.stopAtTarget);
+                            return;
+                        }
+                    }else if(next instanceof CommandAI.RepairMarker marker){
+                        Building build = marker.build();
+                        if(build != null && build.team == unit.team && !(build instanceof ConstructBuild)){
+                            forcedTarget = build;
+                            target = build;
+                            break;
+                        }else{
+                            //Target vanished; skip.
+                            continue;
+                        }
+                    }else if(next instanceof Vec2 vec){
+                        Building build = world.buildWorld(vec.x, vec.y);
+                        if(build != null && build.team == unit.team && !(build instanceof ConstructBuild) && build.within(vec.x, vec.y, build.hitSize() / 2f + 1f)){
+                            if(build.health < build.maxHealth() - 0.001f){
+                                forcedTarget = build;
+                                target = build;
+                                break;
+                            }else{
+                                //Already full; skip and continue processing the queue.
+                                continue;
+                            }
+                        }
+
+                        ai.command(UnitCommand.moveCommand);
+                        ai.commandPosition(vec);
+                        return;
+                    }else{
+                        ai.command(UnitCommand.moveCommand);
+                        ai.commandPosition(new Vec2(next.getX(), next.getY()));
+                        return;
+                    }
+                }
+            }
+        }
 
         if(!validScvRepairTarget(target)){
             if(!validScvRepairTarget(forcedTarget)){
@@ -120,13 +231,10 @@ public class RepairAI extends AIController{
 
         if(target == null) return;
 
-        float approach = scvRepairRange + targetRadius(target);
-        if(!target.within(unit, approach)){
-            moveTo(target, approach);
-        }
+        moveToScvRepairTarget(target);
         unit.lookAt(target);
 
-        if(target.within(unit, approach)){
+        if(Units.withinTargetRange(target, unit.x, unit.y, scvRepairRange, unit.hitSize / 2f)){
             applyScvRepair(target);
         }
     }
@@ -135,51 +243,89 @@ public class RepairAI extends AIController{
         if(net.client()) return;
 
         if(target instanceof Unit ally){
-            if(!ally.damaged()) return;
+            if(ally.health >= ally.maxHealth() - 0.001f) return;
             float heal = ally.maxHealth * scvRepairUnitPercentPerSecond * Time.delta / 60f;
             healScvUnit(ally, heal);
         }else if(target instanceof Building build){
-            if(!build.damaged() || build instanceof ConstructBuild) return;
+            if(build.health >= build.maxHealth() - 0.001f || build instanceof ConstructBuild) return;
             float heal = scvRepairBuildingsPerSecond * Time.delta / 60f;
             healScvBuilding(build, heal);
         }
     }
 
     private void healScvUnit(Unit target, float amount){
-        if(amount <= 0f || unit == null || target == null || !target.isValid() || !target.damaged()) return;
+        if(amount <= 0f || unit == null || target == null || !target.isValid() || target.health >= target.maxHealth() - 0.001f) return;
 
-        float heal = Math.min(amount, Math.max(target.maxHealth - target.health, 0f));
-        if(heal <= 0f) return;
+        ensureScvHealTarget(repairTargetUnit, target.id);
 
+        float remaining = Math.max(target.maxHealth() - target.health, 0f);
+        if(remaining <= 0.0001f) return;
+
+        float total = amount + scvHealCarry;
+        int whole = (int)total;
+        if(whole <= 0){
+            scvHealCarry = total;
+            return;
+        }
+
+        int need = Mathf.ceil(remaining - 0.0001f);
+        int apply = Math.min(whole, need);
+        if(apply <= 0){
+            scvHealCarry = total;
+            return;
+        }
+
+        float heal = apply;
         if(!consumeScvRepairResources(target, heal)){
+            scvHealCarry = total;
             return;
         }
 
         target.heal(heal);
+        scvHealCarry = (total - whole) + (whole - apply);
     }
 
     private void healScvBuilding(Building target, float amount){
-        if(amount <= 0f || unit == null || target == null || !target.isValid() || !target.damaged()) return;
+        if(amount <= 0f || unit == null || target == null || !target.isValid() || target.health >= target.maxHealth() - 0.001f) return;
 
-        float heal = Math.min(amount, Math.max(target.maxHealth() - target.health, 0f));
-        if(heal <= 0f) return;
+        ensureScvHealTarget(repairTargetBuilding, target.id);
 
+        float remaining = Math.max(target.maxHealth() - target.health, 0f);
+        if(remaining <= 0.0001f) return;
+
+        float total = amount + scvHealCarry;
+        int whole = (int)total;
+        if(whole <= 0){
+            scvHealCarry = total;
+            return;
+        }
+
+        int need = Mathf.ceil(remaining - 0.0001f);
+        int apply = Math.min(whole, need);
+        if(apply <= 0){
+            scvHealCarry = total;
+            return;
+        }
+
+        float heal = apply;
         if(!consumeScvBuildingResources(target, heal)){
+            scvHealCarry = total;
             return;
         }
 
         target.heal(heal);
+        scvHealCarry = (total - whole) + (whole - apply);
     }
 
     private boolean consumeScvRepairResources(Unit target, float healAmount){
         if(state.rules.infiniteResources || unit.team.rules().infiniteResources) return true;
-        if(target == null || healAmount <= 0f || target.maxHealth <= 0.0001f) return false;
+        if(target == null || healAmount <= 0f || target.maxHealth() <= 0.0001f) return false;
 
         ItemStack[] requirements = target.type.getTotalRequirements();
         if(requirements == null || requirements.length == 0) return true;
 
         float unitCostScale = Math.max(state.rules.unitCost(unit.team), 0f) * scvRepairCostScale;
-        return consumeRepairCost(requirements, target.maxHealth, healAmount, unitCostScale, repairTargetUnit, target.id);
+        return consumeRepairCost(requirements, target.maxHealth(), healAmount, unitCostScale, repairTargetUnit, target.id);
     }
 
     private boolean consumeScvBuildingResources(Building target, float healAmount){

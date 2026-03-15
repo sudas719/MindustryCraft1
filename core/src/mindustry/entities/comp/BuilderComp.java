@@ -104,7 +104,9 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         if(Float.isNaN(buildCounter) || Float.isInfinite(buildCounter)) buildCounter = 0f;
         buildCounter = Math.min(buildCounter, 10f);
 
-        boolean instant = state.rules.instantBuild && state.rules.infiniteResources;
+        boolean infiniteResources = state.rules.infiniteResources || team().rules().infiniteResources;
+        boolean instant = (state.rules.instantBuild && state.rules.infiniteResources)
+        || (infiniteResources && type == UnitTypes.nova);
 
         //random attempt to fix a freeze that only occurs on Android
         int maxPerFrame = instant ? plans.size : 10, count = 0;
@@ -251,7 +253,7 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
             if(current.breaking){
                 entity.deconstruct(self(), core, bs);
             }else if(entity.current != null && (state.isEditor() || (state.rules.waves && team == state.rules.waveTeam && entity.current.isVisible()) || (entity.current.unlockedNowHost() && entity.current.environmentBuildable() && entity.current.isPlaceable()))){ //only allow building unlocked blocks
-                entity.construct(self(), core, bs, current.config);
+                entity.construct(self(), core, instant ? 1f : bs, current.config);
             }
 
             current.stuck = Mathf.equal(current.progress, entity.progress);

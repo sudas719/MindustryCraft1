@@ -144,7 +144,7 @@ public class Binding{
     screenshot = KeyBind.add("screenshot", KeyCode.unset),  //Disabled: conflicts with RTS Patrol command
     togglePowerLines = KeyBind.add("toggle_power_lines", KeyCode.f5),
     toggleBlockStatus = KeyBind.add("toggle_block_status", KeyCode.f6),
-    playerList = KeyBind.add("player_list", KeyCode.tab, "multiplayer"),
+    playerList = KeyBind.add("player_list", KeyCode.k, "multiplayer"),
     chat = KeyBind.add("chat", KeyCode.enter),
     chatHistoryPrev = KeyBind.add("chat_history_prev", KeyCode.up),
     chatHistoryNext = KeyBind.add("chat_history_next", KeyCode.down),

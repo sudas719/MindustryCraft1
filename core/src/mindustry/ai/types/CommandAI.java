@@ -19,6 +19,50 @@ import mindustry.world.meta.*;
 import static mindustry.Vars.*;
 
 public class CommandAI extends AIController{
+    /** Marker for queued SCV repair orders against buildings. */
+    public static class RepairMarker implements Position{
+        public int buildPos;
+        public float x, y;
+
+        public RepairMarker(){
+        }
+
+        public RepairMarker(Building build){
+            if(build != null){
+                buildPos = build.pos();
+                x = build.x;
+                y = build.y;
+            }
+        }
+
+        @Nullable
+        public Building build(){
+            return world.build(buildPos);
+        }
+
+        @Override
+        public float getX(){
+            Building build = build();
+            return build != null ? build.x : x;
+        }
+
+        @Override
+        public float getY(){
+            Building build = build();
+            return build != null ? build.y : y;
+        }
+
+        @Override
+        public boolean equals(Object obj){
+            return obj instanceof RepairMarker other && other.buildPos == buildPos;
+        }
+
+        @Override
+        public int hashCode(){
+            return buildPos;
+        }
+    }
+
     protected static final int maxCommandQueueSize = 50, avoidInterval = 10;
     protected static final float centerArrivalThreshold = 0.2f;
     protected static final Vec2 vecOut = new Vec2(), vecMovePos = new Vec2();
@@ -90,6 +134,13 @@ public class CommandAI extends AIController{
             this.command = command;
             if(command != UnitCommand.harvestCommand){
                 pendingHarvestTarget = null;
+            }
+            if(lastCommand != command){
+                lastCommand = command;
+                commandController = (command == null ? null : command.controller.get(unit));
+                if(commandController != null && commandController.unit() != unit){
+                    commandController.unit(unit);
+                }
             }
         }
     }
@@ -775,10 +826,59 @@ public class CommandAI extends AIController{
 
         if(commandQueue.size > 0){
             Position next = commandQueue.remove(0);
-            if(next instanceof Teamc){
-                commandTarget((Teamc)next, this.stopAtTarget);
+            if(next instanceof RepairMarker marker){
+                if(unit.type == UnitTypes.nova){
+                    Building build = marker.build();
+                    if(build != null && build.team == unit.team && !(build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild)){
+                        command(UnitCommand.repairCommand);
+                        commandTarget(build, this.stopAtTarget);
+                    }else{
+                        //Target vanished; continue.
+                        if(commandQueue.size > 0){
+                            finishPath();
+                        }
+                        return;
+                    }
+                }else{
+                    commandPosition(new Vec2(marker.getX(), marker.getY()));
+                }
+            }else if(next instanceof Teamc){
+                boolean handled = false;
+                if(unit.type == UnitTypes.nova){
+                    Teamc teamc = (Teamc)next;
+                    if(teamc.team() == unit.team){
+                        boolean repairMarker = false;
+                        if(teamc instanceof Unit ally){
+                            repairMarker = ally.isValid() && ally != unit && ally.type.unitClasses.contains(UnitClass.mechanical);
+                        }else if(teamc instanceof Building build){
+                            //do not treat "attackable-all-teams" friendly buildings as repair markers
+                            repairMarker = build.isValid() && !(build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild) && !Units.targetableAllTeams(build);
+                        }
+
+                        if(repairMarker){
+                            command(UnitCommand.repairCommand);
+                            commandTarget(teamc, this.stopAtTarget);
+                            handled = true;
+                        }
+                    }
+                }
+
+                if(!handled){
+                    commandTarget((Teamc)next, this.stopAtTarget);
+                }
             }else if(next instanceof Vec2){
-                commandPosition((Vec2)next);
+                Vec2 vec = (Vec2)next;
+                if(unit.type == UnitTypes.nova){
+                    Building build = world.buildWorld(vec.x, vec.y);
+                    if(build != null && build.team == unit.team && !(build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild) && build.within(vec.x, vec.y, build.hitSize() / 2f + 1f)){
+                        command(UnitCommand.repairCommand);
+                        commandTarget(build, this.stopAtTarget);
+                    }else{
+                        commandPosition(vec);
+                    }
+                }else{
+                    commandPosition(vec);
+                }
             }
 
             if(prev != null && (hasStance(UnitStance.patrol) || command == UnitCommand.loopPayloadCommand)){
@@ -947,7 +1047,11 @@ public class CommandAI extends AIController{
     }
 
     public void commandQueue(Position location){
-        if(targetPos == null && attackTarget == null){
+        queueCommand(location, false);
+    }
+
+    public void queueCommand(Position location, boolean forceQueue){
+        if(!forceQueue && targetPos == null && attackTarget == null){
             if(location instanceof Teamc){
                 commandTarget((Teamc)location, this.stopAtTarget);
             }else if(location instanceof Vec2){
@@ -1137,9 +1241,6 @@ public class CommandAI extends AIController{
         if(pos == null) return;
 
         commandPosition(pos, false, false);
-        if(commandController != null){
-            commandController.commandPosition(pos);
-        }
     }
 
     public void commandPosition(Vec2 pos, boolean stopWhenInRange){
@@ -1163,21 +1264,22 @@ public class CommandAI extends AIController{
                 targetPos.set(build);
             }
         }
-        boolean retainAttack = UnitTypes.isBattlecruiser(unit) && attackTarget != null && !attackMovePosition;
+        boolean retainAttack = UnitTypes.isBattlecruiser(unit) && attackTarget != null && !attackMovePosition && command != UnitCommand.moveCommand;
         if(!retainAttack){
             attackTarget = null;
         }
         retainAttackTargetOnMove = retainAttack;
         this.stopWhenInRange = stopWhenInRange;
         this.attackMovePosition = attackMovePosition;
+
+        if(commandController != null){
+            commandController.commandPosition(targetPos);
+        }
     }
 
     @Override
     public void commandTarget(Teamc moveTo){
         commandTarget(moveTo, false);
-        if(commandController != null){
-            commandController.commandTarget(moveTo);
-        }
     }
 
     public void commandTarget(Teamc moveTo, boolean stopAtTarget){
@@ -1190,6 +1292,10 @@ public class CommandAI extends AIController{
         attackMovePosition = false;
         retainAttackTargetOnMove = false;
         this.stopAtTarget = stopAtTarget;
+
+        if(commandController != null){
+            commandController.commandTarget(moveTo);
+        }
     }
 
     public void commandFollow(Teamc target){

@@ -640,7 +640,7 @@ public class MobileInput extends InputHandler implements GestureListener{
                 }
             }
 
-            if(!state.isPaused()) Fx.select.at(pos);
+            //no long-press selection circle
         }else{
 
             //ignore off-screen taps

@@ -24,6 +24,7 @@ import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.blocks.defense.*;
@@ -59,6 +60,12 @@ public class DesktopInput extends InputHandler{
     /** Edge scrolling state */
     public boolean edgeScrolling = false;
     public float edgeScrollX = 0f, edgeScrollY = 0f;
+    private static boolean windowFocusInit = false;
+    private static boolean windowFocusSupported = false;
+    private static Class<?> sdlAppClass;
+    private static java.lang.reflect.Field sdlWindowField;
+    private static java.lang.reflect.Method sdlGetWindowFlagsMethod;
+    private static int sdlWindowFocusFlag;
     /** Delta time between consecutive clicks. */
     public long selectMillis = 0;
     /** Previously selected tile. */
@@ -117,6 +124,39 @@ public class DesktopInput extends InputHandler{
         }
         spectatorHighView = false;
         spectatorBaseScale = -1f;
+    }
+
+    private static boolean windowFocused(){
+        if(Core.graphics.isHidden()) return false;
+        if(!windowFocusInit){
+            windowFocusInit = true;
+            try{
+                sdlAppClass = Class.forName("arc.backend.sdl.SdlApplication");
+                if(sdlAppClass.isInstance(Core.app)){
+                    Class<?> sdlClass = Class.forName("arc.backend.sdl.jni.SDL");
+                    sdlWindowField = sdlAppClass.getDeclaredField("window");
+                    sdlWindowField.setAccessible(true);
+                    sdlGetWindowFlagsMethod = sdlClass.getMethod("SDL_GetWindowFlags", long.class);
+                    sdlWindowFocusFlag = sdlClass.getField("SDL_WINDOW_INPUT_FOCUS").getInt(null);
+                    windowFocusSupported = true;
+                }else{
+                    windowFocusSupported = false;
+                }
+            }catch(Throwable t){
+                windowFocusSupported = false;
+            }
+        }
+
+        if(!windowFocusSupported) return true;
+        try{
+            if(!sdlAppClass.isInstance(Core.app)) return true;
+            long window = sdlWindowField.getLong(Core.app);
+            if(window == 0L) return true;
+            int flags = (int)sdlGetWindowFlagsMethod.invoke(null, window);
+            return (flags & sdlWindowFocusFlag) != 0;
+        }catch(Throwable t){
+            return true;
+        }
     }
 
     boolean showHint(){
@@ -373,6 +413,15 @@ public class DesktopInput extends InputHandler{
             ui.listfrag.toggle();
         }
 
+        if(!ui.chatfrag.shown() && !scene.hasField() && !scene.hasDialog() && Core.input.keyTap(KeyCode.tab)){
+            if(!selectedUnits.isEmpty()){
+                boolean forward = !(Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight));
+                if(cycleAbilitySubgroup(forward)){
+                    Events.fire(Trigger.unitCommandChange);
+                }
+            }
+        }
+
         boolean locked = locked();
         boolean panCam = false;
         float camSpeed = (!Core.input.keyDown(Binding.boost) ? panSpeed : panBoostSpeed) * Time.delta;
@@ -451,7 +500,7 @@ public class DesktopInput extends InputHandler{
             }
 
             //edge scrolling
-            if(Core.settings.getBool("edgescrolling") && !scene.hasDialog() && !scene.hasField()){
+            if(Core.settings.getBool("edgescrolling") && windowFocused() && !scene.hasDialog() && !scene.hasField()){
                 float edgeDist = Core.settings.getInt("edgescrolldistance", 20);
                 float edgeSpeed = Core.settings.getInt("edgescrollspeed", 10) * Time.delta;
 
@@ -483,6 +532,10 @@ public class DesktopInput extends InputHandler{
                 }else{
                     edgeScrolling = false;
                 }
+            }else{
+                edgeScrollX = 0f;
+                edgeScrollY = 0f;
+                edgeScrolling = false;
             }
         }
 
@@ -567,40 +620,65 @@ public class DesktopInput extends InputHandler{
                     IntSeq group = controlGroups[i];
                     boolean creating = input.keyDown(Binding.createControlGroup);
                     boolean adding = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
+                    boolean hasSelection = !selectedUnits.isEmpty() || !commandBuildings.isEmpty();
+                    if(adding && hasSelection && group.isEmpty()){
+                        //Shift+number on an empty group should behave like creating a new group.
+                        creating = true;
+                        adding = false;
+                    }
+                    IntSeq selectedUnitIds = null;
+                    IntSeq selectedBuildingPos = null;
+                    IntSeq selectedBuildingIds = null;
+                    if(creating || adding){
+                        selectedUnitIds = selectedUnits.mapInt(u -> u.id);
+                        selectedBuildingPos = commandBuildings.mapInt(b -> b.pos());
+                        selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
+                        if(selectedUnitIds.isEmpty() && selectedBuildingPos.isEmpty()){
+                            Building hoverBuild = buildAt(input.mouseWorldX(), input.mouseWorldY());
+                            if(hoverBuild != null && hoverBuild.team == player.team()){
+                                selectedBuildingPos.add(hoverBuild.pos());
+                                selectedBuildingIds.add(hoverBuild.id);
+                            }
+                        }
+                    }
 
                     //clear existing if making a new control group
                     //if any of the control group edit buttons are pressed take the current selection
                     if(creating){
+                        if(selectedUnitIds.isEmpty() && selectedBuildingPos.isEmpty()){
+                            continue;
+                        }
                         group.clear();
 
-                        IntSeq selectedUnitIds = selectedUnits.mapInt(u -> u.id);
-                        IntSeq selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
                         if(Core.settings.getBool("distinctcontrolgroups", true)){
                             for(IntSeq cg : controlGroups){
                                 if(cg != null){
                                     cg.removeAll(selectedUnitIds);
+                                    cg.removeAll(selectedBuildingPos);
                                     cg.removeAll(selectedBuildingIds);
                                 }
                             }
                         }
                         group.addAll(selectedUnitIds);
-                        group.addAll(selectedBuildingIds);
+                        group.addAll(selectedBuildingPos);
                     }else if(adding){
                         //Shift+number: Add currently selected units to this formation
-                        IntSeq selectedUnitIds = selectedUnits.mapInt(u -> u.id);
-                        IntSeq selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
+                        if(selectedUnitIds.isEmpty() && selectedBuildingPos.isEmpty()){
+                            continue;
+                        }
 
                         if(Core.settings.getBool("distinctcontrolgroups", true)){
                             for(IntSeq cg : controlGroups){
                                 if(cg != null && cg != group){
                                     cg.removeAll(selectedUnitIds);
+                                    cg.removeAll(selectedBuildingPos);
                                     cg.removeAll(selectedBuildingIds);
                                 }
                             }
                         }
 
                         group.addAll(selectedUnitIds);
-                        group.addAll(selectedBuildingIds);
+                        group.addAll(selectedBuildingPos);
                     }
 
                     //remove invalid units and buildings
@@ -611,15 +689,18 @@ public class DesktopInput extends InputHandler{
 
                         //Buildings don't have ID mapping, search manually
                         if(u == null){
-                            for(Building building : Groups.build){
-                                if(building.id == id){
-                                    b = building;
-                                    break;
+                            b = world.build(id);
+                            if(b == null){
+                                for(Building building : Groups.build){
+                                    if(building.id == id){
+                                        b = building;
+                                        break;
+                                    }
                                 }
                             }
                         }
 
-                        if((u == null || !u.isCommandable() || !u.isValid()) && (b == null || !b.isCommandable() || !b.isValid())){
+                        if((u == null || !u.isValid()) && (b == null || !b.isValid())){
                             group.removeIndex(j);
                             j --;
                         }
@@ -636,10 +717,13 @@ public class DesktopInput extends InputHandler{
 
                             //Buildings don't have ID mapping, search manually
                             if(unit == null){
-                                for(Building b : Groups.build){
-                                    if(b.id == id){
-                                        building = b;
-                                        break;
+                                building = world.build(id);
+                                if(building == null){
+                                    for(Building b : Groups.build){
+                                        if(b.id == id){
+                                            building = b;
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -1272,11 +1356,13 @@ public class DesktopInput extends InputHandler{
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_TACTICAL_NUKE
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_STABLE_AIM
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_EMP
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.REAPER_KD8
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_ANTI_ARMOR
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_MATRIX
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_ATTACK
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUNKER_LOAD
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.HARVEST
+        || mode == mindustry.ui.UnitAbilityPanel.CommandMode.REPAIR
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.MOVE
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.ATTACK
         || mode == mindustry.ui.UnitAbilityPanel.CommandMode.PATROL;
@@ -1335,6 +1421,13 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.REPAIR){
+            if(executeNovaRepairCommand(worldX, worldY, shiftHeld) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.RALLY){
             executeRallyCommand(worldX, worldY);
             ui.hudfrag.abilityPanel.exitCommandMode();
@@ -1383,21 +1476,21 @@ public class DesktopInput extends InputHandler{
         }
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_HEAL){
-            if(executeMedivacHealCommand(worldX, worldY) && !shiftHeld){
+            if(executeMedivacHealCommand(worldX, worldY, shiftHeld) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
         }
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_LOAD){
-            if(executeMedivacLoadCommand(worldX, worldY) && !shiftHeld){
+            if(executeMedivacLoadCommand(worldX, worldY, shiftHeld) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
         }
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.MEDIVAC_UNLOAD){
-            if(executeMedivacUnloadCommand(worldX, worldY) && !shiftHeld){
+            if(executeMedivacUnloadCommand(worldX, worldY, shiftHeld) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
@@ -1433,6 +1526,13 @@ public class DesktopInput extends InputHandler{
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.GHOST_EMP){
             if(executeGhostEmpCommand(worldX, worldY) && !shiftHeld){
+                ui.hudfrag.abilityPanel.exitCommandMode();
+            }
+            return;
+        }
+
+        if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.REAPER_KD8){
+            if(executeReaperKd8Command(worldX, worldY) && !shiftHeld){
                 ui.hudfrag.abilityPanel.exitCommandMode();
             }
             return;
@@ -1474,7 +1574,7 @@ public class DesktopInput extends InputHandler{
         }
 
         if(mode == mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE){
-            executeBuildPlacement(worldX, worldY);
+            executeBuildPlacement(worldX, worldY, shiftHeld);
             return;
         }
 
@@ -1505,6 +1605,57 @@ public class DesktopInput extends InputHandler{
                 ((HarvestAI)unit.controller()).setHarvestTarget(target);
             }
         }
+        return true;
+    }
+
+    private boolean executeNovaRepairCommand(float worldX, float worldY, boolean queue){
+        if(selectedUnits.isEmpty()) return false;
+
+        Tile tile = world.tileWorld(worldX, worldY);
+        Building build = tile != null ? tile.build : world.buildWorld(worldX, worldY);
+        if(build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild construct && construct.team == player.team()){
+            Block cur = construct.current;
+            if(cur == null || cur == Blocks.air) return false;
+
+            IntSeq scvIds = new IntSeq();
+            int tx = construct.tile.x, ty = construct.tile.y;
+            for(Unit unit : selectedUnits){
+                if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
+                BuildPlan plan = new BuildPlan(tx, ty, construct.rotation, cur, cur.saveConfig ? construct.lastConfig : null);
+                plan.requireClose = true;
+                unit.addBuild(plan);
+                unit.updateBuilding(true);
+                scvIds.add(unit.id);
+            }
+
+            if(scvIds.isEmpty()) return false;
+
+            float targetX = tx * tilesize + cur.offset;
+            float targetY = ty * tilesize + cur.offset;
+            Call.commandUnits(player, scvIds.toArray(), null, null, new Vec2(targetX, targetY), queue, true, false);
+            return true;
+        }
+
+        Teamc target = (build != null && build.team == player.team() && build.health < build.maxHealth() - 0.001f) ? build : null;
+        if(target == null){
+            Unit unit = selectedAnyUnit(worldX, worldY);
+            if(unit != null && unit.team == player.team() && !selectedUnits.contains(unit) && unit.type.unitClasses.contains(UnitClass.mechanical) && unit.health < unit.maxHealth() - 0.001f){
+                target = unit;
+            }
+        }
+
+        if(target == null) return false;
+
+        IntSeq idsSeq = new IntSeq();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova) continue;
+            idsSeq.add(unit.id);
+        }
+        if(idsSeq.isEmpty()) return false;
+
+        int[] ids = idsSeq.toArray();
+        Call.commandUnits(player, ids, target instanceof Building b ? b : null, target instanceof Unit u ? u : null,
+            new Vec2(target.getX(), target.getY()), queue, true, false);
         return true;
     }
 
@@ -1784,14 +1935,29 @@ public class DesktopInput extends InputHandler{
         return ids.toArray();
     }
 
+    private @Nullable Unit selectSingleUnit(Boolf<Unit> filter, float worldX, float worldY){
+        Unit best = null;
+        float bestDst = Float.MAX_VALUE;
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid()) continue;
+            if(filter != null && !filter.get(unit)) continue;
+            float dst = unit.dst2(worldX, worldY);
+            if(dst < bestDst){
+                bestDst = dst;
+                best = unit;
+            }
+        }
+        return best;
+    }
+
     private boolean executeLiberatorZoneCommand(float worldX, float worldY){
-        int[] ids = selectedLiberatorIds(UnitTypes::liberatorCanEnterDefense);
-        if(ids.length == 0) return false;
-        Call.commandLiberatorMode(player, ids, true, new Vec2(worldX, worldY));
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isLiberator(u) && UnitTypes.liberatorCanEnterDefense(u), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandLiberatorMode(player, new int[]{chosen.id}, true, new Vec2(worldX, worldY));
         return true;
     }
 
-    private boolean executeMedivacHealCommand(float worldX, float worldY){
+    private boolean executeMedivacHealCommand(float worldX, float worldY, boolean queue){
         Unit target = selectedAnyUnit(worldX, worldY);
         if(!UnitTypes.medivacCanHealTarget(target, player.team())) return false;
 
@@ -1800,11 +1966,11 @@ public class DesktopInput extends InputHandler{
 
         Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
         Call.commandMedivacMovingUnload(player, ids, false);
-        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), false, true, false);
+        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), queue, true, false);
         return true;
     }
 
-    private boolean executeMedivacLoadCommand(float worldX, float worldY){
+    private boolean executeMedivacLoadCommand(float worldX, float worldY, boolean queue){
         Unit target = selectedAnyUnit(worldX, worldY);
         if(target == null || target.team != player.team()) return false;
 
@@ -1813,11 +1979,11 @@ public class DesktopInput extends InputHandler{
 
         Call.setUnitCommand(player, ids, UnitCommand.loadUnitsCommand);
         Call.commandMedivacMovingUnload(player, ids, false);
-        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), false, true, false);
+        Call.commandUnits(player, ids, null, target, new Vec2(target.x, target.y), queue, true, false);
         return true;
     }
 
-    private boolean executeMedivacUnloadCommand(float worldX, float worldY){
+    private boolean executeMedivacUnloadCommand(float worldX, float worldY, boolean queue){
         int[] ids = selectedMedivacIds(u -> u instanceof Payloadc pay && !pay.payloads().isEmpty());
         if(ids.length == 0) return false;
 
@@ -1831,14 +1997,14 @@ public class DesktopInput extends InputHandler{
         }
 
         Call.commandMedivacMovingUnload(player, ids, false);
-        Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), false, true, false);
+        Call.commandUnits(player, ids, null, null, new Vec2(worldX, worldY), queue, true, false);
         return true;
     }
 
     private boolean executeRavenAntiArmorCommand(float worldX, float worldY){
-        int[] ids = selectedRavenIds(UnitTypes::ravenCanUseAntiArmor);
-        if(ids.length == 0) return false;
-        Call.commandAvertAntiArmor(player, ids, new Vec2(worldX, worldY));
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isRaven(u) && UnitTypes.ravenCanUseAntiArmor(u), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandAvertAntiArmor(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
     }
 
@@ -1854,9 +2020,9 @@ public class DesktopInput extends InputHandler{
             return false;
         }
 
-        int[] ids = selectedRavenIds(UnitTypes::ravenCanDeployTurret);
-        if(ids.length == 0) return false;
-        Call.commandAvertDeployTurret(player, ids, new Vec2(worldX, worldY));
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isRaven(u) && UnitTypes.ravenCanDeployTurret(u), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandAvertDeployTurret(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
     }
 
@@ -1870,12 +2036,12 @@ public class DesktopInput extends InputHandler{
         }
         if(target == null) return false;
 
-        int[] ids = selectedBattlecruiserIds(UnitTypes::battlecruiserCanUseYamato);
-        if(ids.length == 0) return false;
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isBattlecruiser(u) && UnitTypes.battlecruiserCanUseYamato(u), target.getX(), target.getY());
+        if(chosen == null) return false;
 
         int targetId = target instanceof Unit u ? u.id : -1;
         int buildPos = target instanceof Building b ? b.pos() : -1;
-        Call.commandBattlecruiserYamato(player, ids, targetId, buildPos);
+        Call.commandBattlecruiserYamato(player, new int[]{chosen.id}, targetId, buildPos);
         return true;
     }
 
@@ -1887,25 +2053,25 @@ public class DesktopInput extends InputHandler{
     }
 
     private boolean executeGhostTacticalNukeCommand(float worldX, float worldY){
-        int[] ids = selectedGhostIds(u -> UnitTypes.ghostCanUseTacticalNuke(u, worldX, worldY));
-        if(ids.length == 0) return false;
-        Call.commandGhostTacticalNuke(player, ids, new Vec2(worldX, worldY));
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isGhost(u) && UnitTypes.ghostCanUseTacticalNuke(u, worldX, worldY), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandGhostTacticalNuke(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
     }
 
     private boolean executeGhostStableAimCommand(float worldX, float worldY){
         Unit target = selectedAnyUnit(worldX, worldY);
         if(!UnitTypes.ghostStableAimValidTarget(target)) return false;
-        int[] ids = selectedGhostIds(UnitTypes::ghostCanUseStableAim);
-        if(ids.length == 0) return false;
-        Call.commandGhostStableAim(player, ids, target.id);
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isGhost(u) && UnitTypes.ghostCanUseStableAim(u), target.x, target.y);
+        if(chosen == null) return false;
+        Call.commandGhostStableAim(player, new int[]{chosen.id}, target.id);
         return true;
     }
 
     private boolean executeGhostEmpCommand(float worldX, float worldY){
-        int[] ids = selectedGhostIds(UnitTypes::ghostCanUseEmp);
-        if(ids.length == 0) return false;
-        Call.commandGhostEmp(player, ids, new Vec2(worldX, worldY));
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isGhost(u) && UnitTypes.ghostCanUseEmp(u), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandGhostEmp(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
     }
 
@@ -1913,10 +2079,16 @@ public class DesktopInput extends InputHandler{
         Unit target = selectedAnyUnit(worldX, worldY);
         if(target == null || !target.isValid()) return false;
 
-        int[] ids = selectedRavenIds(u -> UnitTypes.ravenCanUseMatrix(u) && UnitTypes.ravenMatrixValidTarget(target, u.team));
-        if(ids.length == 0) return false;
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isRaven(u) && UnitTypes.ravenCanUseMatrix(u) && UnitTypes.ravenMatrixValidTarget(target, u.team), target.x, target.y);
+        if(chosen == null) return false;
+        Call.commandAvertMatrix(player, new int[]{chosen.id}, target.id);
+        return true;
+    }
 
-        Call.commandAvertMatrix(player, ids, target.id);
+    private boolean executeReaperKd8Command(float worldX, float worldY){
+        Unit chosen = selectSingleUnit(u -> u.type == UnitTypes.reaper && UnitTypes.reaperCanUseKd8(u), worldX, worldY);
+        if(chosen == null) return false;
+        Call.commandReaperKd8(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
     }
 
@@ -1967,7 +2139,7 @@ public class DesktopInput extends InputHandler{
         return null;
     }
 
-    private void executeBuildPlacement(float worldX, float worldY){
+    private void executeBuildPlacement(float worldX, float worldY, boolean shiftHeld){
         if(ui.hudfrag.abilityPanel == null) return;
         Block block = ui.hudfrag.abilityPanel.getPlacingBlock();
         if(block == null){
@@ -2013,7 +2185,7 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
-        boolean queueCommand = chosen.isBuilding();
+        boolean queueCommand = shiftHeld || chosen.isBuilding();
         BuildPlan plan = new BuildPlan(tx, ty, placeRotation, block, block.saveConfig ? block.lastConfig : null);
         plan.requireClose = true;
         chosen.addBuild(plan);
@@ -2031,7 +2203,9 @@ public class DesktopInput extends InputHandler{
         float targetY = ty * tilesize + block.offset;
         Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queueCommand, true, false);
 
-        ui.hudfrag.abilityPanel.exitCommandMode();
+        if(!shiftHeld){
+            ui.hudfrag.abilityPanel.exitCommandMode();
+        }
     }
 
     private void executeQueuedCommands(){

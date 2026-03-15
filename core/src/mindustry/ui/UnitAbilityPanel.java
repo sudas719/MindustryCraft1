@@ -46,7 +46,7 @@ public class UnitAbilityPanel extends Table{
     public static float abilityKeyScale = 0.6f;
     public static final Color abilityBorderColor = Color.valueOf("2f5f2f");
     private static final float ABILITY_BUTTON_PAD = 2f;
-    private static final float PANEL_MARGIN = 4f;
+    private static final float PANEL_MARGIN = 0f;
 
     //RTS command mode state
     public enum CommandMode{
@@ -56,6 +56,7 @@ public class UnitAbilityPanel extends Table{
         HOLD,
         PATROL,
         ATTACK,
+        REPAIR,
         HARVEST,
         RALLY,
         BUILD_PLACE,
@@ -70,6 +71,7 @@ public class UnitAbilityPanel extends Table{
         GHOST_TACTICAL_NUKE,
         GHOST_STABLE_AIM,
         GHOST_EMP,
+        REAPER_KD8,
         BATTLECRUISER_YAMATO,
         BATTLECRUISER_WARP,
         RAVEN_ANTI_ARMOR,
@@ -105,6 +107,7 @@ public class UnitAbilityPanel extends Table{
     private @Nullable BuildInfo hoverBuildInfo;
     private @Nullable AbilityInfo hoverAbilityInfo;
     private final GlyphLayout hoverInfoLayout = new GlyphLayout();
+    private final AbilityInfo targetHintInfo = new AbilityInfo();
     private Table mainPanel;
     private Table commandModePanel;
     private float forcedMinWidth = -1f;
@@ -135,9 +138,11 @@ public class UnitAbilityPanel extends Table{
         String key;
         String name;
         String description = "";
+        String action = "";
         int crystalCost;
         int gasCost;
         int timeSeconds;
+        int population = -1;
         @Nullable Floatp progress;
         @Nullable Boolp progressVisible;
         @Nullable Drawable progressIcon;
@@ -151,6 +156,11 @@ public class UnitAbilityPanel extends Table{
         int crystalCost = -1;
         int gasCost = -1;
         int timeSeconds = -1;
+        int population = -1;
+        String action = "";
+        @Nullable UnitType unit;
+        @Nullable Block block;
+        boolean hintOnly = false;
     }
 
     private RTSCommand[] commands = {
@@ -163,7 +173,9 @@ public class UnitAbilityPanel extends Table{
 
     public UnitAbilityPanel(){
         background(Styles.black6);
-        margin(4f);
+        margin(0f);
+        targetHintInfo.hintOnly = true;
+        targetHintInfo.description = "Left-click select target\nRight-click return";
 
         mainPanel = new Table();
         commandModePanel = new Table();
@@ -171,7 +183,7 @@ public class UnitAbilityPanel extends Table{
         update(() -> {
             updateAutoCast();
 
-            if(control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0){
+            if(hasAbilityUnits() || hasAbilityBuildings()){
                 boolean allowKeys = !Core.scene.hasKeyboard();
                 boolean coreSelected = isOnlyCoreSelected();
                 if(!coreSelected){
@@ -184,7 +196,7 @@ public class UnitAbilityPanel extends Table{
                 }
 
                 if(allowKeys){
-                    boolean allowRtsKeys = !control.input.selectedUnits.isEmpty();
+                    boolean allowRtsKeys = hasAbilityUnits();
                     if(isOnlyNovaSelected() && (novaPanel != NovaPanel.MAIN || activeCommand == CommandMode.BUILD_PLACE)){
                         allowRtsKeys = false;
                     }
@@ -218,10 +230,8 @@ public class UnitAbilityPanel extends Table{
                         handleNovaHotkeys();
                     }else if(isOnlyWidowSelected()){
                         handleWidowHotkeys();
-                    }else if(isOnlyMaceSelected()){
-                        handleMaceHotkeys();
-                    }else if(isOnlyLocusSelected()){
-                        handleLocusHotkeys();
+                    }else if(isOnlyMaceLocusSelected()){
+                        handleMaceLocusHotkeys();
                     }else if(isOnlySiegeTankSelected()){
                         handlePreceptHotkeys();
                     }else if(isOnlyHurricaneSelected()){
@@ -234,6 +244,8 @@ public class UnitAbilityPanel extends Table{
                         handleMedivacHotkeys();
                     }else if(isOnlyGhostSelected()){
                         handleGhostHotkeys();
+                    }else if(isOnlyReaperSelected()){
+                        handleReaperHotkeys();
                     }else if(isOnlyVikingSelected()){
                         handleVikingHotkeys();
                     }else if(isOnlyBattlecruiserSelected()){
@@ -246,7 +258,7 @@ public class UnitAbilityPanel extends Table{
                         handleBarracksStimpackHotkeys();
                     }else if(isOnlyCoreFlyerSelected()){
                         handleCoreFlyerHotkeys();
-                    }else if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size > 0){
+                    }else if(!hasAbilityUnits() && hasAbilityBuildings()){
                         if(coreSelected){
                             var core = selectedCore();
                             if(core == null || !core.isUpgrading()){
@@ -281,18 +293,34 @@ public class UnitAbilityPanel extends Table{
         });
     }
 
+    private Seq<Unit> abilityUnits(){
+        return control.input.abilitySubgroupUnits();
+    }
+
+    private boolean hasAbilityUnits(){
+        return !abilityUnits().isEmpty();
+    }
+
+    private Seq<Building> abilityBuildings(){
+        return control.input.abilitySubgroupBuildings();
+    }
+
+    private boolean hasAbilityBuildings(){
+        return !abilityBuildings().isEmpty();
+    }
+
     private void rebuild(){
         clearChildren();
         clearPanelSize();
         hoverAbilityInfo = null;
 
-        if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.isEmpty()){
+        if(!hasAbilityUnits() && !hasAbilityBuildings()){
             buildEmptyPanel();
             setPanelRows(ROWS);
             return;
         }
 
-        if(control.input.selectedUnits.isEmpty() && control.input.commandBuildings.size > 0){
+        if(!hasAbilityUnits() && hasAbilityBuildings()){
             buildBuildingPanel();
             return;
         }
@@ -308,6 +336,7 @@ public class UnitAbilityPanel extends Table{
         && activeCommand != CommandMode.GHOST_TACTICAL_NUKE
         && activeCommand != CommandMode.GHOST_STABLE_AIM
         && activeCommand != CommandMode.GHOST_EMP
+        && activeCommand != CommandMode.REAPER_KD8
         && activeCommand != CommandMode.BATTLECRUISER_YAMATO
         && activeCommand != CommandMode.BATTLECRUISER_WARP
         && activeCommand != CommandMode.RAVEN_ANTI_ARMOR
@@ -325,35 +354,39 @@ public class UnitAbilityPanel extends Table{
         if(isOnlyMedivacSelected()){
             buildMedivacPanel();
         }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_TACTICAL_NUKE){
-            buildCoreTargetPanel("战术聚变打击", "左键选择打击目标点");
+            buildCoreTargetPanel("Tactical Nuke", "Left-click target point");
         }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_STABLE_AIM){
             buildCoreTargetPanel("Stable Aim", "Left-click biological unit target");
         }else if(isOnlyGhostSelected() && activeCommand == CommandMode.GHOST_EMP){
             buildCoreTargetPanel("EMP", "Left-click target point");
         }else if(isOnlyGhostSelected()){
             buildGhostPanel();
+        }else if(isOnlyReaperSelected() && activeCommand == CommandMode.REAPER_KD8){
+            buildCoreTargetPanel("KD8 Bomb", "Left-click target point");
+        }else if(isOnlyReaperSelected()){
+            buildReaperPanel();
         }else if(isOnlyVikingSelected()){
             buildVikingPanel();
         }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_YAMATO){
-            buildCoreTargetPanel("大和炮", "左键选择敌方目标");
+            buildCoreTargetPanel("Yamato Cannon", "Left-click enemy target");
         }else if(isOnlyBattlecruiserSelected() && activeCommand == CommandMode.BATTLECRUISER_WARP){
-            buildCoreTargetPanel("战术折跃", "左键选择折跃地点");
+            buildCoreTargetPanel("Tactical Warp", "Left-click warp destination");
         }else if(isOnlyBattlecruiserSelected()){
             buildBattlecruiserPanel();
         }else if(isOnlyBansheeSelected()){
             buildBansheePanel();
         }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_ANTI_ARMOR){
-            buildCoreTargetPanel("反护甲飞弹", "左键选择施法区域");
+            buildCoreTargetPanel("Anti-Armor Missile", "Left-click target area");
         }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_TURRET){
-            buildCoreTargetPanel("自动机炮", "左键选择放置位置");
+            buildCoreTargetPanel("Auto Turret", "Left-click placement location");
         }else if(isOnlyRavenSelected() && activeCommand == CommandMode.RAVEN_MATRIX){
-            buildCoreTargetPanel("干扰矩阵", "左键选择机械/灵能目标");
+            buildCoreTargetPanel("Interference Matrix", "Left-click mechanical/psionic target");
         }else if(isOnlyRavenSelected()){
             buildRavenPanel();
         }else if(isOnlyRavenTurretSelected()){
             buildRavenTurretPanel();
         }else if(isOnlyLiberatorSelected() && activeCommand == CommandMode.LIBERATOR_ZONE){
-            buildCoreTargetPanel("防卫模式", "左键选择防卫区域");
+            buildCoreTargetPanel("Defense Mode", "Left-click defense zone");
         }else if(isOnlyLiberatorSelected()){
             buildLiberatorPanel();
         }else if(isOnlyBarracksStimpackSelected()){
@@ -362,10 +395,8 @@ public class UnitAbilityPanel extends Table{
             buildCoreFlyerPanel();
         }else if(isOnlyWidowSelected()){
             buildWidowPanel();
-        }else if(isOnlyMaceSelected()){
-            buildMacePanel();
-        }else if(isOnlyLocusSelected()){
-            buildLocusPanel();
+        }else if(isOnlyMaceLocusSelected()){
+            buildMaceLocusPanel();
         }else if(isOnlySiegeTankSelected()){
             buildPreceptPanel();
         }else if(isOnlyHurricaneSelected()){
@@ -384,7 +415,7 @@ public class UnitAbilityPanel extends Table{
     private void buildDefaultPanel(){
         setPanelRows(3);
         //Check if we have any units selected (not just buildings)
-        boolean hasUnits = control.input.selectedUnits.size > 0;
+        boolean hasUnits = hasAbilityUnits();
 
         //First row: RTS commands (Move, Stop, Hold, Patrol, Attack) - only for units
         if(hasUnits){
@@ -407,7 +438,7 @@ public class UnitAbilityPanel extends Table{
         int col = 0;
         Seq<String> addedAbilities = new Seq<>();
 
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
                 if(unit.isValid()){
                     if(unit.type.canBoost && !addedAbilities.contains("Boost")){
                     addAbilityButton("", Icon.upOpen, () -> true, () -> {});
@@ -447,7 +478,7 @@ public class UnitAbilityPanel extends Table{
         //Fill remaining slots in second row if we have abilities
         if(col > 0){
             while(col < COLS){
-                add().size(abilityButtonSize).pad(2f);
+                addEmpty(this);
                 col++;
             }
             row();
@@ -456,7 +487,7 @@ public class UnitAbilityPanel extends Table{
         //Third row: Additional abilities or empty
         //Fill third row with empty slots to maintain 3-row layout
         for(int i = 0; i < COLS; i++){
-            add().size(abilityButtonSize).pad(2f);
+            addEmpty(this);
         }
     }
 
@@ -494,7 +525,6 @@ public class UnitAbilityPanel extends Table{
 
     private void buildWidowPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
 
         //Row 1: M/S/H/P/A
@@ -554,10 +584,40 @@ public class UnitAbilityPanel extends Table{
         addEmpty(grid);
         addEmpty(grid);
 
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
+    }
+
+    private void buildReaperPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        AbilityInfo kd8Info = makeAbilityInfo("d", "KD8 Bomb", "Throw a timed bomb that detonates after 1.5s. Deals 5 pierce damage and knocks back light targets.");
+        kd8Info.timeSeconds = Math.round(UnitTypes.reaperKd8ArmTimeDuration() / 60f);
+        addCooldownIconButton(grid, "d", Icon.warning, this::anyReaperCanUseKd8, () -> enterCommandMode(CommandMode.REAPER_KD8),
+        this::selectedReaperKd8Cooldown, UnitTypes::reaperKd8CooldownDuration, kd8Info);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
     }
 
     private void buildHurricanePanel(){
@@ -728,15 +788,71 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyVikingCanSwitchToFighter()){
-            addIconButton(grid, "e", Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false));
+            AbilityInfo fighterInfo = makeAbilityInfo("e", "Fighter Mode", "Transform to Fighter Mode.");
+            fighterInfo.timeSeconds = Math.round(UnitTypes.vikingTransformDuration(player.team()) / 60f);
+            addIconButton(grid, "e", Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false), fighterInfo);
         }else{
             addEmpty(grid);
         }
         if(anyVikingCanSwitchToMech()){
-            addIconButton(grid, "d", Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true));
+            AbilityInfo mechInfo = makeAbilityInfo("d", "Mech Mode", "Transform to Mech Mode.");
+            mechInfo.timeSeconds = Math.round(UnitTypes.vikingTransformDuration(player.team()) / 60f);
+            addIconButton(grid, "d", Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true), mechInfo);
         }else{
             addEmpty(grid);
         }
+        addEmpty(grid);
+        addEmpty(grid);
+        addEmpty(grid);
+
+        add(grid);
+    }
+
+    private void buildMaceLocusPanel(){
+        setPanelRows(3);
+        Table grid = new Table();
+
+        for(int i = 0; i < commands.length; i++){
+            final RTSCommand cmd = commands[i];
+            addIconButton(grid, cmd.key, cmd.icon, () -> true, () -> {
+                if(cmd.mode == CommandMode.STOP){
+                    executeStopCommand();
+                }else if(cmd.mode == CommandMode.HOLD){
+                    executeHoldCommand();
+                }else{
+                    enterCommandMode(cmd.mode);
+                }
+            });
+        }
+        grid.row();
+
+        fillRow(grid, 1, 0);
+        grid.row();
+
+        if(anyMaceSelected()){
+            AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
+            locusInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+            addIconButton(
+                grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
+                () -> issueMaceLocusModeCommand(true),
+                locusInfo
+            );
+        }else{
+            addEmpty(grid);
+        }
+
+        if(anyLocusSelected()){
+            AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
+            maceInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+            addIconButton(
+                grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
+                () -> issueMaceLocusModeCommand(false),
+                maceInfo
+            );
+        }else{
+            addEmpty(grid);
+        }
+
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -765,10 +881,12 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
+        AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
+        locusInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
         addIconButton(
             grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
             () -> issueMaceLocusModeCommand(true),
-            makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.")
+            locusInfo
         );
         addEmpty(grid);
         addEmpty(grid);
@@ -800,10 +918,12 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         addEmpty(grid);
+        AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
+        maceInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
         addIconButton(
             grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
             () -> issueMaceLocusModeCommand(false),
-            makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.")
+            maceInfo
         );
         addEmpty(grid);
         addEmpty(grid);
@@ -1063,7 +1183,8 @@ public class UnitAbilityPanel extends Table{
 
         //Row 2
         addIconButton(grid, "g", Icon.terrain, () -> true, () -> enterCommandMode(CommandMode.HARVEST));
-        fillRow(grid, 1, 1);
+        addIconButton(grid, "r", UnitCommand.repairCommand.getIcon(), () -> true, () -> enterCommandMode(CommandMode.REPAIR));
+        fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
@@ -1094,7 +1215,6 @@ public class UnitAbilityPanel extends Table{
 
     private void buildNovaBasicPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
         addBuildButton(grid, "c", Blocks.coreNucleus, () -> true, () -> startPlacement(Blocks.coreNucleus));
@@ -1115,16 +1235,11 @@ public class UnitAbilityPanel extends Table{
         addBuildButton(grid, "n", Blocks.radar, () -> Build.meetsPrerequisites(Blocks.radar, player.team()), () -> startPlacement(Blocks.radar));
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
-
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildNovaAdvancedPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
         //Row 1
         addBuildButton(grid, "g", Blocks.launchPad, () -> Build.meetsPrerequisites(Blocks.launchPad, player.team()), () -> startPlacement(Blocks.launchPad));
@@ -1143,21 +1258,17 @@ public class UnitAbilityPanel extends Table{
         addEmpty(grid);
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
-
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildBuildingPanel(){
-        if(control.input.commandBuildings.isEmpty()){
+        if(abilityBuildings().isEmpty()){
             buildEmptyPanel();
             setPanelRows(ROWS);
             return;
         }
 
-        Building build = control.input.commandBuildings.first();
+        Building build = abilityBuildings().first();
         if(build instanceof CoreBuild core){
             buildCorePanel(core);
             return;
@@ -1225,19 +1336,19 @@ public class UnitAbilityPanel extends Table{
                     if(builder != null){
                         addIconButton(grid, "q", Icon.zoom, () -> true, () -> selectBuilder(builder));
                     }else{
-                        grid.add().size(abilityButtonSize).pad(2f);
+                        addEmpty(grid);
                     }
                 }else if(r == 2 && c == 3 && incomplete){
                     Unit builder = findActiveBuilder(cons);
                     if(builder != null){
                         addIconButton(grid, "t", Icon.pause, () -> true, () -> pauseBuilder(builder));
                     }else{
-                        grid.add().size(abilityButtonSize).pad(2f);
+                        addEmpty(grid);
                     }
                 }else if(r == 2 && c == 4 && incomplete){
                     addIconButton(grid, "Esc", Icon.cancel, () -> true, () -> cancelConstruct(cons));
                 }else{
-                    grid.add().size(abilityButtonSize).pad(2f);
+                    addEmpty(grid);
                 }
             }
             grid.row();
@@ -1253,7 +1364,6 @@ public class UnitAbilityPanel extends Table{
             return;
         }
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
         boolean showAddonButtons = factory.canShowAddonButtons();
         UnitFactory block = (UnitFactory)factory.block;
@@ -1428,11 +1538,7 @@ public class UnitAbilityPanel extends Table{
         addEmpty(grid);
         addIconButton(grid, "l", Icon.export, () -> factory.canLift(), () -> queueFactoryLift(factory));
         addCancelButton(grid, () -> factory.configure(UnitFactory.sc2AddonCancelConfig));
-
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildSupplyPanel(){
@@ -1457,7 +1563,6 @@ public class UnitAbilityPanel extends Table{
 
     private void buildArmoryPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
 
         Seq<Sc2ResearchSpec> specs = ResearchQueueService.armorySpecs();
@@ -1493,15 +1598,11 @@ public class UnitAbilityPanel extends Table{
             }
         }
 
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildEngineeringPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
 
         Seq<Sc2ResearchSpec> specs = ResearchQueueService.engineeringSpecs();
@@ -1537,10 +1638,7 @@ public class UnitAbilityPanel extends Table{
             }
         }
 
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private int specSlotIndex(int slot, int[] slots){
@@ -1573,6 +1671,7 @@ public class UnitAbilityPanel extends Table{
         info.block = iconBlock;
         info.key = key;
         info.name = spec.name(player.team());
+        info.action = "Research";
         info.crystalCost = spec.crystalCost(player.team());
         info.gasCost = spec.gasCost(player.team());
         info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
@@ -1585,7 +1684,6 @@ public class UnitAbilityPanel extends Table{
 
     private void buildGhostAcademyPanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
 
         if(UnitTypes.ghostCamoLevel(player.team()) <= 0){
@@ -1637,16 +1735,11 @@ public class UnitAbilityPanel extends Table{
         }else{
             addEmpty(grid);
         }
-
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildFusionCorePanel(){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
         Team team = player.team();
 
@@ -1696,11 +1789,7 @@ public class UnitAbilityPanel extends Table{
         }else{
             addEmpty(grid);
         }
-
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildTechLabPanel(){
@@ -1723,7 +1812,6 @@ public class UnitAbilityPanel extends Table{
 
     private void buildTechLabPanelForFactory(@Nullable Block attachedFactory, Seq<Sc2ResearchSpec> specs){
         setPanelRows(3);
-        Table info = buildBuildInfoTable();
         Table grid = new Table();
         Team team = player.team();
 
@@ -1752,6 +1840,7 @@ public class UnitAbilityPanel extends Table{
             addEmpty(grid);
         }
 
+        grid.row();
         fillRow(grid, 1, 0);
         grid.row();
 
@@ -1773,10 +1862,7 @@ public class UnitAbilityPanel extends Table{
             addEmpty(grid);
         }
 
-        Table root = new Table();
-        root.add(info).growX().padBottom(4f).row();
-        root.add(grid);
-        add(root);
+        add(grid);
     }
 
     private void buildRadarPanel(){
@@ -1858,7 +1944,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean supplyAnyClosed(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof Door.DoorBuild door && isSupplyDoor(build) && !door.open){
                 return true;
             }
@@ -1868,7 +1954,7 @@ public class UnitAbilityPanel extends Table{
 
     private void toggleSupplyDoors(){
         boolean open = supplyAnyClosed();
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof Door.DoorBuild door && isSupplyDoor(build)){
                 door.configure(open);
             }
@@ -1901,10 +1987,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void buildCoreUpgradePanel(CoreBuild core){
-        setPanelRows(2);
-        Floatp progress = core.isUpgradingOrbital() ? core::orbitalUpgradeFraction : core::fortressUpgradeFraction;
-        Bar bar = new Bar(() -> "", () -> Color.cyan, progress);
-        add(bar).growX().height(10f).pad(6f);
+        setPanelRows(3);
+        buildEmptyPanel();
     }
 
     private void buildCoreMainPanel(CoreBuild core){
@@ -2042,14 +2126,10 @@ public class UnitAbilityPanel extends Table{
 
     private void buildCoreRallyPanel(){
         setPanelRows(3);
-        add("Rally Point").style(Styles.outlineLabel).color(Pal.accent).pad(4f).row();
-        add("Left-click to set rally point").color(Color.lightGray).pad(2f).row();
-        add("Right-click or Esc to cancel").color(Color.lightGray).pad(2f).row();
-
         Table grid = new Table();
         for(int i = 0; i < ROWS * COLS; i++){
             if(i == 14){
-                addEscButton(grid, this::exitCommandMode);
+                addIconButton(grid, "Esc", Icon.left, () -> true, this::exitCommandMode, targetHintInfo);
             }else{
                 addEmpty(grid);
             }
@@ -2062,14 +2142,11 @@ public class UnitAbilityPanel extends Table{
 
     private void buildCoreTargetPanel(String title, String hint){
         setPanelRows(3);
-        add(title).style(Styles.outlineLabel).color(Pal.accent).pad(4f).row();
-        add(hint).color(Color.lightGray).pad(2f).row();
-        add("Right-click or Esc to cancel").color(Color.lightGray).pad(2f).row();
-
+        targetHintInfo.description = hint + "\nRight-click return";
         Table grid = new Table();
         for(int i = 0; i < ROWS * COLS; i++){
             if(i == 14){
-                addEscButton(grid, this::exitCommandMode);
+                addIconButton(grid, "Esc", Icon.left, () -> true, this::exitCommandMode, targetHintInfo);
             }else{
                 addEmpty(grid);
             }
@@ -2083,90 +2160,128 @@ public class UnitAbilityPanel extends Table{
     @Override
     public void draw(){
         super.draw();
-        drawHoverCard();
+        drawHoverInfoBox();
     }
 
     private @Nullable AbilityInfo currentHoverInfo(){
+        AbilityInfo info = null;
         if(hoverBuildInfo != null){
-            AbilityInfo info = new AbilityInfo();
-            info.key = hoverBuildInfo.key == null ? "" : hoverBuildInfo.key;
-            info.name = hoverBuildInfo.name == null ? "Action" : hoverBuildInfo.name;
-            info.description = hoverBuildInfo.description == null ? "" : hoverBuildInfo.description;
-            info.crystalCost = hoverBuildInfo.crystalCost;
-            info.gasCost = hoverBuildInfo.gasCost;
-            info.timeSeconds = hoverBuildInfo.timeSeconds;
-            return info;
+            BuildInfo build = hoverBuildInfo;
+            AbilityInfo next = new AbilityInfo();
+            next.key = build.key == null ? "" : build.key;
+            next.name = build.name == null ? "Action" : build.name;
+            next.description = build.description == null ? "" : build.description;
+            next.crystalCost = build.crystalCost;
+            next.gasCost = build.gasCost;
+            next.timeSeconds = build.timeSeconds;
+            next.population = build.population;
+            next.action = build.action == null ? "" : build.action;
+            next.unit = build.unit;
+            next.block = build.block;
+            info = next;
+        }else{
+            info = hoverAbilityInfo;
         }
-        return hoverAbilityInfo;
+
+        if(info == null && activeCommand != CommandMode.NONE && hasMouse()){
+            return targetHintInfo;
+        }
+        return info;
     }
 
-    private void drawHoverCard(){
+    private void drawHoverInfoBox(){
         AbilityInfo info = currentHoverInfo();
         if(info == null) return;
 
         StringBuilder text = new StringBuilder();
-        String title = info.name == null || info.name.isEmpty() ? "技能" : info.name;
-        if(info.key != null && !info.key.isEmpty()){
-            title += " (" + info.key + ")";
-        }
-        text.append(title);
-
-        if(info.crystalCost >= 0 || info.gasCost >= 0){
-            text.append("\n花费: ");
-            if(info.crystalCost >= 0){
-                text.append(Math.max(info.crystalCost, 0)).append(" 晶体");
-            }
-            if(info.gasCost > 0){
-                if(info.crystalCost >= 0) text.append(" / ");
-                text.append(info.gasCost).append(" 气");
-            }
-            if(info.crystalCost < 0 && info.gasCost <= 0){
-                text.append("-");
-            }
-        }
-
-        if(info.timeSeconds >= 0){
-            text.append("\n时间: ").append(info.timeSeconds).append("s");
-        }
-
-        if(info.description != null && !info.description.isEmpty()){
-            text.append("\n").append(info.description);
+        if(info.hintOnly){
+            text.append("Left-click select target\nRight-click return");
         }else{
-            text.append("\n左键点击效果等同于快捷键。");
+            String titleName = info.name == null ? "Action" : info.name;
+            String action = info.action == null ? "" : info.action;
+            String title = action.isEmpty() ? titleName : (action + " " + titleName);
+            if(info.key != null && !info.key.isEmpty()){
+                title += " (" + info.key + ")";
+            }
+            text.append(title);
+
+            boolean hasCost = info.crystalCost >= 0 || info.gasCost > 0 || info.population > 0;
+            if(hasCost){
+                text.append("\nCost: ");
+                boolean wrote = false;
+                if(info.crystalCost >= 0){
+                    text.append(Math.max(info.crystalCost, 0)).append(" crystal");
+                    wrote = true;
+                }
+                if(info.gasCost > 0){
+                    if(wrote) text.append(" / ");
+                    text.append(info.gasCost).append(" gas");
+                    wrote = true;
+                }
+                if(info.population > 0){
+                    if(wrote) text.append(" / ");
+                    text.append("Pop ").append(info.population);
+                    wrote = true;
+                }
+                if(!wrote){
+                    text.append("-");
+                }
+            }
+
+            if(info.description != null && !info.description.isEmpty()){
+                text.append("\n").append(info.description);
+            }
+
+            String targetText = unitTargetText(info);
+            if(info.timeSeconds >= 0 || targetText != null){
+                text.append("\n");
+                boolean wrote = false;
+                if(info.timeSeconds >= 0){
+                    text.append("Time ").append(info.timeSeconds).append("s");
+                    wrote = true;
+                }
+                if(targetText != null){
+                    if(wrote) text.append(" / ");
+                    text.append(targetText);
+                }
+            }
         }
 
         Font font = Fonts.outline;
         boolean prevInts = font.usesIntegerPositions();
         font.setUseIntegerPositions(false);
 
-        float maxTextWidth = 340f;
+        float pad = 6f;
+        float maxTextWidth = Math.max(10f, width - pad * 2f);
         hoverInfoLayout.setText(font, text, Color.white, maxTextWidth, Align.left, true);
 
-        float cardW = Math.max(220f, hoverInfoLayout.width + 18f);
-        float cardH = hoverInfoLayout.height + 16f;
-        float px = x + width - cardW;
-        float py = y + height + 8f;
-
-        float minX = Core.scene.marginLeft + 4f;
-        float maxX = Core.graphics.getWidth() - Core.scene.marginRight - cardW - 4f;
-        px = Mathf.clamp(px, minX, Math.max(minX, maxX));
-
-        float topLimit = Core.graphics.getHeight() - 4f;
-        if(py + cardH > topLimit){
-            py = y - cardH - 8f;
-        }
+        float boxW = width;
+        float boxH = hoverInfoLayout.height + pad * 2f;
+        float px = x;
+        float py = y + height - boxH;
 
         Draw.color(0.07f, 0.08f, 0.10f, 0.95f);
-        Fill.rect(px + cardW / 2f, py + cardH / 2f, cardW, cardH);
-        Draw.color(Color.valueOf("2f5f2f"));
+        Fill.rect(px + boxW / 2f, py + boxH / 2f, boxW, boxH);
+        Draw.color(abilityBorderColor);
         Lines.stroke(1.5f);
-        Lines.rect(px, py, cardW, cardH);
+        Lines.rect(px, py, boxW, boxH);
         Draw.reset();
 
         font.setColor(Color.white);
-        font.draw(text, px + 9f, py + cardH - 7f, cardW - 18f, Align.left, true);
+        font.draw(text, px + pad, py + boxH - pad, boxW - pad * 2f, Align.left, true);
         font.setUseIntegerPositions(prevInts);
         Draw.reset();
+    }
+
+    private @Nullable String unitTargetText(AbilityInfo info){
+        if(info == null || info.unit == null) return null;
+        if(info.action == null || !info.action.equals("Train")) return null;
+        boolean air = info.unit.targetAir;
+        boolean ground = info.unit.targetGround;
+        if(air && ground) return "Targets: ground/air";
+        if(ground) return "Targets: ground";
+        if(air) return "Targets: air";
+        return "Targets: none";
     }
 
     private Element borderElement(){
@@ -2205,14 +2320,15 @@ public class UnitAbilityPanel extends Table{
     private AbilityInfo makeAbilityInfo(String key, String name, String description){
         AbilityInfo info = new AbilityInfo();
         info.key = key == null ? "" : key;
-        info.name = name == null ? "技能" : name;
+        info.name = name == null ? "Ability" : name;
         info.description = description == null ? "" : description;
+        info.action = "Ability";
         return info;
     }
 
     private AbilityInfo defaultAbilityInfo(String key){
-        String name = key == null || key.isEmpty() ? "技能" : ("技能键 " + key);
-        return makeAbilityInfo(key, name, "左键点击效果等同于快捷键。");
+        String name = key == null || key.isEmpty() ? "Ability" : ("Ability " + key);
+        return makeAbilityInfo(key, name, "Left-click acts as hotkey.");
     }
 
     private void bindAbilityHover(Button button, @Nullable AbilityInfo info){
@@ -2371,7 +2487,44 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, makeAbilityInfo(key, "技能冷却", "左键点击效果等同于快捷键。"));
+        bindAbilityHover(button, makeAbilityInfo(key, "Skill Cooldown", "Left-click acts as hotkey."));
+        return button;
+    }
+
+    private Button addCooldownIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Floatp cooldownValue, Floatp cooldownTotal, @Nullable AbilityInfo info){
+        Boolp allowed = enabled == null ? () -> true : enabled;
+        Button button = new Button(Styles.clearNoneTogglei);
+        button.clicked(() -> {
+            if(allowed.get()) action.run();
+        });
+        button.update(() -> button.setDisabled(!allowed.get()));
+
+        Stack stack = new Stack();
+        stack.add(borderElement());
+
+        Image image = new Image(icon);
+        image.setScaling(Scaling.fit);
+        image.update(() -> image.setColor(allowed.get() ? Color.white : Color.gray));
+
+        Table iconTable = new Table();
+        iconTable.add(image).size(abilityIconSize);
+        stack.add(iconTable);
+
+        if(key != null && !key.isEmpty()){
+            Table keyTable = new Table();
+            keyTable.top().left();
+            Label keyLabel = new Label(key);
+            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
+            keyTable.add(keyLabel).pad(3f);
+            stack.add(keyTable);
+        }
+
+        stack.add(yamatoCooldownOverlay(cooldownValue, cooldownTotal));
+
+        button.add(stack).size(abilityButtonSize);
+        grid.add(button).size(abilityButtonSize).pad(2f);
+        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info);
         return button;
     }
 
@@ -2473,7 +2626,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, makeAbilityInfo("c", "飓风锁定", "左键锁定目标，右键切换自动施法。"));
+        bindAbilityHover(button, makeAbilityInfo("c", "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."));
         return button;
     }
 
@@ -2636,6 +2789,7 @@ public class UnitAbilityPanel extends Table{
         info.block = block;
         info.key = key;
         info.name = name;
+        info.action = "Build";
         info.crystalCost = crystalCost;
         info.gasCost = gasCost;
         info.timeSeconds = Math.round(buildTime / 60f);
@@ -2647,6 +2801,7 @@ public class UnitAbilityPanel extends Table{
         info.block = block;
         info.key = key;
         info.name = sc2Name(block);
+        info.action = "Research";
         info.crystalCost = crystalCost;
         info.gasCost = gasCost;
         info.timeSeconds = Math.round(buildTime / 60f);
@@ -2678,6 +2833,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.siliconCrucible;
         info.key = key;
+        info.action = "Research";
         info.progressColor = Color.cyan;
 
         Team team = player.team();
@@ -2711,6 +2867,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.multiPress;
         info.key = key;
+        info.action = "Research";
         info.progressColor = Color.cyan;
 
         Team team = player.team();
@@ -2744,7 +2901,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.multiPress;
         info.key = key;
-        info.name = "步兵武器等级" + level;
+        info.action = "Research";
+        info.name = "Upgrade";
         info.crystalCost = UnitTypes.infantryWeaponCrystalCost(level);
         info.gasCost = UnitTypes.infantryWeaponGasCost(level);
         info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f);
@@ -2756,7 +2914,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.multiPress;
         info.key = key;
-        info.name = level > 0 ? "步兵武器等级" + level : "步兵武器";
+        info.action = "Research";
+        info.name = level > 0 ? "Infantry Weapons Lv." + level : "Infantry Weapons";
         info.crystalCost = level > 0 ? UnitTypes.infantryWeaponCrystalCost(level) : 0;
         info.gasCost = level > 0 ? UnitTypes.infantryWeaponGasCost(level) : 0;
         info.timeSeconds = level > 0 ? Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f) : 0;
@@ -2771,7 +2930,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.multiPress;
         info.key = key;
-        info.name = "Infantry Armor Lv." + level;
+        info.action = "Research";
+        info.name = "Upgrade";
         info.crystalCost = UnitTypes.infantryWeaponCrystalCost(level);
         info.gasCost = UnitTypes.infantryWeaponGasCost(level);
         info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(level) / 60f);
@@ -2782,7 +2942,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.swarmer;
         info.key = key;
-        info.name = "瞬时自动追踪";
+        info.action = "Research";
+        info.name = "Instant Tracking";
         info.crystalCost = UnitTypes.instantTrackingCrystalCost();
         info.gasCost = UnitTypes.instantTrackingGasCost();
         info.timeSeconds = Math.round(UnitTypes.instantTrackingResearchDuration() / 60f);
@@ -2793,7 +2954,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.atmosphericConcentrator;
         info.key = key;
-        info.name = "精钢护甲";
+        info.action = "Research";
+        info.name = "Steel Armor";
         info.crystalCost = UnitTypes.steelArmorCrystalCost();
         info.gasCost = UnitTypes.steelArmorGasCost();
         info.timeSeconds = Math.round(UnitTypes.steelArmorResearchDuration() / 60f);
@@ -2804,7 +2966,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.launchPad;
         info.key = key;
-        info.name = "隐形迷彩";
+        info.action = "Research";
+        info.name = "Ghost Camouflage";
         info.crystalCost = UnitTypes.ghostCamoCrystalCost();
         info.gasCost = UnitTypes.ghostCamoGasCost();
         info.timeSeconds = Math.round(UnitTypes.ghostCamoResearchDuration() / 60f);
@@ -2815,7 +2978,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.launchPad;
         info.key = key;
-        info.name = "隐形迷彩";
+        info.action = "Research";
+        info.name = "Ghost Camouflage";
         info.crystalCost = UnitTypes.ghostCamoCrystalCost();
         info.gasCost = UnitTypes.ghostCamoGasCost();
         info.timeSeconds = Math.round(UnitTypes.ghostCamoResearchDuration() / 60f);
@@ -2830,7 +2994,8 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.launchPad;
         info.key = key;
-        info.name = "部署聚变弹头";
+        info.action = "Deploy";
+        info.name = "Tactical Nuke";
         info.crystalCost = UnitTypes.ghostWarheadCrystalCost();
         info.gasCost = UnitTypes.ghostWarheadGasCost();
         info.timeSeconds = Math.round(UnitTypes.ghostWarheadBuildDuration() / 60f);
@@ -2846,7 +3011,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
-        info.name = "防爆护盾";
+        info.name = "闂傚啳灏欓崹搴ㄥ箮閵堝洦绂?;
         info.crystalCost = UnitTypes.barracksBlastShieldCrystalCost();
         info.gasCost = UnitTypes.barracksBlastShieldGasCost();
         info.timeSeconds = Math.round(UnitTypes.barracksBlastShieldResearchDuration() / 60f);
@@ -2861,7 +3026,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
-        info.name = "强化剂";
+        info.name = "鐎殿喖鎼€垫煡宕?;
         info.crystalCost = UnitTypes.barracksStimpackCrystalCost();
         info.gasCost = UnitTypes.barracksStimpackGasCost();
         info.timeSeconds = Math.round(UnitTypes.barracksStimpackResearchDuration() / 60f);
@@ -2876,7 +3041,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
-        info.name = "震荡弹";
+        info.name = "闂傚洤娲╁畷鍗烆嚕?;
         info.crystalCost = UnitTypes.barracksConcussiveCrystalCost();
         info.gasCost = UnitTypes.barracksConcussiveGasCost();
         info.timeSeconds = Math.round(UnitTypes.barracksConcussiveResearchDuration() / 60f);
@@ -2894,19 +3059,19 @@ public class UnitAbilityPanel extends Table{
         info.progressColor = Color.cyan;
 
         if(UnitTypes.barracksBlastShieldResearching(player.team())){
-            info.name = "防爆护盾";
+            info.name = "闂傚啳灏欓崹搴ㄥ箮閵堝洦绂?;
             info.crystalCost = UnitTypes.barracksBlastShieldCrystalCost();
             info.gasCost = UnitTypes.barracksBlastShieldGasCost();
             info.timeSeconds = Math.round(UnitTypes.barracksBlastShieldResearchDuration() / 60f);
             info.progressIcon = new TextureRegionDrawable(UnitTypes.dagger.uiIcon);
         }else if(UnitTypes.barracksStimpackResearching(player.team())){
-            info.name = "强化剂";
+            info.name = "鐎殿喖鎼€垫煡宕?;
             info.crystalCost = UnitTypes.barracksStimpackCrystalCost();
             info.gasCost = UnitTypes.barracksStimpackGasCost();
             info.timeSeconds = Math.round(UnitTypes.barracksStimpackResearchDuration() / 60f);
             info.progressIcon = new TextureRegionDrawable(UnitTypes.fortress.uiIcon);
         }else if(UnitTypes.barracksConcussiveResearching(player.team())){
-            info.name = "震荡弹";
+            info.name = "闂傚洤娲╁畷鍗烆嚕?;
             info.crystalCost = UnitTypes.barracksConcussiveCrystalCost();
             info.gasCost = UnitTypes.barracksConcussiveGasCost();
             info.timeSeconds = Math.round(UnitTypes.barracksConcussiveResearchDuration() / 60f);
@@ -2933,6 +3098,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.name = "Inferno Pre-Igniter";
         info.crystalCost = UnitTypes.infernoPreheaterCrystalCost();
         info.gasCost = UnitTypes.infernoPreheaterGasCost();
@@ -2948,6 +3114,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.name = "Electromagnetic Field Accelerator";
         info.crystalCost = UnitTypes.electromagneticFieldAcceleratorCrystalCost();
         info.gasCost = UnitTypes.electromagneticFieldAcceleratorGasCost();
@@ -2963,6 +3130,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.name = "Drilling Claws";
         info.crystalCost = UnitTypes.drillClawCrystalCost();
         info.gasCost = UnitTypes.drillClawGasCost();
@@ -2978,6 +3146,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.name = "Smart Servos";
         info.crystalCost = UnitTypes.smartServosCrystalCost();
         info.gasCost = UnitTypes.smartServosGasCost();
@@ -2993,6 +3162,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.progressColor = Color.cyan;
 
         if(UnitTypes.infernoPreheaterResearching(player.team())){
@@ -3046,6 +3216,7 @@ public class UnitAbilityPanel extends Table{
         info.unit = iconUnit;
         info.key = key;
         info.name = spec.name(player.team());
+        info.action = "Research";
         info.crystalCost = spec.crystalCost(player.team());
         info.gasCost = spec.gasCost(player.team());
         info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
@@ -3063,6 +3234,7 @@ public class UnitAbilityPanel extends Table{
         info.unit = iconUnit;
         info.key = key;
         info.name = spec.name(player.team());
+        info.action = "Research";
         info.crystalCost = spec.crystalCost(player.team());
         info.gasCost = spec.gasCost(player.team());
         info.timeSeconds = Math.round(spec.duration(player.team()) / 60f);
@@ -3077,6 +3249,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.memoryBank;
         info.key = key;
+        info.action = "Research";
         info.progressColor = Color.cyan;
         Sc2ResearchSpec active = ResearchQueueService.techLabActiveResearch(player.team(), attachedFactory);
 
@@ -3107,6 +3280,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.surgeCrucible;
         info.key = key;
+        info.action = "Research";
         info.progressColor = Color.cyan;
         Sc2ResearchSpec active = ResearchQueueService.fusionCoreActiveResearch(player.team());
 
@@ -3137,6 +3311,7 @@ public class UnitAbilityPanel extends Table{
         BuildInfo info = new BuildInfo();
         info.block = Blocks.multiPress;
         info.key = key;
+        info.action = "Research";
 
         int weaponLevel = UnitTypes.infantryWeaponResearchingLevel(player.team());
         int armorLevel = UnitTypes.infantryArmorResearchingLevel(player.team());
@@ -3146,25 +3321,25 @@ public class UnitAbilityPanel extends Table{
         boolean steelResearch = UnitTypes.steelArmorResearching(player.team());
 
         if(steelResearch){
-            info.name = "精钢护甲";
+            info.name = "Instant Tracking";
             info.crystalCost = UnitTypes.steelArmorCrystalCost();
             info.gasCost = UnitTypes.steelArmorGasCost();
             info.timeSeconds = Math.round(UnitTypes.steelArmorResearchDuration() / 60f);
             info.progressIcon = new TextureRegionDrawable(Blocks.atmosphericConcentrator.uiIcon);
         }else if(weaponResearch){
-            info.name = "Infantry Weapons Lv." + weaponLevel;
+            info.name = "Instant Tracking";
             info.crystalCost = UnitTypes.infantryWeaponCrystalCost(weaponLevel);
             info.gasCost = UnitTypes.infantryWeaponGasCost(weaponLevel);
             info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(weaponLevel) / 60f);
             info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
         }else if(armorResearch){
-            info.name = "Infantry Armor Lv." + armorLevel;
+            info.name = "Instant Tracking";
             info.crystalCost = UnitTypes.infantryWeaponCrystalCost(armorLevel);
             info.gasCost = UnitTypes.infantryWeaponGasCost(armorLevel);
             info.timeSeconds = Math.round(UnitTypes.infantryWeaponResearchDuration(armorLevel) / 60f);
             info.progressIcon = new TextureRegionDrawable(Blocks.multiPress.uiIcon);
         }else if(instantResearch){
-            info.name = "瞬时自动追踪";
+            info.name = "Instant Tracking";
             info.crystalCost = UnitTypes.instantTrackingCrystalCost();
             info.gasCost = UnitTypes.instantTrackingGasCost();
             info.timeSeconds = Math.round(UnitTypes.instantTrackingResearchDuration() / 60f);
@@ -3194,6 +3369,7 @@ public class UnitAbilityPanel extends Table{
         info.block = block;
         info.key = key;
         info.name = sc2Name(block);
+        info.action = "Build";
         info.crystalCost = getCost(block, Items.graphite);
         info.gasCost = getCost(block, Items.highEnergyGas);
         info.timeSeconds = Math.round(block.buildTime / 60f);
@@ -3205,6 +3381,8 @@ public class UnitAbilityPanel extends Table{
         info.unit = plan.unit;
         info.key = key;
         info.name = sc2Name(plan.unit);
+        info.action = "Train";
+        info.population = plan.unit.population;
         info.crystalCost = getCost(plan.requirements, Items.graphite);
         info.gasCost = getCost(plan.requirements, Items.highEnergyGas);
         info.timeSeconds = Math.round(plan.time / 60f);
@@ -3216,6 +3394,7 @@ public class UnitAbilityPanel extends Table{
         info.unit = UnitTypes.crawler;
         info.key = key;
         info.name = name;
+        info.action = "Ability";
         info.crystalCost = 0;
         info.gasCost = 0;
         info.timeSeconds = 0;
@@ -3256,7 +3435,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean selectedMedivacHealAutoCastEnabled(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
             if(isAutoCastEnabled(unit, AutoCastSkill.medivacHeal)) return true;
         }
@@ -3266,7 +3445,7 @@ public class UnitAbilityPanel extends Table{
     private void toggleSelectedMedivacHealAutoCast(){
         boolean hasAny = false;
         boolean allEnabled = true;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
             hasAny = true;
             if(!isAutoCastEnabled(unit, AutoCastSkill.medivacHeal)){
@@ -3276,14 +3455,14 @@ public class UnitAbilityPanel extends Table{
         if(!hasAny) return;
 
         boolean nextEnabled = !allEnabled;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
             setAutoCastEnabled(unit, AutoCastSkill.medivacHeal, nextEnabled);
         }
     }
 
     private boolean selectedHurricaneAutoCastEnabled(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             if(isAutoCastEnabled(unit, AutoCastSkill.hurricaneLock)) return true;
         }
@@ -3293,7 +3472,7 @@ public class UnitAbilityPanel extends Table{
     private void toggleSelectedHurricaneAutoCast(){
         boolean hasAny = false;
         boolean allEnabled = true;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             hasAny = true;
             if(!isAutoCastEnabled(unit, AutoCastSkill.hurricaneLock)){
@@ -3303,14 +3482,14 @@ public class UnitAbilityPanel extends Table{
         if(!hasAny) return;
 
         boolean nextEnabled = !allEnabled;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             setAutoCastEnabled(unit, AutoCastSkill.hurricaneLock, nextEnabled);
         }
     }
 
     private boolean anyHurricaneCanLock(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             if(UnitTypes.hurricaneCanLock(unit) && UnitTypes.hurricaneHasTarget(unit)) return true;
         }
@@ -3318,36 +3497,50 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyHurricaneLockActive(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             if(UnitTypes.hurricaneLockActive(unit)) return true;
         }
         return false;
     }
 
+    private boolean anyReaperCanUseKd8(){
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.reaper) continue;
+            if(UnitTypes.reaperCanUseKd8(unit)) return true;
+        }
+        return false;
+    }
+
     private float selectedHurricaneLockCooldown(){
         float result = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             result = Math.max(result, UnitTypes.hurricaneLockCooldown(unit));
         }
         return result;
     }
 
+    private float selectedReaperKd8Cooldown(){
+        float result = 0f;
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.reaper) continue;
+            result = Math.max(result, UnitTypes.reaperKd8Cooldown(unit));
+        }
+        return result;
+    }
+
     private void issueHurricaneLockCommand(){
-        IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isHurricane(unit)) continue;
             if(!UnitTypes.hurricaneCanLock(unit) || !UnitTypes.hurricaneHasTarget(unit)) continue;
-            ids.add(unit.id);
-        }
-        if(ids.size > 0){
-            Call.commandHurricaneLock(player, ids.toArray());
+            Call.commandHurricaneLock(player, new int[]{unit.id});
+            return;
         }
     }
 
     private boolean anyBarracksStimpackSelectedCanUse(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
             if(UnitTypes.barracksStimpackCanUse(unit)) return true;
         }
@@ -3356,7 +3549,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedBarracksStimpackCooldown(){
         float result = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
             result = Math.max(result, UnitTypes.barracksStimpackCooldown(unit));
         }
@@ -3365,7 +3558,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueBarracksStimpackCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
             if(!UnitTypes.barracksStimpackCanUse(unit)) continue;
             ids.add(unit.id);
@@ -3423,8 +3616,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean allSelectedPreceptSieged(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) return false;
             if(!UnitTypes.preceptIsSieged(unit)) return false;
         }
@@ -3432,7 +3625,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyPreceptTransitioning(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
             if(UnitTypes.preceptIsSieging(unit) || UnitTypes.preceptIsUnsieging(unit)) return true;
         }
@@ -3440,7 +3633,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyPreceptCanSiege(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
             if(UnitTypes.preceptCanEnterSiege(unit)) return true;
         }
@@ -3448,7 +3641,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyPreceptCanTankMode(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
             if(UnitTypes.preceptCanExitSiege(unit)) return true;
         }
@@ -3457,7 +3650,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issuePreceptSiegeCommand(boolean siege){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isSiegeTank(unit)) continue;
             if(siege){
                 if(!UnitTypes.preceptCanEnterSiege(unit)) continue;
@@ -3472,7 +3665,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyScepterCanSwitchToImpact(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
             if(UnitTypes.scepterCanSwitchToImpact(unit)) return true;
         }
@@ -3480,7 +3673,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyScepterCanSwitchToBurst(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
             if(UnitTypes.scepterCanSwitchToBurst(unit)) return true;
         }
@@ -3489,7 +3682,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueScepterAirModeCommand(boolean impactMode){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) continue;
             if(impactMode){
                 if(!UnitTypes.scepterCanSwitchToImpact(unit)) continue;
@@ -3504,8 +3697,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean allSelectedLiberatorDefending(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) return false;
             if(!UnitTypes.liberatorIsDefending(unit)) return false;
         }
@@ -3513,7 +3706,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyLiberatorTransitioning(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
             if(UnitTypes.liberatorIsDeploying(unit) || UnitTypes.liberatorIsUndeploying(unit)) return true;
         }
@@ -3521,7 +3714,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyLiberatorCanEnterDefense(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
             if(UnitTypes.liberatorCanEnterDefense(unit)) return true;
         }
@@ -3529,7 +3722,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyLiberatorCanExitDefense(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
             if(UnitTypes.liberatorCanExitDefense(unit)) return true;
         }
@@ -3538,7 +3731,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueLiberatorFighterCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) continue;
             if(!UnitTypes.liberatorCanExitDefense(unit)) continue;
             ids.add(unit.id);
@@ -3549,7 +3742,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyWidowCanBurrow(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(!UnitTypes.isWidow(unit)) continue;
             if(!UnitTypes.widowIsBuried(unit) && !UnitTypes.widowIsBurrowing(unit) && !UnitTypes.widowIsUnburrowing(unit)){
                 return true;
@@ -3559,7 +3752,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyWidowShowCommandRow1(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(!UnitTypes.isWidow(unit)) continue;
             if(!UnitTypes.widowIsBuried(unit) && !UnitTypes.widowIsBurrowing(unit) && !UnitTypes.widowIsUnburrowing(unit)){
                 return true;
@@ -3569,7 +3762,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyWidowCanUnburrow(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(!UnitTypes.isWidow(unit)) continue;
             if((UnitTypes.widowIsBuried(unit) || UnitTypes.widowIsBurrowing(unit)) && !UnitTypes.widowIsUnburrowing(unit)){
                 return true;
@@ -3579,14 +3772,14 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyWidowBurrowing(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(UnitTypes.widowIsBurrowing(unit)) return true;
         }
         return false;
     }
 
     private boolean anyWidowReloading(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(UnitTypes.widowIsReloading(unit)) return true;
         }
         return false;
@@ -3594,7 +3787,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedWidowBurrowProgress(){
         float progress = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             progress = Math.max(progress, UnitTypes.widowBurrowProgress(unit));
         }
         return progress;
@@ -3602,7 +3795,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedWidowReloadProgress(){
         float progress = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             progress = Math.max(progress, UnitTypes.widowReloadProgress(unit));
         }
         return progress;
@@ -3610,7 +3803,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueWidowBurrowCommand(boolean burrow){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isWidow(unit)) continue;
             if(burrow){
                 if(UnitTypes.widowIsBuried(unit) || UnitTypes.widowIsBurrowing(unit) || UnitTypes.widowIsUnburrowing(unit)) continue;
@@ -3625,7 +3818,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyMedivacHasPayload(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc pay)) continue;
             if(!pay.payloads().isEmpty()) return true;
         }
@@ -3633,7 +3826,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyMedivacCanLoadMore(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
             if(UnitTypes.medivacPayloadSlotsFree(unit) > 0) return true;
         }
@@ -3642,7 +3835,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueMedivacAfterburnerCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) continue;
             ids.add(unit.id);
         }
@@ -3651,8 +3844,24 @@ public class UnitAbilityPanel extends Table{
         }
     }
 
+    private boolean anyMaceSelected(){
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || !UnitTypes.isMace(unit)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean anyLocusSelected(){
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || !UnitTypes.isLocus(unit)) continue;
+            return true;
+        }
+        return false;
+    }
+
     private boolean anyMaceCanTransformToLocus(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMace(unit)) continue;
             if(UnitTypes.maceCanTransformToLocus(unit)) return true;
         }
@@ -3660,7 +3869,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyLocusCanTransformToMace(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLocus(unit)) continue;
             if(UnitTypes.locusCanTransformToMace(unit)) return true;
         }
@@ -3669,7 +3878,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueMaceLocusModeCommand(boolean toLocus){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid()) continue;
             if(toLocus){
                 if(!UnitTypes.isMace(unit) || !UnitTypes.maceCanTransformToLocus(unit)) continue;
@@ -3684,7 +3893,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyVikingCanSwitchToMech(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
             if(UnitTypes.vikingCanTransformToMech(unit)) return true;
         }
@@ -3692,7 +3901,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyVikingCanSwitchToFighter(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
             if(UnitTypes.vikingCanTransformToFighter(unit)) return true;
         }
@@ -3701,7 +3910,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueVikingModeCommand(boolean mechMode){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) continue;
             if(mechMode){
                 if(!UnitTypes.vikingCanTransformToMech(unit)) continue;
@@ -3716,7 +3925,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostCanToggleCloak(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostCanToggleCloak(unit)) return true;
         }
@@ -3724,7 +3933,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostCanUseStableAim(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostCanUseStableAim(unit)) return true;
         }
@@ -3732,7 +3941,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostCanUseEmp(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostCanUseEmp(unit)) return true;
         }
@@ -3740,7 +3949,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostStableAimPending(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostStableAimPending(unit)) return true;
         }
@@ -3748,7 +3957,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostEmpPending(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostEmpPending(unit)) return true;
         }
@@ -3757,7 +3966,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueGhostCloakCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(!UnitTypes.ghostCanToggleCloak(unit)) continue;
             ids.add(unit.id);
@@ -3769,7 +3978,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueGhostStableAimCancelCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(!UnitTypes.ghostStableAimPending(unit)) continue;
             ids.add(unit.id);
@@ -3781,7 +3990,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueGhostEmpCancelCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(!UnitTypes.ghostEmpPending(unit)) continue;
             ids.add(unit.id);
@@ -3792,7 +4001,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostCanUseTacticalNuke(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostCanUseTacticalNuke(unit)) return true;
         }
@@ -3800,7 +4009,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostTacticalNukePending(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(UnitTypes.ghostTacticalNukePending(unit)) return true;
         }
@@ -3813,7 +4022,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueGhostTacticalNukeCancelCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) continue;
             if(!UnitTypes.ghostTacticalNukePending(unit)) continue;
             ids.add(unit.id);
@@ -3824,7 +4033,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyRavenCanDeployTurret(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
             if(UnitTypes.ravenCanDeployTurret(unit)) return true;
         }
@@ -3832,7 +4041,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBansheeCanToggleCloak(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) continue;
             if(UnitTypes.bansheeCanToggleCloak(unit)) return true;
         }
@@ -3840,7 +4049,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBattlecruiserCanUseYamato(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
             if(UnitTypes.battlecruiserCanUseYamato(unit)) return true;
         }
@@ -3848,7 +4057,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBattlecruiserCanUseWarp(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
             if(UnitTypes.battlecruiserCanUseWarp(unit)) return true;
         }
@@ -3857,7 +4066,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedBattlecruiserYamatoCooldown(){
         float result = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
             result = Math.max(result, UnitTypes.battlecruiserYamatoCooldown(unit));
         }
@@ -3866,7 +4075,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedBattlecruiserWarpCooldown(){
         float result = 0f;
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) continue;
             result = Math.max(result, UnitTypes.battlecruiserWarpCooldown(unit));
         }
@@ -3875,7 +4084,7 @@ public class UnitAbilityPanel extends Table{
 
     private void issueBansheeCloakCommand(){
         IntSeq ids = new IntSeq();
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) continue;
             if(!UnitTypes.bansheeCanToggleCloak(unit)) continue;
             ids.add(unit.id);
@@ -3886,7 +4095,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyRavenCanUseAntiArmor(){
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
             if(UnitTypes.ravenCanUseAntiArmor(unit)) return true;
         }
@@ -3897,7 +4106,7 @@ public class UnitAbilityPanel extends Table{
         if(UnitTypes.ravenMatrixTechLevel(player.team()) <= 0){
             return false;
         }
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) continue;
             if(UnitTypes.ravenCanUseMatrix(unit)) return true;
         }
@@ -3934,27 +4143,27 @@ public class UnitAbilityPanel extends Table{
 
     /*
     private String sc2Name(Block block){
-        if(block == Blocks.coreNucleus) return "基地";
-        if(block == Blocks.ventCondenser) return "精炼厂";
-        if(block == Blocks.doorLarge) return "补给站";
-        if(block == Blocks.groundFactory) return "兵营";
-        if(block == Blocks.multiPress) return "工程站";
-        if(block == Blocks.atmosphericConcentrator) return "地堡";
-        if(block == Blocks.swarmer) return "导弹塔";
-        if(block == Blocks.hail) return "感应塔";
-        if(block == Blocks.launchPad) return "幽灵军校";
-        if(block == Blocks.tankFabricator) return "重工厂";
-        if(block == Blocks.siliconCrucible) return "军械库";
-        if(block == Blocks.shipFabricator) return "星港";
-        if(block == Blocks.surgeCrucible) return "聚变芯体";
+        if(block == Blocks.coreNucleus) return "闁糕晛鎼﹢?;
+        if(block == Blocks.ventCondenser) return "缂侇喖澧介崑褔宕?;
+        if(block == Blocks.doorLarge) return "閻炴稏鍎崇划鎵博?;
+        if(block == Blocks.groundFactory) return "闁稿繋绲婚幆鈧?;
+        if(block == Blocks.multiPress) return "鐎规悶鍎抽埢鑲╃博?;
+        if(block == Blocks.atmosphericConcentrator) return "闁革附婢橀悧?;
+        if(block == Blocks.swarmer) return "閻庣數鍘ч懘濠冪箙?;
+        if(block == Blocks.hail) return "闁规壆鍠庣花鍙夌箙?;
+        if(block == Blocks.launchPad) return "妤犵偟鏅导鎺楀礃濞戞瑧澧?;
+        if(block == Blocks.tankFabricator) return "闂佹彃绉存导鎰板储?;
+        if(block == Blocks.siliconCrucible) return "闁告劖绋掗～顐ｆ償?;
+        if(block == Blocks.shipFabricator) return "闁哄嫮鍠愰懙?;
+        if(block == Blocks.surgeCrucible) return "闁艰鲸鑹捐ぐ澶愭嚍椤栨瑧绉?;
         return block.localizedName;
     }
 
     private String sc2Name(UnitType unit){
-        if(unit == UnitTypes.dagger) return "枪兵";
-        if(unit == UnitTypes.reaper) return "死神";
-        if(unit == UnitTypes.fortress) return "劫掠者";
-        if(unit == UnitTypes.ghost) return "幽灵";
+        if(unit == UnitTypes.dagger) return "闁哄浜滈崣?;
+        if(unit == UnitTypes.reaper) return "婵繆宕甸〃?;
+        if(unit == UnitTypes.fortress) return "闁告棏鍋呯敮顒勬嚀?;
+        if(unit == UnitTypes.ghost) return "妤犵偟鏅导?;
         return unit.localizedName;
     }
 
@@ -3985,32 +4194,31 @@ public class UnitAbilityPanel extends Table{
     private void setPanelRows(int rows){
         float cell = abilityButtonSize + ABILITY_BUTTON_PAD * 2f;
         forcedMinWidth = COLS * cell + PANEL_MARGIN * 2f;
-        forcedMinHeight = rows * cell + PANEL_MARGIN * 2f;
+        forcedMinHeight = ROWS * cell + PANEL_MARGIN * 2f;
     }
 
     private void clearPanelSize(){
-        forcedMinWidth = -1f;
-        forcedMinHeight = -1f;
+        setPanelRows(ROWS);
     }
 
     @Override
     public float getMinWidth(){
-        return forcedMinWidth > 0f ? Math.max(super.getMinWidth(), forcedMinWidth) : super.getMinWidth();
+        return forcedMinWidth > 0f ? forcedMinWidth : super.getMinWidth();
     }
 
     @Override
     public float getMinHeight(){
-        return forcedMinHeight > 0f ? Math.max(super.getMinHeight(), forcedMinHeight) : super.getMinHeight();
+        return forcedMinHeight > 0f ? forcedMinHeight : super.getMinHeight();
     }
 
     @Override
     public float getPrefWidth(){
-        return forcedMinWidth > 0f ? Math.max(super.getPrefWidth(), forcedMinWidth) : super.getPrefWidth();
+        return forcedMinWidth > 0f ? forcedMinWidth : super.getPrefWidth();
     }
 
     @Override
     public float getPrefHeight(){
-        return forcedMinHeight > 0f ? Math.max(super.getPrefHeight(), forcedMinHeight) : super.getPrefHeight();
+        return forcedMinHeight > 0f ? forcedMinHeight : super.getPrefHeight();
     }
 
     private void addCancelButton(Table grid, Runnable action){
@@ -4032,200 +4240,216 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean isOnlyNovaSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !unit.type.name.equals("nova")) return false;
         }
         return true;
     }
 
     private boolean isOnlyWidowSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isWidow(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyHurricaneSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || unit.type != UnitTypes.hurricane) return false;
         }
         return true;
     }
 
     private boolean isOnlyScepterSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isThor(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyMedivacSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMedivac(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyGhostSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isGhost(unit)) return false;
         }
         return true;
     }
 
+    private boolean isOnlyReaperSelected(){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.reaper) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyVikingSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isViking(unit)) return false;
         }
         return true;
     }
 
+    private boolean isOnlyMaceLocusSelected(){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || (!UnitTypes.isMace(unit) && !UnitTypes.isLocus(unit))) return false;
+        }
+        return true;
+    }
+
     private boolean isOnlyMaceSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isMace(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyLocusSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLocus(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyBattlecruiserSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBattlecruiser(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyBansheeSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBanshee(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyRavenSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isRaven(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyRavenTurretSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isRavenTurret(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlyLiberatorSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isLiberator(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlySiegeTankSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || unit.type != UnitTypes.precept) return false;
         }
         return true;
     }
 
     private boolean isOnlyCoreFlyerSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || unit.type != UnitTypes.coreFlyer) return false;
         }
         return true;
     }
 
     private boolean isOnlyBarracksStimpackSelected(){
-        if(control.input.selectedUnits.isEmpty()) return false;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return false;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) return false;
         }
         return true;
     }
 
     private boolean isOnlySupplySelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(!isSupplyDoor(build)) return false;
         }
         return true;
     }
 
     private boolean isOnlyBunkerSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(!(build instanceof BunkerBlock.BunkerBuild)) return false;
         }
         return true;
     }
 
     private boolean isOnlyRadarSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(!(build instanceof Radar.RadarBuild)) return false;
         }
         return true;
     }
 
     private boolean isOnlyEngineeringSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.multiPress) return false;
         }
         return true;
     }
 
     private boolean isOnlyArmorySelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.siliconCrucible) return false;
         }
         return true;
     }
 
     private boolean isOnlyFusionCoreSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.surgeCrucible) return false;
         }
         return true;
     }
 
     private boolean isOnlyGhostAcademySelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) return false;
         }
         return true;
     }
 
     private boolean isOnlyTechLabSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.memoryBank) return false;
         }
         return true;
@@ -4254,7 +4478,7 @@ public class UnitAbilityPanel extends Table{
     private @Nullable Block selectedTechLabAttachedFactoryBlock(){
         if(!isOnlyTechLabSelected()) return null;
         Block block = null;
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             UnitFactory.UnitFactoryBuild factory = attachedFactoryForTechLab(build);
             if(factory == null) return null;
             if(block == null){
@@ -4267,7 +4491,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyRadarCanStartRecycle(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof Radar.RadarBuild radar && !radar.recycling){
                 return true;
             }
@@ -4276,7 +4500,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBunkerHasGarrison(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild bunker && bunker.hasGarrison()){
                 return true;
             }
@@ -4285,7 +4509,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBunkerHasSpace(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild bunker && bunker.freeSlots() > 0 && !bunker.recycling){
                 return true;
             }
@@ -4294,7 +4518,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyBunkerCanStartRecycle(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild bunker && !bunker.recycling){
                 return true;
             }
@@ -4308,8 +4532,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean isOnlyCoreSelected(){
-        if(!control.input.selectedUnits.isEmpty() || control.input.commandBuildings.isEmpty()) return false;
-        for(Building build : control.input.commandBuildings){
+        if(hasAbilityUnits() || abilityBuildings().isEmpty()) return false;
+        for(Building build : abilityBuildings()){
             if(!(build instanceof CoreBuild)) return false;
         }
         return true;
@@ -4317,12 +4541,12 @@ public class UnitAbilityPanel extends Table{
 
     private @Nullable CoreBuild selectedCore(){
         if(!isOnlyCoreSelected()) return null;
-        return (CoreBuild)control.input.commandBuildings.first();
+        return (CoreBuild)abilityBuildings().first();
     }
 
     private boolean anySelectedOrbitalHasEnergy(float amount){
         if(!isOnlyCoreSelected()) return false;
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof CoreBuild core && core.block == Blocks.coreOrbital && core.hasOrbitalEnergy(amount)){
                 return true;
             }
@@ -4350,6 +4574,8 @@ public class UnitAbilityPanel extends Table{
             case MAIN:
                 if(Core.input.keyTap(KeyCode.g)){
                     enterCommandMode(CommandMode.HARVEST);
+                }else if(Core.input.keyTap(KeyCode.r)){
+                    enterCommandMode(CommandMode.REPAIR);
                 }else if(Core.input.keyTap(KeyCode.b)){
                     novaPanel = NovaPanel.BUILD_BASIC;
                 }else if(Core.input.keyTap(KeyCode.v)){
@@ -4404,6 +4630,22 @@ public class UnitAbilityPanel extends Table{
             issueWidowBurrowCommand(true);
         }else if(Core.input.keyTap(KeyCode.d)){
             issueWidowBurrowCommand(false);
+        }
+    }
+
+    private void handleMaceLocusHotkeys(){
+        if(Core.input.keyTap(KeyCode.e)){
+            if(anyMaceCanTransformToLocus()){
+                issueMaceLocusModeCommand(true);
+            }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+                ui.hudfrag.setHudText("Requires Armory");
+            }
+        }else if(Core.input.keyTap(KeyCode.d)){
+            if(anyLocusCanTransformToMace()){
+                issueMaceLocusModeCommand(false);
+            }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
+                ui.hudfrag.setHudText("Requires Armory");
+            }
         }
     }
 
@@ -4541,6 +4783,23 @@ public class UnitAbilityPanel extends Table{
             }
             if(anyGhostEmpPending()){
                 issueGhostEmpCancelCommand();
+            }
+        }
+    }
+
+    private void handleReaperHotkeys(){
+        if(activeCommand == CommandMode.REAPER_KD8){
+            if(Core.input.keyTap(KeyCode.escape)){
+                exitCommandMode();
+            }
+            return;
+        }
+
+        if(Core.input.keyTap(KeyCode.d)){
+            if(anyReaperCanUseKd8()){
+                enterCommandMode(CommandMode.REAPER_KD8);
+            }else{
+                ui.hudfrag.setHudText("Cannot use KD8 Bomb");
             }
         }
     }
@@ -4695,7 +4954,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void issueBunkerStopAttack(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild){
                 build.configure(BunkerBlock.configStopAttack);
             }
@@ -4703,7 +4962,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void issueRadarRecycle(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof Radar.RadarBuild){
                 build.configure(Radar.configRecycle);
             }
@@ -4711,7 +4970,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void issueBunkerUnloadAll(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild){
                 build.configure(BunkerBlock.configUnloadAll);
             }
@@ -4719,7 +4978,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void issueBunkerRecycle(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build instanceof BunkerBlock.BunkerBuild){
                 build.configure(BunkerBlock.configRecycle);
             }
@@ -4727,7 +4986,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostAcademyCanBuildWarhead(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
             if(UnitTypes.ghostWarheadCanStartProduction(build)) return true;
         }
@@ -4735,7 +4994,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private boolean anyGhostAcademyProducingWarhead(){
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
             if(UnitTypes.ghostWarheadProducing(build)) return true;
         }
@@ -4744,7 +5003,7 @@ public class UnitAbilityPanel extends Table{
 
     private float selectedGhostWarheadBuildProgress(){
         float result = 0f;
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
             result = Math.max(result, UnitTypes.ghostWarheadProductionProgress(build));
         }
@@ -4753,7 +5012,7 @@ public class UnitAbilityPanel extends Table{
 
     private void tryStartGhostWarheadProduction(){
         int started = 0;
-        for(Building build : control.input.commandBuildings){
+        for(Building build : abilityBuildings()){
             if(build == null || !build.isValid() || build.block != Blocks.launchPad) continue;
             if(UnitTypes.ghostWarheadStartProduction(build)){
                 started++;
@@ -4848,14 +5107,14 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleBuildingHotkeys(){
-        if(control.input.commandBuildings.isEmpty()) return;
+        if(abilityBuildings().isEmpty()) return;
         if(activeCommand == CommandMode.RALLY || activeCommand == CommandMode.BUNKER_ATTACK || activeCommand == CommandMode.BUNKER_LOAD){
             if(Core.input.keyTap(KeyCode.escape)){
                 exitCommandMode();
             }
             return;
         }
-        Building build = control.input.commandBuildings.first();
+        Building build = abilityBuildings().first();
         if(isOnlyRadarSelected()){
             if(Core.input.keyTap(KeyCode.v) && anyRadarCanStartRecycle()){
                 issueRadarRecycle();
@@ -5254,8 +5513,8 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void stopSelectedBuilders(){
-        if(control.input.selectedUnits.isEmpty()) return;
-        for(Unit unit : control.input.selectedUnits){
+        if(abilityUnits().isEmpty()) return;
+        for(Unit unit : abilityUnits()){
             if(unit == null || !unit.isValid() || !unit.canBuild()) continue;
             unit.clearBuilding();
             unit.updateBuilding(false);
@@ -5309,32 +5568,11 @@ public class UnitAbilityPanel extends Table{
 
     private void buildCommandModePanel(){
         setPanelRows(3);
-        //Find the command description
-        RTSCommand currentCmd = null;
-        for(RTSCommand cmd : commands){
-            if(cmd.mode == activeCommand){
-                currentCmd = cmd;
-                break;
-            }
-        }
-
-        if(currentCmd == null){
-            exitCommandMode();
-            return;
-        }
-
-        //Display command description
-        add(currentCmd.name).style(Styles.outlineLabel).color(Pal.accent).pad(4f).row();
-        add(currentCmd.description).width(300f).wrap().pad(4f).row();
-        add("Left-click to set target").color(Color.lightGray).pad(4f).row();
-        add("Hold Shift to queue commands").color(Color.yellow).pad(4f).row();
-        add("Right-click to cancel").color(Color.lightGray).pad(4f).row();
-
         //Add cancel button at row 3, column 5 (index 14)
         Table buttonGrid = new Table();
         for(int i = 0; i < ROWS * COLS; i++){
             if(i == 14){ //Row 3, Column 5 (0-indexed: row 2, col 4)
-                addIconButton(buttonGrid, "Esc", Icon.cancel, () -> true, this::exitCommandMode);
+                addIconButton(buttonGrid, "Esc", Icon.cancel, () -> true, this::exitCommandMode, targetHintInfo);
             }else{
                 addEmpty(buttonGrid);
             }
@@ -5360,15 +5598,15 @@ public class UnitAbilityPanel extends Table{
 
     private void executeStopCommand(){
         //Stop command executes immediately - clear all unit commands
-        int[] ids = new int[control.input.selectedUnits.size];
+        int[] ids = new int[abilityUnits().size];
         for(int i = 0; i < ids.length; i++){
-            ids[i] = control.input.selectedUnits.get(i).id;
+            ids[i] = abilityUnits().get(i).id;
         }
         if(ids.length > 0){
             Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
             Call.commandMedivacMovingUnload(player, ids, false);
             //Send stop command (move to current position)
-            for(Unit unit : control.input.selectedUnits){
+            for(Unit unit : abilityUnits()){
                 if(unit.isValid()){
                     Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true, false);
                 }
@@ -5379,15 +5617,15 @@ public class UnitAbilityPanel extends Table{
 
     private void executeHoldCommand(){
         //Hold command executes immediately - units hold position
-        int[] ids = new int[control.input.selectedUnits.size];
+        int[] ids = new int[abilityUnits().size];
         for(int i = 0; i < ids.length; i++){
-            ids[i] = control.input.selectedUnits.get(i).id;
+            ids[i] = abilityUnits().get(i).id;
         }
         if(ids.length > 0){
             Call.setUnitCommand(player, ids, UnitCommand.moveCommand);
             Call.commandMedivacMovingUnload(player, ids, false);
         }
-        for(Unit unit : control.input.selectedUnits){
+        for(Unit unit : abilityUnits()){
             if(unit.isValid()){
                 //Send hold command (move to current position, will be interpreted as hold)
                 Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true, false);
@@ -5396,3 +5634,5 @@ public class UnitAbilityPanel extends Table{
         exitCommandMode();
     }
 }
+
+

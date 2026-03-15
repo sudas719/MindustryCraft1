@@ -1827,6 +1827,7 @@ public class Blocks{
             health = 500;
             armor = 1f;
             size = 2;
+            fogRadius = 9;
             unitCapModifier = 16;
             commandable = true;
             linkAdjacent = false;
@@ -3238,6 +3239,7 @@ public class Blocks{
             health = 1100;
             itemCapacity = 4000;
             size = 3;
+            fogRadius = 11;
             buildCostMultiplier = 2f;
 
             unitCapModifier = 8;
@@ -3250,6 +3252,7 @@ public class Blocks{
             health = 3500;
             itemCapacity = 9000;
             size = 4;
+            fogRadius = 11;
             thrusterLength = 34/4f;
 
             unitCapModifier = 16;
@@ -3286,6 +3289,7 @@ public class Blocks{
             armor = 1f;
             itemCapacity = 13000;
             size = 5;
+            fogRadius = 11;
             thrusterLength = 40/4f;
 
             unitCapModifier = 16;
@@ -3354,6 +3358,7 @@ public class Blocks{
             armor = 3f;
             itemCapacity = 13000;
             size = 5;
+            fogRadius = 11;
             thrusterLength = 40/4f;
 
             unitCapModifier = 16;

@@ -256,10 +256,13 @@ public class UnitSelectionGrid extends Table{
                                     Building building = null;
 
                                     if(unit == null){
-                                        for(Building b : Groups.build){
-                                            if(b.id == id){
-                                                building = b;
-                                                break;
+                                        building = world.build(id);
+                                        if(building == null){
+                                            for(Building b : Groups.build){
+                                                if(b.id == id){
+                                                    building = b;
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
@@ -270,7 +273,6 @@ public class UnitSelectionGrid extends Table{
                                         control.input.commandBuildings.add(building);
                                     }
                                 });
-                                control.input.unassignBuildingsFromControl(control.input.commandBuildings);
                             }
                         }
                     }).color(Color.yellow).tooltip("Formation " + buttonText + "\nShift+Click to add units");
@@ -548,6 +550,8 @@ public class UnitSelectionGrid extends Table{
         if(aUnit){
             Unit ua = ((UnitDisplay)a).unit;
             Unit ub = ((UnitDisplay)b).unit;
+            int groupCmp = Integer.compare(unitSelectionGroup(ua.type), unitSelectionGroup(ub.type));
+            if(groupCmp != 0) return groupCmp;
             int typeCmp = Integer.compare(ua.type.id, ub.type.id);
             if(typeCmp != 0) return typeCmp;
             return Integer.compare(ua.id, ub.id);
@@ -557,6 +561,27 @@ public class UnitSelectionGrid extends Table{
         int blockCmp = Integer.compare(ba.block.id, bb.block.id);
         if(blockCmp != 0) return blockCmp;
         return Integer.compare(ba.id, bb.id);
+    }
+
+    private int unitSelectionGroup(@Nullable UnitType type){
+        if(type == null) return 999;
+        if(type == UnitTypes.avert) return 0;
+        if(type == UnitTypes.ghost) return 1;
+        if(type == UnitTypes.antumbra) return 2; //battlecruiser
+        if(type == UnitTypes.dagger) return 3; //marine
+        if(type == UnitTypes.fortress) return 4; //marauder
+        if(type == UnitTypes.precept) return 5; //siege tank
+        if(type == UnitTypes.liberator) return 6;
+        if(type == UnitTypes.hurricane) return 7;
+        if(type == UnitTypes.reaper) return 8;
+        if(type == UnitTypes.flare) return 9; //viking
+        if(type == UnitTypes.locus || type == UnitTypes.mace) return 10; //hellion/hellbat
+        if(type == UnitTypes.horizon) return 11; //banshee
+        if(type == UnitTypes.mega) return 12; //medivac
+        if(type == UnitTypes.nova) return 13; //scv
+        if(type == UnitTypes.crawler) return 14; //widow mine
+        if(type == UnitTypes.scepter) return 15; //thor
+        return 999;
     }
 
     private void rebuild(){
@@ -593,6 +618,11 @@ public class UnitSelectionGrid extends Table{
             Table portrait = new Table();
             Stack stack = new Stack();
             stack.add(portraitBorderElement());
+            if(item instanceof UnitDisplay unitDisplay){
+                stack.add(subgroupHighlightElement(unitDisplay.unit.type));
+            }else if(item instanceof BuildingDisplay buildingDisplay){
+                stack.add(subgroupHighlightElement(buildingDisplay.building));
+            }
             Image icon = new Image(item.icon());
             icon.setScaling(Scaling.fit);
             Table iconTable = new Table();
@@ -607,7 +637,6 @@ public class UnitSelectionGrid extends Table{
                         control.input.selectedUnits.remove(((UnitDisplay)item).unit);
                     }else if(item instanceof BuildingDisplay){
                         control.input.commandBuildings.remove(((BuildingDisplay)item).building);
-                        control.input.unassignBuildingsFromControl(control.input.commandBuildings);
                     }
                 }else{
                     //Normal click: select only this unit/building, deselect all others
@@ -618,7 +647,6 @@ public class UnitSelectionGrid extends Table{
                         control.input.selectedUnits.add(((UnitDisplay)item).unit);
                     }else if(item instanceof BuildingDisplay){
                         control.input.commandBuildings.add(((BuildingDisplay)item).building);
-                        control.input.unassignBuildingsFromControl(control.input.commandBuildings);
                     }
                 }
             });
@@ -1900,6 +1928,40 @@ public class UnitSelectionGrid extends Table{
                 float inset = 1.5f;
                 float innerInset = 4.5f;
                 Lines.rect(x + inset, y + inset, width - inset * 2f, height - inset * 2f);
+                Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+                Draw.reset();
+            }
+        };
+    }
+
+    private Element subgroupHighlightElement(@Nullable UnitType type){
+        return new Element(){
+            @Override
+            public void draw(){
+                if(type == null) return;
+                if(!control.input.isUnitInActiveAbilitySubgroup(type)) return;
+                Draw.color(UnitAbilityPanel.abilityBorderColor);
+                Lines.stroke(1.5f * 3f);
+                float outerInset = -2f;
+                float innerInset = outerInset + 3f;
+                Lines.rect(x + outerInset, y + outerInset, width - outerInset * 2f, height - outerInset * 2f);
+                Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+                Draw.reset();
+            }
+        };
+    }
+
+    private Element subgroupHighlightElement(@Nullable Building build){
+        return new Element(){
+            @Override
+            public void draw(){
+                if(build == null) return;
+                if(!control.input.isBuildingInActiveAbilitySubgroup(build)) return;
+                Draw.color(UnitAbilityPanel.abilityBorderColor);
+                Lines.stroke(1.5f * 3f);
+                float outerInset = -2f;
+                float innerInset = outerInset + 3f;
+                Lines.rect(x + outerInset, y + outerInset, width - outerInset * 2f, height - outerInset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
                 Draw.reset();
             }

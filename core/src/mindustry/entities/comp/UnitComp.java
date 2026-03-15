@@ -75,6 +75,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     public boolean harvestHidden;
     private transient boolean energyInitialized;
     private transient float regenTimer;
+    private transient float regenCarry;
     private transient float lastHitTime;
     private transient float firingLockTime;
 
@@ -901,10 +902,22 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(type.regenRate > 0f){
             if(hitTime > lastHitTime){
                 regenTimer = 0f;
+                if(type == UnitTypes.reaper){
+                    regenCarry = 0f;
+                }
             }else{
                 regenTimer += Time.delta / 60f;
                 if(regenTimer >= type.regenDelay && health < maxHealth){
-                    heal(type.regenRate * Time.delta / 60f);
+                    if(type == UnitTypes.reaper){
+                        regenCarry += type.regenRate * Time.delta / 60f;
+                        int healAmount = (int)regenCarry;
+                        if(healAmount > 0){
+                            heal(healAmount);
+                            regenCarry -= healAmount;
+                        }
+                    }else{
+                        heal(type.regenRate * Time.delta / 60f);
+                    }
                 }
             }
             lastHitTime = hitTime;

@@ -425,13 +425,22 @@ public class OverlayRenderer{
         if(!hover.isValid()) return;
 
         if(Core.input.keyTap(KeyCode.mouseRight)){
-            hoverPulseTarget = hover.unit != null ? hover.unit : (hover.build != null ? hover.build : hover.resource);
-            hoverPulseStart = Time.time;
-            hoverPulseUntil = Time.time + 60f;
-            hoverPulseX = hover.x;
-            hoverPulseY = hover.y;
-            hoverPulseRadius = hoverRotatingRadius(hover.radius);
-            hoverPulseColor.set(hoverColor(hover));
+            Object target = hover.unit != null ? hover.unit : (hover.build != null ? hover.build : hover.resource);
+            boolean selectedTarget = false;
+            if(hover.unit != null){
+                selectedTarget = control.input.selectedUnits.contains(hover.unit);
+            }else if(hover.build != null){
+                selectedTarget = control.input.commandBuildings.contains(hover.build);
+            }
+            if(!selectedTarget){
+                hoverPulseTarget = target;
+                hoverPulseStart = Time.time;
+                hoverPulseUntil = Time.time + 60f;
+                hoverPulseX = hover.x;
+                hoverPulseY = hover.y;
+                hoverPulseRadius = hoverPulseRadius(hover.radius);
+                hoverPulseColor.set(hoverColor(hover));
+            }
         }
 
         Draw.z(Layer.overlayUI + 0.01f);
@@ -441,13 +450,8 @@ public class OverlayRenderer{
         if(hover.resource != null){
             Lines.circle(hover.x, hover.y, Math.max(1f, hover.radius + InputHandler.selectionSolidRadiusOffset));
         }else{
-            float rotation = Time.time * 360f / (60f * 4f);
             float radius = hoverRotatingRadius(hover.radius);
-            float arcDeg = 31.5f;
-            float step = 45f;
-            for(int i = 0; i < 8; i++){
-                Lines.arc(hover.x, hover.y, radius, arcDeg / 360f, rotation + i * step);
-            }
+            drawHoverArcRing(hover.x, hover.y, radius, Time.time * 360f / (60f * 4f), hoverColor(hover));
         }
 
         if(hoverPulseTarget != null && Time.time < hoverPulseUntil){
@@ -459,26 +463,23 @@ public class OverlayRenderer{
                 if(valid){
                     hoverPulseX = unit.x;
                     hoverPulseY = unit.y;
-                    hoverPulseRadius = hoverRotatingRadius(unit.hitSize / 2f);
+                    hoverPulseRadius = hoverPulseRadius(unit.hitSize / 2f);
                 }
             }else if(hoverPulseTarget instanceof Building build){
                 valid = build.isValid();
                 if(valid){
                     hoverPulseX = build.x;
                     hoverPulseY = build.y;
-                    hoverPulseRadius = hoverRotatingRadius(build.hitSize() / 2f);
+                    hoverPulseRadius = hoverPulseRadius(build.hitSize() / 2f);
                 }
             }else if(hoverPulseTarget instanceof Tile tile){
                 hoverPulseX = tile.worldx();
                 hoverPulseY = tile.worldy();
-                hoverPulseRadius = hoverRotatingRadius(tilesize / 2f);
+                hoverPulseRadius = hoverPulseRadius(tilesize / 2f);
             }
             if(valid){
                 float pulseRot = (Time.time - hoverPulseStart) * 360f / 60f;
-                Draw.color(hoverPulseColor);
-                for(int i = 0; i < 8; i++){
-                    Lines.arc(hoverPulseX, hoverPulseY, hoverPulseRadius, arcDeg / 360f, pulseRot + i * step);
-                }
+                drawHoverArcRing(hoverPulseX, hoverPulseY, hoverPulseRadius, pulseRot, hoverPulseColor);
             }
         }
         if(hoverPulseTarget != null && Time.time >= hoverPulseUntil){
@@ -490,6 +491,20 @@ public class OverlayRenderer{
 
     private float hoverRotatingRadius(float baseRadius){
         return Math.max(1f, baseRadius + InputHandler.selectionRotatingDashedRadiusOffset);
+    }
+
+    private float hoverPulseRadius(float baseRadius){
+        return Math.max(1f, baseRadius + InputHandler.selectionRotatingDashedRadiusOffset * 2f);
+    }
+
+    public static void drawHoverArcRing(float x, float y, float radius, float rotationDeg, Color color){
+        float arcDeg = 37.5f;
+        float step = 45f;
+        Lines.stroke(InputHandler.selectionRingStroke);
+        Draw.color(color);
+        for(int i = 0; i < 8; i++){
+            Lines.arc(x, y, radius, arcDeg / 360f, rotationDeg + i * step);
+        }
     }
 
     private Color hoverColor(InputHandler.HoverInfo hover){

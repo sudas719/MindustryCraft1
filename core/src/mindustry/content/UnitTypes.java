@@ -54,6 +54,18 @@ public class UnitTypes{
     private static final float widowRangeTiles = 5.5f;
     private static final IntMap<WidowLockData> widowLockData = new IntMap<>();
     private static final IntIntMap widowTargetLocks = new IntIntMap();
+    private static final float reaperKd8RangeTiles = 5f;
+    private static final float reaperKd8Cooldown = 14f * 60f;
+    private static final float reaperKd8ArmTime = 1.5f * 60f;
+    private static final float reaperKd8Damage = 5f;
+    private static final float reaperKd8ExplosionRadiusTiles = 1.5f;
+    private static final float reaperKd8KnockbackTiles = 1.5f;
+    private static final int reaperKd8KnockbackSteps = 5;
+    private static final float reaperKd8KnockbackStepInterval = 3f;
+    private static final float reaperKd8ExplosionVisualScale = 0.6f;
+    private static final float reaperKd8ThrowSpeed = 6f;
+    private static final float reaperKd8StunDuration = 0.6f * 60f;
+    private static final IntMap<ReaperKd8Data> reaperKd8Data = new IntMap<>();
     private static final float hurricaneBaseRangeTiles = 5f;
     private static final float hurricaneLockCastRangeTiles = 6f;
     private static final float hurricaneLockRangeTiles = 15f;
@@ -458,6 +470,31 @@ public class UnitTypes{
     private static BulletType battlecruiserYamatoBullet;
     private static BulletType ghostStableAimBullet;
     private static BulletType ghostEmpBullet;
+    private static BulletType reaperKd8Bullet;
+    private static final Effect reaperKd8ArmEffect = new Effect(reaperKd8ArmTime, e -> {
+        Draw.z(Layer.effect + 0.05f);
+        float fout = e.fout();
+        float fin = e.fin();
+
+        Draw.color(Color.black, 0.85f * fout);
+        Fill.circle(e.x, e.y, 1.7f);
+        Draw.color(Color.valueOf("ff3b3b"), 0.9f * fout);
+        Fill.circle(e.x, e.y, 1.1f);
+
+        int segments = Mathf.clamp((int)(1f + fin * 7.999f), 1, 8);
+        float radius = 4f;
+        float len = 2.6f;
+        float step = 360f / 8f;
+        Lines.stroke(1.1f);
+        Draw.color(Color.valueOf("ff3b3b"), 0.55f * fout);
+        for(int i = 0; i < segments; i++){
+            float ang = i * step;
+            float sx = e.x + Angles.trnsx(ang, radius);
+            float sy = e.y + Angles.trnsy(ang, radius);
+            Lines.lineAngle(sx, sy, ang, len);
+        }
+        Draw.reset();
+    });
 
     public static class CoreFlyerData{
         public final Vec2 target = new Vec2();
@@ -470,6 +507,12 @@ public class UnitTypes{
     public static class WidowLockData{
         public int targetId = -1;
         public float lockTime = 0f;
+    }
+
+    public static class ReaperKd8Data{
+        public final Vec2 target = new Vec2();
+        public boolean active = false;
+        public float cooldown = 0f;
     }
 
     public static class HurricaneLockData{
@@ -1074,6 +1117,163 @@ public class UnitTypes{
         return !widowDetectedBy(unit, viewer);
     }
 
+    private static @Nullable ReaperKd8Data getReaperKd8Data(@Nullable Unit unit, boolean create){
+        if(unit == null || unit.type != reaper) return null;
+        ReaperKd8Data data = reaperKd8Data.get(unit.id);
+        if(data == null && create){
+            data = new ReaperKd8Data();
+            reaperKd8Data.put(unit.id, data);
+        }
+        return data;
+    }
+
+    public static void clearReaperKd8Data(@Nullable Unit unit){
+        if(unit == null) return;
+        reaperKd8Data.remove(unit.id);
+    }
+
+    public static boolean reaperCanUseKd8(@Nullable Unit unit){
+        if(unit == null || unit.type != reaper) return false;
+        if(ravenMatrixDisabled(unit)) return false;
+        ReaperKd8Data data = getReaperKd8Data(unit, true);
+        return data != null && !data.active && data.cooldown <= 0.001f;
+    }
+
+    public static float reaperKd8Cooldown(@Nullable Unit unit){
+        ReaperKd8Data data = getReaperKd8Data(unit, false);
+        return data == null ? 0f : data.cooldown;
+    }
+
+    public static float reaperKd8CooldownDuration(){
+        return reaperKd8Cooldown;
+    }
+
+    public static float reaperKd8ArmTimeDuration(){
+        return reaperKd8ArmTime;
+    }
+
+    public static float reaperKd8Range(){
+        return reaperKd8RangeTiles * tilesize;
+    }
+
+    public static boolean commandReaperKd8(@Nullable Unit unit, @Nullable Vec2 target){
+        if(unit == null || unit.type != reaper || target == null) return false;
+        if(!reaperCanUseKd8(unit) || ravenMatrixDisabled(unit)) return false;
+        ReaperKd8Data data = getReaperKd8Data(unit, true);
+        if(data == null) return false;
+        data.active = true;
+        data.target.set(target);
+        return true;
+    }
+
+    private static void updateReaperKd8(@Nullable Unit unit){
+        if(unit == null || unit.type != reaper) return;
+        ReaperKd8Data data = getReaperKd8Data(unit, false);
+        if(data == null) return;
+
+        if(data.cooldown > 0f){
+            data.cooldown = Math.max(0f, data.cooldown - Time.delta);
+        }
+
+        if(!data.active) return;
+        if(ravenMatrixDisabled(unit)){
+            data.active = false;
+            return;
+        }
+
+        Vec2 target = data.target;
+        unit.lookAt(target);
+
+        float range = reaperKd8Range();
+        if(unit.within(target, range)){
+            if(reaperKd8Bullet != null){
+                Bullet bullet = reaperKd8Bullet.create(unit, unit.team, unit.x, unit.y, unit.angleTo(target));
+                if(bullet != null){
+                    float dist = Mathf.dst(unit.x, unit.y, target.x, target.y);
+                    bullet.lifetime = dist / Math.max(reaperKd8Bullet.speed, 0.001f);
+                }
+            }else{
+                spawnReaperKd8Bomb(target.x, target.y, unit.team);
+            }
+            data.cooldown = reaperKd8Cooldown;
+            data.active = false;
+            unit.vel.setZero();
+            if(unit.controller() instanceof CommandAI ai){
+                ai.clearCommands();
+            }
+        }else if(unit.controller() instanceof CommandAI ai){
+            ai.command(UnitCommand.moveCommand);
+            ai.commandPosition(Tmp.v2.set(target.x, target.y), false);
+        }
+    }
+
+    private static void spawnReaperKd8Bomb(float x, float y, Team team){
+        reaperKd8ArmEffect.at(x, y);
+        Time.run(reaperKd8ArmTime, () -> impactReaperKd8Bomb(team, x, y));
+    }
+
+    private static void applyReaperKd8Knockback(Unit unit, float fromX, float fromY){
+        if(unit == null || !unit.isValid() || reaperKd8KnockbackSteps <= 0) return;
+        float dx = unit.x - fromX;
+        float dy = unit.y - fromY;
+        if(Mathf.len2(dx, dy) <= 0.001f) return;
+        float len = reaperKd8KnockbackTiles * tilesize;
+        float inv = 1f / (float)Math.sqrt(dx * dx + dy * dy);
+        float stepLen = len / (float)reaperKd8KnockbackSteps;
+        float stepX = dx * inv * stepLen;
+        float stepY = dy * inv * stepLen;
+
+        for(int i = 0; i < reaperKd8KnockbackSteps; i++){
+            float delay = reaperKd8KnockbackStepInterval * (i + 1);
+            Time.run(delay, () -> {
+                if(unit == null || !unit.isValid()) return;
+                float nx = unit.x + stepX;
+                float ny = unit.y + stepY;
+                nx = Mathf.clamp(nx, 0f, Math.max(world.unitWidth() - tilesize, 0f));
+                ny = Mathf.clamp(ny, 0f, Math.max(world.unitHeight() - tilesize, 0f));
+                int tx = World.toTile(nx);
+                int ty = World.toTile(ny);
+                if(tx >= 0 && ty >= 0 && tx < world.width() && ty < world.height() && !world.solid(tx, ty)){
+                    unit.set(nx, ny);
+                }
+            });
+        }
+    }
+
+    private static void impactReaperKd8Bomb(@Nullable Team team, float x, float y){
+        float radius = reaperKd8ExplosionRadiusTiles * tilesize;
+
+        Units.nearby((Team)null, x - radius, y - radius, radius * 2f, radius * 2f, u -> {
+            if(u == null || !u.isValid() || !u.hittable() || u.isFlying()) return;
+            float maxDst = radius + u.hitSize / 2f;
+            if(Mathf.dst(x, y, u.x, u.y) > maxDst) return;
+
+            u.damagePierce(reaperKd8Damage);
+
+            boolean heavy = u.type.unitClasses.contains(UnitClass.heavy);
+            if(!heavy && !preceptIsSieged(u)){
+                boolean blocked = World.raycast(World.toTile(x), World.toTile(y), u.tileX(), u.tileY(), (wx, wy) -> world.solid(wx, wy));
+                if(!blocked){
+                    applyReaperKd8Knockback(u, x, y);
+                    u.apply(StatusEffects.unmoving, reaperKd8StunDuration);
+                    u.apply(StatusEffects.disarmed, reaperKd8StunDuration);
+                }
+            }
+        });
+
+        Units.nearbyBuildings(x, y, radius + 16f, build -> {
+            if(build == null || !build.isValid()) return;
+            float maxDst = radius + build.hitSize() / 2f;
+            if(Mathf.dst(x, y, build.x, build.y) > maxDst) return;
+            build.damagePierce(reaperKd8Damage);
+        });
+
+        float visualRadius = radius / tilesize * reaperKd8ExplosionVisualScale;
+        Fx.explosion.at(x, y);
+        Fx.dynamicExplosion.at(x, y, visualRadius, Color.valueOf("ff3b3b"));
+        Effect.shake(2f, 2f, x, y);
+    }
+
     public static boolean isHurricane(@Nullable Unit unit){
         return unit != null && hurricane != null && unit.type == hurricane;
     }
@@ -1224,6 +1424,10 @@ public class UnitTypes{
             return vikingTransformSmartServoTime;
         }
         return vikingTransformDuration;
+    }
+
+    public static float vikingTransformDuration(@Nullable Team team){
+        return vikingTransformDurationForTeam(team);
     }
 
     public static float maceLocusTransformDuration(@Nullable Team team){
@@ -5434,6 +5638,12 @@ public class UnitTypes{
             }
 
             if(data == null || !data.producing) continue;
+            if(sandboxInstantForTeam(build.team)){
+                data.buildTime = 0f;
+                data.producing = false;
+                data.armed = true;
+                continue;
+            }
             data.buildTime += Time.delta;
             if(data.buildTime >= ghostWarheadBuildTime){
                 data.buildTime = 0f;
@@ -5628,7 +5838,7 @@ public class UnitTypes{
         for(Building build : Groups.build){
             if(build == null || !build.isValid() || build.team != team) continue;
             if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
-            if(factory.block != Blocks.airFactory) continue;
+            if(factory.block != Blocks.shipFabricator) continue;
             if(factory.hasTechAddon()) return true;
         }
         return false;
@@ -5658,7 +5868,7 @@ public class UnitTypes{
         if(factory == null || !factory.isValid() || !factory.hasTechAddon()) return false;
         if(factory.block == Blocks.groundFactory) return barracksTechAnyResearching(factory.team);
         if(factory.block == Blocks.tankFabricator) return heavyFactoryTechAnyResearching(factory.team);
-        if(factory.block == Blocks.airFactory) return starportTechAnyResearching(factory.team);
+        if(factory.block == Blocks.shipFabricator) return starportTechAnyResearching(factory.team);
         return false;
     }
 
@@ -7765,8 +7975,45 @@ public class UnitTypes{
             population = 1;
             fogRadius = 9f;
             canPassWalls = true;
-            regenDelay = 3f;
-            regenRate = 2.5f;
+            regenDelay = 5f;
+            regenRate = 2f;
+
+            reaperKd8Bullet = new BasicBulletType(reaperKd8ThrowSpeed, 0f){
+                {
+                    width = 6f;
+                    height = 6f;
+                    lifetime = 60f;
+                    hitSize = 2f;
+                    keepVelocity = false;
+                    drag = 0f;
+                    collides = false;
+                    collidesTiles = false;
+                    collidesAir = false;
+                    collidesGround = false;
+                    hittable = false;
+                    absorbable = false;
+                    reflectable = false;
+                    shootEffect = Fx.none;
+                    smokeEffect = Fx.none;
+                    hitEffect = Fx.none;
+                    despawnEffect = Fx.none;
+                }
+
+                @Override
+                public void draw(Bullet b){
+                    Draw.z(Layer.bullet);
+                    Draw.color(Color.black, 0.9f);
+                    Fill.circle(b.x, b.y, 1.6f);
+                    Draw.color(Color.valueOf("52e0ff"));
+                    Fill.circle(b.x, b.y, 1.0f);
+                    Draw.reset();
+                }
+
+                @Override
+                public void despawned(Bullet b){
+                    spawnReaperKd8Bomb(b.x, b.y, b.team);
+                }
+            };
 
             weapons.add(new Weapon(){{
                 reload = 0.79f * 60f;
@@ -7796,6 +8043,15 @@ public class UnitTypes{
                     }
                 };
             }});
+        }
+        @Override
+        public void update(Unit unit){
+            super.update(unit);
+            updateReaperKd8(unit);
+        }
+        @Override
+        public void killed(Unit unit){
+            clearReaperKd8Data(unit);
         }
         @Override
         public void load(){
@@ -8895,11 +9151,6 @@ public class UnitTypes{
                 cooldownTime = 25f;
                 recoil = 0.9f;
                 recoilTime = 18f;
-
-                shoot = new ShootPattern(){{
-                    shots = 2;
-                    shotDelay = 3f;
-                }};
 
                 bullet = new PointBulletType(){
                     {
@@ -12736,12 +12987,6 @@ public class UnitTypes{
                         despawnEffect = Fx.none;
                         keepVelocity = false;
                         hittable = false;
-                    }
-
-                    @Override
-                    public void init(Bullet b){
-                        super.init(b);
-                        applyDamage(b);
                     }
 
                     @Override

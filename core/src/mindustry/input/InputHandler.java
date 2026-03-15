@@ -43,6 +43,7 @@ import mindustry.world.blocks.environment.SteamVent;
 import mindustry.world.blocks.defense.BunkerBlock;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.*;
+import mindustry.world.blocks.units.UnitFactory;
 import mindustry.world.meta.*;
 
 import java.util.*;
@@ -63,11 +64,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     final static IntSet intSet = new IntSet();
     final static Color placementGridLine = Color.valueOf("ffffff");
     final static Color placementGridInvalid = Color.valueOf("ff9a2f");
-    public static final float selectionRingStroke = 0.75f;
+    public static final float selectionRingStroke = 0.5f;
     public static final float selectionRingRadiusStep = 0.35f;
     public static final float selectionSolidRadiusOffset = 0f;
     public static final float selectionDashedRadiusOffset = -selectionRingRadiusStep;
-    public static final float selectionRotatingDashedRadiusOffset = -selectionRingRadiusStep * 2f;
+    public static final float selectionRotatingDashedRadiusOffset = selectionRingRadiusStep * 2f;
     /** Maximum line length. */
     final static int maxLength = 100;
     final static Rect r1 = new Rect(), r2 = new Rect();
@@ -129,6 +130,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public float commandRectX, commandRectY;
     /** Groups of units saved to different hotkeys */
     public IntSeq[] controlGroups = new IntSeq[controlGroupBindings.length];
+    private final IntSeq subgroupOrder = new IntSeq();
+    private final IntSet subgroupSet = new IntSet();
+    private final Seq<Unit> subgroupUnits = new Seq<>();
+    private final Seq<Building> subgroupBuildings = new Seq<>();
+    private int activeSubgroup = -1;
 
     private Seq<BuildPlan> plansOut = new Seq<>(BuildPlan.class);
     private QuadTree<BuildPlan> playerPlanTree = new QuadTree<>(new Rect());
@@ -341,7 +347,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(target.team() != unit.team) return false;
 
         if(target instanceof Unit ally){
-            if(!ally.isValid() || ally == unit || !ally.damaged()) return false;
+            if(!ally.isValid() || ally == unit || ally.health >= ally.maxHealth() - 0.001f) return false;
             if(!ally.type.unitClasses.contains(UnitClass.mechanical)) return false;
             if(UnitTypes.isMedivac(ally) && UnitTypes.medivacPayloadSlotsFree(ally) > 0 && !explicitRepairCommand){
                 return false;
@@ -350,7 +356,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
 
         if(target instanceof Building build){
-            return build.isValid() && build.team == unit.team && build.damaged();
+            return build.isValid() && build.team == unit.team && !(build instanceof ConstructBuild) && build.health < build.maxHealth() - 0.001f;
         }
 
         return false;
@@ -392,8 +398,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                                 unit.clearBuilding();
                             }
                         }
+
+                        boolean scvRepairTarget = teamTarget != null && canScvRepairTarget(unit, teamTarget, scvRepairCommandRequested);
                         //implicitly order it to move
-                        if(ai.command == null || ai.command.switchToMove){
+                        if(ai.command == null || (ai.command.switchToMove && !(scvRepairCommandRequested && scvRepairTarget))){
                             ai.command(UnitCommand.moveCommand);
                         }
                         //Forced attack commands must override non-moving stances/commands (e.g. hold).
@@ -404,12 +412,19 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     if(teamTarget != null){
                         boolean alliedAttackableBuilding = teamTarget instanceof Building b && Units.targetableAllTeams(b);
                         boolean forcedAllyAttack = teamTarget.team() == player.team() && (forceAttackTarget || alliedAttackableBuilding);
-                        boolean scvRepairTarget = canScvRepairTarget(unit, teamTarget, scvRepairCommandRequested);
                         if(teamTarget.team() == player.team() && scvRepairTarget){
-                            ai.command(UnitCommand.repairCommand);
+                            if(!queueCommand){
+                                ai.command(UnitCommand.repairCommand);
+                            }
                             anyCommandedTarget = true;
                             if(queueCommand){
-                                ai.commandQueue(teamTarget);
+                                //Queue building repairs as positions so the order survives construct/replacement.
+                                //RepairAI resolves the actual building at execution time.
+                                if(teamTarget instanceof Building){
+                                    ai.queueCommand(new CommandAI.RepairMarker((Building)teamTarget), true);
+                                }else{
+                                    ai.queueCommand(teamTarget, true);
+                                }
                             }else{
                                 ai.commandQueue.clear();
                                 ai.commandTarget(teamTarget);
@@ -933,6 +948,30 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             Unit unit = Groups.unit.getByID(id);
             if(unit == null || unit.team != player.team() || !UnitTypes.isGhost(unit)) continue;
             UnitTypes.commandGhostCancelEmp(unit);
+            unit.lastCommanded = player.coloredName();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandReaperKd8(Player player, int[] unitIds, @Nullable Vec2 target){
+        if(player == null || unitIds == null || target == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        recordPlayerAction(player);
+
+        Vec2 safeTarget = sanitizeRemoteCommandTarget(target);
+        if(safeTarget == null) return;
+
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit == null || unit.team != player.team() || unit.type != UnitTypes.reaper) continue;
+            if(UnitTypes.ravenMatrixDisabled(unit)) continue;
+            UnitTypes.commandReaperKd8(unit, safeTarget);
             unit.lastCommanded = player.coloredName();
         }
     }
@@ -1562,6 +1601,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         logicCutscene = false;
         commandBuildings.clear();
         selectedUnits.clear();
+        subgroupOrder.clear();
+        subgroupSet.clear();
+        subgroupUnits.clear();
+        subgroupBuildings.clear();
+        activeSubgroup = -1;
         selectedResource = null;
         itemDepositCooldown = 0f;
         Arrays.fill(controlGroups, null);
@@ -1783,7 +1827,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                             commandBuildings.clear();
                         }
                         commandBuildings.addAll(buildings);
-                        unassignBuildingsFromControl(commandBuildings);
                     }else if(!multi && units.isEmpty()){
                         commandBuildings.clear();
                     }
@@ -1808,6 +1851,127 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             }
             commandRect = false;
         }
+    }
+
+    public Seq<Unit> abilitySubgroupUnits(){
+        refreshSubgroupSelection();
+        return subgroupUnits;
+    }
+
+    public Seq<Building> abilitySubgroupBuildings(){
+        refreshSubgroupSelection();
+        return subgroupBuildings;
+    }
+
+    public boolean isUnitInActiveAbilitySubgroup(@Nullable UnitType type){
+        refreshSubgroupSelection();
+        if(type == null || activeSubgroup < 0) return false;
+        return unitSelectionGroup(type) == activeSubgroup;
+    }
+
+    public boolean isBuildingInActiveAbilitySubgroup(@Nullable Building build){
+        refreshSubgroupSelection();
+        if(build == null || activeSubgroup < 0) return false;
+        return buildingSelectionGroup(build) == activeSubgroup;
+    }
+
+    public boolean cycleAbilitySubgroup(boolean forward){
+        refreshSubgroupSelection();
+        if(subgroupOrder.size <= 1) return false;
+        int index = subgroupOrder.indexOf(activeSubgroup);
+        if(index < 0) index = 0;
+        int step = forward ? 1 : -1;
+        int nextIndex = index + step;
+        if(nextIndex < 0) nextIndex = subgroupOrder.size - 1;
+        if(nextIndex >= subgroupOrder.size) nextIndex = 0;
+        activeSubgroup = subgroupOrder.get(nextIndex);
+        rebuildSubgroupUnits();
+        return true;
+    }
+
+    private void refreshSubgroupSelection(){
+        subgroupSet.clear();
+        subgroupOrder.clear();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid()) continue;
+            int group = unitSelectionGroup(unit.type);
+            if(subgroupSet.add(group)){
+                subgroupOrder.add(group);
+            }
+        }
+        for(Building build : commandBuildings){
+            if(build == null || !build.isValid()) continue;
+            int group = buildingSelectionGroup(build);
+            if(subgroupSet.add(group)){
+                subgroupOrder.add(group);
+            }
+        }
+        subgroupOrder.sort();
+
+        if(subgroupOrder.isEmpty()){
+            activeSubgroup = -1;
+            subgroupUnits.clear();
+            subgroupBuildings.clear();
+            return;
+        }
+
+        if(activeSubgroup < 0 || !subgroupSet.contains(activeSubgroup)){
+            activeSubgroup = subgroupOrder.first();
+        }
+        rebuildSubgroupUnits();
+    }
+
+    private void rebuildSubgroupUnits(){
+        subgroupUnits.clear();
+        subgroupBuildings.clear();
+        if(activeSubgroup < 0) return;
+        if(isBuildingSubgroup(activeSubgroup)){
+            for(Building build : commandBuildings){
+                if(build == null || !build.isValid()) continue;
+                if(buildingSelectionGroup(build) == activeSubgroup){
+                    subgroupBuildings.add(build);
+                }
+            }
+        }else{
+            for(Unit unit : selectedUnits){
+                if(unit == null || !unit.isValid()) continue;
+                if(unitSelectionGroup(unit.type) == activeSubgroup){
+                    subgroupUnits.add(unit);
+                }
+            }
+        }
+    }
+
+    private int unitSelectionGroup(@Nullable UnitType type){
+        if(type == null) return 9999;
+        if(type == UnitTypes.avert) return 0;
+        if(type == UnitTypes.ghost) return 1;
+        if(type == UnitTypes.antumbra) return 2; //battlecruiser
+        if(type == UnitTypes.dagger) return 3; //marine
+        if(type == UnitTypes.fortress) return 4; //marauder
+        if(type == UnitTypes.precept) return 5; //siege tank
+        if(type == UnitTypes.liberator) return 6;
+        if(type == UnitTypes.hurricane) return 7;
+        if(type == UnitTypes.reaper) return 8;
+        if(type == UnitTypes.flare) return 9; //viking
+        if(type == UnitTypes.locus || type == UnitTypes.mace) return 10; //hellion/hellbat
+        if(type == UnitTypes.horizon) return 11; //banshee
+        if(type == UnitTypes.mega) return 12; //medivac
+        if(type == UnitTypes.nova) return 13; //scv
+        if(type == UnitTypes.crawler) return 14; //widow mine
+        if(type == UnitTypes.scepter) return 15; //thor
+        return 1000 + type.id;
+    }
+
+    private boolean isBuildingSubgroup(int group){
+        return group >= 20000;
+    }
+
+    private int buildingSelectionGroup(@Nullable Building build){
+        if(build == null || build.block == null) return 99999;
+        int priority = buildingSelectionPriority(build);
+        int major = 1000 - Math.max(priority, 0);
+        return 20000 + major * 1000 + build.block.id;
     }
 
     public void selectTypedUnits(){
@@ -1888,7 +2052,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                             commandBuildings.clear();
                             commandBuildings.add(build);
                         }
-                        unassignBuildingsFromControl(commandBuildings);
                         if(!shiftHeld){
                             selectedResource = null;
                         }
@@ -1905,6 +2068,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(buildings.isEmpty()) return;
         tmpControlBuildings.clear();
         for(Building building : buildings){
+            tmpControlBuildings.add(building.pos());
             tmpControlBuildings.add(building.id);
         }
         for(IntSeq group : controlGroups){
@@ -1956,6 +2120,12 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             Vec2 target = clampCommandTarget(rawTarget.cpy());
 
             if(selectedUnits.size > 0){
+                for(Unit unit : selectedUnits){
+                    if(unit == null || !unit.isValid()) continue;
+                    if(UnitTypes.isBattlecruiser(unit)){
+                        UnitTypes.commandBattlecruiserCancelYamato(unit);
+                    }
+                }
                 // Check if clicking on a harvestable resource
                 Tile tile = world.tileWorld(target.x, target.y);
                 Tile resource = resolveResourceTile(tile);
@@ -2000,7 +2170,47 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 }
 
                 Teamc teamTarget = null;
-                Building buildAtPos = world.buildWorld(target.x, target.y);
+                Building buildAtPos = world.buildWorld(rawTarget.x, rawTarget.y);
+                if(buildAtPos == null){
+                    Tile tileAt = world.tileWorld(rawTarget.x, rawTarget.y);
+                    if(tileAt != null && tileAt.build != null){
+                        buildAtPos = tileAt.build;
+                    }
+                }
+                if(buildAtPos == null){
+                    Tile tileAt = world.tileWorld(target.x, target.y);
+                    if(tileAt != null && tileAt.build != null){
+                        buildAtPos = tileAt.build;
+                    }
+                }
+                if(buildAtPos == null){
+                    buildAtPos = world.buildWorld(target.x, target.y);
+                }
+
+                //SCV right-click on constructing building: assist construction by adding build plans.
+                if(buildAtPos instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild construct && construct.team == player.team()){
+                    Block cur = construct.current;
+                    if(cur != null && cur != Blocks.air){
+                        IntSeq scvIds = new IntSeq();
+                        int tx = construct.tile.x, ty = construct.tile.y;
+                        for(Unit unit : selectedUnits){
+                            if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
+                            BuildPlan plan = new BuildPlan(tx, ty, construct.rotation, cur, cur.saveConfig ? construct.lastConfig : null);
+                            plan.requireClose = true;
+                            unit.addBuild(plan);
+                            unit.updateBuilding(true);
+                            scvIds.add(unit.id);
+                        }
+
+                        if(scvIds.size > 0){
+                            float targetX = tx * tilesize + cur.offset;
+                            float targetY = ty * tilesize + cur.offset;
+                            Call.commandUnits(player, scvIds.toArray(), null, null, new Vec2(targetX, targetY), queue, true, false);
+                            return;
+                        }
+                    }
+                }
+
                 if(buildAtPos != null && buildAtPos.team() == player.team() && buildAtPos.block == Blocks.ventCondenser){
                     Tile ventTile = findVentTile(buildAtPos);
                     if(ventTile != null){
@@ -2112,7 +2322,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         float radius = Math.max(1f, sel.hitSize / 2f + selectionSolidRadiusOffset);
         Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
-        Lines.circle(sel.x, sel.y, radius);
+        drawSelectionCircle(sel.x, sel.y, radius);
         Draw.reset();
     }
 
@@ -2120,23 +2330,48 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         float radius = Math.max(1f, build.hitSize() / 2f + selectionSolidRadiusOffset);
         Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
-        Lines.circle(build.x, build.y, radius);
+        drawSelectionCircle(build.x, build.y, radius);
         Draw.reset();
     }
 
     private void drawCommandDashed(Unit sel){
-        float radius = Math.max(1f, sel.hitSize / 2f + selectionDashedRadiusOffset);
+        float radius = Math.max(1f, sel.hitSize / 2f + selectionRotatingDashedRadiusOffset);
         Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
-        Lines.dashCircle(sel.x, sel.y, radius);
+        float lenScale = 0.6f;
+        int verts = 10 + (int)(radius * lenScale);
+        if((verts & 1) == 1) verts++;
+        float step = 360f / verts;
+        float rot = (Time.time * 2f) % 360f;
+        for(int i = 0; i < verts; i += 2){
+            float a1 = rot + i * step + 90f;
+            float a2 = rot + (i + 1) * step + 90f;
+            Tmp.v1.set(radius, 0f).rotate(a1);
+            Tmp.v2.set(radius, 0f).rotate(a2);
+            Lines.line(sel.x + Tmp.v1.x, sel.y + Tmp.v1.y, sel.x + Tmp.v2.x, sel.y + Tmp.v2.y);
+        }
         Draw.reset();
     }
 
     private void drawCommandDashed(Building build){
-        float radius = Math.max(1f, build.hitSize() / 2f + selectionDashedRadiusOffset);
+        float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
         Lines.stroke(selectionRingStroke);
         Draw.color(Color.green);
-        Lines.dashCircle(build.x, build.y, radius);
+        float lenScale = 0.6f;
+        int verts = 10 + (int)(radius * lenScale);
+        if((verts & 1) == 1) verts++;
+
+        float step = 360f / verts;
+        float rot = (Time.time * 2f) % 360f;
+
+        for(int i = 0; i < verts; i += 2){
+            float a1 = rot + i * step + 90f;
+            float a2 = rot + (i + 1) * step + 90f;
+
+            Tmp.v1.set(radius, 0f).rotate(a1);
+            Tmp.v2.set(radius, 0f).rotate(a2);
+            Lines.line(build.x + Tmp.v1.x, build.y + Tmp.v1.y, build.x + Tmp.v2.x, build.y + Tmp.v2.y);
+        }
         Draw.reset();
     }
 
@@ -2175,7 +2410,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 //Draw only the outer ring on top of unit
                 Lines.stroke(selectionRingStroke);
                 Draw.color(Color.green);
-                Lines.circle(unit.x, unit.y, Math.max(1f, rad + selectionSolidRadiusOffset));
+                drawSelectionCircle(unit.x, unit.y, Math.max(1f, rad + selectionSolidRadiusOffset));
             }
             Draw.reset();
         }
@@ -2187,10 +2422,15 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             Draw.color(Color.green);
             for(Building build : commandBuildings){
                 if(build == null || !build.isValid()) continue;
-                Lines.circle(build.x, build.y, Math.max(1f, build.hitSize() / 2f + selectionSolidRadiusOffset));
+                drawSelectionCircle(build.x, build.y, Math.max(1f, build.hitSize() / 2f + selectionSolidRadiusOffset));
             }
             Draw.reset();
         }
+    }
+
+    private void drawSelectionCircle(float x, float y, float radius){
+        int sides = Mathf.clamp((int)(radius * 3f), 32, 128);
+        Lines.poly(x, y, sides, radius);
     }
 
     private void drawCommandedRally(){
@@ -2253,6 +2493,22 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     private void drawUnitWaypoints(){
         if(player == null) return;
+        boolean spectator = isSpectatorMode();
+        if(!spectator && selectedUnits.isEmpty()) return;
+
+        Team focusTeam = null;
+        if(spectator && ui != null && ui.hudfrag != null){
+            Player focus = ui.hudfrag.spectatorCameraFocusedPlayer();
+            if(focus != null){
+                focusTeam = focus.team();
+            }
+        }
+
+        Rect viewBounds = null;
+        if(spectator){
+            viewBounds = camera.bounds(r1);
+            viewBounds.grow(tilesize * 2f);
+        }
 
         TextureRegion waypoint = Core.atlas.find("wayPoint");
         if(!waypoint.found()) waypoint = Core.atlas.find("wayPoints/wayPoint");
@@ -2285,16 +2541,26 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             bgAlpha = 1f - Interp.pow2Out.apply(bgProgress);
         }
 
-        for(Unit unit : selectedUnits){
+        Seq<Position> points = new Seq<>();
+        BoolSeq attackPoints = new BoolSeq();
+        Iterable<Unit> waypointUnits = spectator ? Groups.unit : selectedUnits;
+
+        for(Unit unit : waypointUnits){
             if(unit == null || !unit.isValid()) continue;
-            if(unit.team != player.team()) continue;
-            if(unit.inFogTo(player.team())) continue;
+            if(!spectator){
+                if(unit.team != player.team()) continue;
+                if(unit.inFogTo(player.team())) continue;
+            }else{
+                if(focusTeam != null && unit.team != focusTeam) continue;
+                if(viewBounds != null && !viewBounds.contains(unit.x, unit.y)) continue;
+            }
             if(!unit.allowCommand()) continue;
             if(!(unit.controller() instanceof CommandAI)) continue;
 
             CommandAI ai = (CommandAI)unit.controller();
             UnitCommand cmd = ai.currentCommand();
             if(cmd == UnitCommand.harvestCommand) continue;
+            if(ai.targetPos == null && ai.followTarget == null && ai.attackTarget == null && ai.commandQueue.size == 0) continue;
             Position current = ai.targetPos;
             if(ai.followTarget instanceof Teamc){
                 current = ai.followTarget;
@@ -2308,12 +2574,15 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             }
             if(current == null) continue;
 
-            Seq<Position> points = new Seq<>();
-            BoolSeq attackPoints = new BoolSeq();
+            points.clear();
+            attackPoints.clear();
             points.add(current);
             boolean currentAttack = ai.attackTarget != null || (ai.targetPos != null && ai.attackMovePosition);
+            if(ai.currentCommand() == UnitCommand.repairCommand){
+                currentAttack = false;
+            }
             if(current instanceof Teamc teamc){
-                if(ai.followTarget != teamc){
+                if(ai.currentCommand() != UnitCommand.repairCommand && ai.followTarget != teamc){
                     currentAttack |= ai.attackTarget == teamc || teamc.team() != unit.team;
                 }
             }
@@ -2325,7 +2594,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 points.add(next);
                 boolean queuedAttack = false;
                 if(next instanceof Teamc teamc){
-                    queuedAttack = ai.attackTarget == teamc || teamc.team() != unit.team;
+                    if(ai.currentCommand() != UnitCommand.repairCommand){
+                        queuedAttack = ai.attackTarget == teamc || teamc.team() != unit.team;
+                    }
                 }
                 attackPoints.add(queuedAttack);
             }
@@ -2475,27 +2746,24 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void drawUnitSelection(){
         if(commandRect && commandMode){
             float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
-            var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-            for(var unit : units){
-                drawCommandDashed(unit);
-            }
-            if(units.isEmpty()){
-                var buildings = selectedCommandBuildings(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-                for(var build : buildings){
-                    drawCommandDashed(build);
-                }
-            }
-
+            float rotation = Time.time * 360f / (60f * 4f);
+            Draw.z(Layer.overlayUI + 0.01f);
             Draw.color(Pal.accent, 0.3f);
             Fill.crect(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+            var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+            var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+            for(var unit : units){
+                float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+            }
+            for(var build : buildings){
+                float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+            }
         }
 
         if(commandMode && !commandRect){
-            Unit sel = selectedCommandUnit(input.mouseWorldX(), input.mouseWorldY());
-
-            if(sel != null && !(!multiUnitSelect() && selectedUnits.size == 1 && selectedUnits.contains(sel))){
-                drawCommand(sel);
-            }
+            //no hover selection ring
         }
     }
 
@@ -3588,7 +3856,92 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 tmpBuildings.add(b);
             }
         });
+        applyBuildingSelectionPriority(tmpBuildings);
         return tmpBuildings;
+    }
+
+    public Seq<Building> selectedCommandBuildingsRaw(float x, float y, float w, float h){
+        var tree = player.team().data().buildingTree;
+        tmpBuildings.clear();
+        if(tree == null) return tmpBuildings;
+        float rad = 4f;
+        Rect rect = Tmp.r1.set(x - rad/2f, y - rad/2f, rad*2f + w, rad*2f + h).normalize();
+        tree.intersect(rect, b -> {
+            float radius = b.hitSize() / 2f;
+            if(overlapsCircleRect(b.x, b.y, radius, rect)){
+                tmpBuildings.add(b);
+            }
+        });
+        return tmpBuildings;
+    }
+
+    private void applyBuildingSelectionPriority(Seq<Building> buildings){
+        if(buildings.isEmpty()) return;
+        int best = Integer.MIN_VALUE;
+        for(Building build : buildings){
+            int priority = buildingSelectionPriority(build);
+            if(priority > best) best = priority;
+        }
+        if(best <= 0) return;
+        final int bestPriority = best;
+        buildings.removeAll(build -> buildingSelectionPriority(build) != bestPriority);
+    }
+
+    private int buildingSelectionPriority(@Nullable Building build){
+        if(build == null || build.block == null) return 0;
+        Block block = build.block;
+
+        if(block == Blocks.coreOrbital) return 190;
+        if(block == Blocks.coreNucleus) return 180;
+        if(block == Blocks.corePlanetaryFortress) return 170;
+
+        if(block == Blocks.doorLarge || block == Blocks.doorLargeErekir) return 160;
+        if(block == Blocks.groundFactory) return 150;
+        if(block == Blocks.tankFabricator) return 140;
+        if(block == Blocks.shipFabricator) return 130;
+        if(block == Blocks.multiPress) return 120;
+        if(block == Blocks.siliconCrucible) return 110;
+        if(block == Blocks.swarmer) return 100;
+        if(build instanceof BunkerBlock.BunkerBuild) return 90;
+        if(block == Blocks.radar) return 80;
+        if(block == Blocks.launchPad) return 70;
+        if(block == Blocks.surgeCrucible) return 60;
+
+        if(block == Blocks.memoryBank){
+            UnitFactory.UnitFactoryBuild factory = attachedFactoryForTechLab(build);
+            if(factory != null){
+                if(factory.block == Blocks.groundFactory) return 55;
+                if(factory.block == Blocks.tankFabricator) return 54;
+                if(factory.block == Blocks.shipFabricator) return 53;
+            }
+            return 1;
+        }
+
+        if(block == Blocks.ravenTurret) return 40;
+        if(block == Blocks.rotaryPump) return 30;
+        if(block == Blocks.ventCondenser) return 20;
+
+        return 0;
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild attachedFactoryForTechLab(@Nullable Building techLab){
+        if(techLab == null || !techLab.isValid() || techLab.block != Blocks.memoryBank) return null;
+
+        for(Building build : Groups.build){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild factory)) continue;
+            if(!factory.isValid() || factory.team != techLab.team || !factory.hasTechAddon()) continue;
+
+            int size = factory.block.size;
+            int baseX = factory.tile.x - (size - 1) / 2;
+            int baseY = factory.tile.y - (size - 1) / 2;
+            Tile addonTile = world.tile(baseX + size, baseY);
+            if(addonTile == null) continue;
+            if(addonTile.build == techLab){
+                return factory;
+            }
+        }
+
+        return null;
     }
 
     private boolean overlapsCircleRect(float cx, float cy, float radius, Rect rect){
