@@ -115,6 +115,17 @@ public class UnitAbilityPanel extends Table{
     private final IntIntMap autoCastFlags = new IntIntMap();
     private float nextAutoCastUpdate = 0f;
 
+    //Factory multi-selection distribution state (SC2-like)
+    private static final int factoryCatDouble = 0;
+    private static final int factoryCatNone = 1;
+    private static final int factoryCatTech = 2;
+    private final IntIntMap factoryDistributeLastFactoryId = new IntIntMap();
+    private final IntIntMap factoryDistributeLastDoubleId = new IntIntMap();
+    private final IntIntMap factoryDistributeLastNoneId = new IntIntMap();
+    private final IntIntMap factoryDistributeLastTechId = new IntIntMap();
+    private final IntSeq factoryDistributeHistoryBlock = new IntSeq();
+    private final IntSeq factoryDistributeHistoryFactory = new IntSeq();
+
     //Command definitions
     private static class RTSCommand{
         String name;
@@ -1377,22 +1388,22 @@ public class UnitAbilityPanel extends Table{
 
             //Row 1
             if(locusIndex != -1){
-                addUnitButton(grid, "e", block.plans.get(locusIndex), () -> factory.canQueuePlan(locusIndex), () -> factory.configure(locusIndex));
+                addUnitButton(grid, "e", block.plans.get(locusIndex), () -> anyAbilityFactoryCanQueue(factory, locusIndex), () -> queueAbilityFactoryPlan(factory, locusIndex));
             }else{
                 addEmpty(grid);
             }
             if(crawlerIndex != -1){
-                addUnitButton(grid, "d", block.plans.get(crawlerIndex), () -> factory.canQueuePlan(crawlerIndex), () -> factory.configure(crawlerIndex));
+                addUnitButton(grid, "d", block.plans.get(crawlerIndex), () -> anyAbilityFactoryCanQueue(factory, crawlerIndex), () -> queueAbilityFactoryPlan(factory, crawlerIndex));
             }else{
                 addEmpty(grid);
             }
             if(hurricaneIndex != -1){
-                addUnitButton(grid, "n", block.plans.get(hurricaneIndex), () -> factory.canQueuePlan(hurricaneIndex), () -> factory.configure(hurricaneIndex));
+                addUnitButton(grid, "n", block.plans.get(hurricaneIndex), () -> anyAbilityFactoryCanQueue(factory, hurricaneIndex), () -> queueAbilityFactoryPlan(factory, hurricaneIndex));
             }else{
                 addEmpty(grid);
             }
             if(preceptIndex != -1){
-                addUnitButton(grid, "s", block.plans.get(preceptIndex), () -> factory.canQueuePlan(preceptIndex), () -> factory.configure(preceptIndex));
+                addUnitButton(grid, "s", block.plans.get(preceptIndex), () -> anyAbilityFactoryCanQueue(factory, preceptIndex), () -> queueAbilityFactoryPlan(factory, preceptIndex));
             }else{
                 addEmpty(grid);
             }
@@ -1401,12 +1412,12 @@ public class UnitAbilityPanel extends Table{
 
             //Row 2
             if(maceIndex != -1){
-                addUnitButton(grid, "r", block.plans.get(maceIndex), () -> factory.canQueuePlan(maceIndex), () -> factory.configure(maceIndex));
+                addUnitButton(grid, "r", block.plans.get(maceIndex), () -> anyAbilityFactoryCanQueue(factory, maceIndex), () -> queueAbilityFactoryPlan(factory, maceIndex));
             }else{
                 addEmpty(grid);
             }
             if(scepterIndex != -1){
-                addUnitButton(grid, "t", block.plans.get(scepterIndex), () -> factory.canQueuePlan(scepterIndex), () -> factory.configure(scepterIndex));
+                addUnitButton(grid, "t", block.plans.get(scepterIndex), () -> anyAbilityFactoryCanQueue(factory, scepterIndex), () -> queueAbilityFactoryPlan(factory, scepterIndex));
             }else{
                 addEmpty(grid);
             }
@@ -1424,27 +1435,27 @@ public class UnitAbilityPanel extends Table{
 
             //Row 1
             if(flareIndex != -1){
-                addUnitButton(grid, "v", block.plans.get(flareIndex), () -> factory.canQueuePlan(flareIndex), () -> factory.configure(flareIndex));
+                addUnitButton(grid, "v", block.plans.get(flareIndex), () -> anyAbilityFactoryCanQueue(factory, flareIndex), () -> queueAbilityFactoryPlan(factory, flareIndex));
             }else{
                 addEmpty(grid);
             }
             if(megaIndex != -1){
-                addUnitButton(grid, "d", block.plans.get(megaIndex), () -> factory.canQueuePlan(megaIndex), () -> factory.configure(megaIndex));
+                addUnitButton(grid, "d", block.plans.get(megaIndex), () -> anyAbilityFactoryCanQueue(factory, megaIndex), () -> queueAbilityFactoryPlan(factory, megaIndex));
             }else{
                 addEmpty(grid);
             }
             if(liberatorIndex != -1){
-                addUnitButton(grid, "n", block.plans.get(liberatorIndex), () -> factory.canQueuePlan(liberatorIndex), () -> factory.configure(liberatorIndex));
+                addUnitButton(grid, "n", block.plans.get(liberatorIndex), () -> anyAbilityFactoryCanQueue(factory, liberatorIndex), () -> queueAbilityFactoryPlan(factory, liberatorIndex));
             }else{
                 addEmpty(grid);
             }
             if(avertIndex != -1){
-                addUnitButton(grid, "r", block.plans.get(avertIndex), () -> factory.canQueuePlan(avertIndex), () -> factory.configure(avertIndex));
+                addUnitButton(grid, "r", block.plans.get(avertIndex), () -> anyAbilityFactoryCanQueue(factory, avertIndex), () -> queueAbilityFactoryPlan(factory, avertIndex));
             }else{
                 addEmpty(grid);
             }
             if(horizonIndex != -1){
-                addUnitButton(grid, "e", block.plans.get(horizonIndex), () -> factory.canQueuePlan(horizonIndex), () -> factory.configure(horizonIndex));
+                addUnitButton(grid, "e", block.plans.get(horizonIndex), () -> anyAbilityFactoryCanQueue(factory, horizonIndex), () -> queueAbilityFactoryPlan(factory, horizonIndex));
             }else{
                 addEmpty(grid);
             }
@@ -1452,7 +1463,7 @@ public class UnitAbilityPanel extends Table{
 
             //Row 2
             if(antumbraIndex != -1){
-                addUnitButton(grid, "b", block.plans.get(antumbraIndex), () -> factory.canQueuePlan(antumbraIndex), () -> factory.configure(antumbraIndex));
+                addUnitButton(grid, "b", block.plans.get(antumbraIndex), () -> anyAbilityFactoryCanQueue(factory, antumbraIndex), () -> queueAbilityFactoryPlan(factory, antumbraIndex));
             }else{
                 addEmpty(grid);
             }
@@ -1469,22 +1480,22 @@ public class UnitAbilityPanel extends Table{
 
             //Row 1
             if(daggerIndex != -1){
-                addUnitButton(grid, "a", block.plans.get(daggerIndex), () -> factory.canQueuePlan(daggerIndex), () -> factory.configure(daggerIndex));
+                addUnitButton(grid, "a", block.plans.get(daggerIndex), () -> anyAbilityFactoryCanQueue(factory, daggerIndex), () -> queueAbilityFactoryPlan(factory, daggerIndex));
             }else{
                 addEmpty(grid);
             }
             if(reaperIndex != -1){
-                addUnitButton(grid, "r", block.plans.get(reaperIndex), () -> factory.canQueuePlan(reaperIndex), () -> factory.configure(reaperIndex));
+                addUnitButton(grid, "r", block.plans.get(reaperIndex), () -> anyAbilityFactoryCanQueue(factory, reaperIndex), () -> queueAbilityFactoryPlan(factory, reaperIndex));
             }else{
                 addEmpty(grid);
             }
             if(fortressIndex != -1){
-                addUnitButton(grid, "d", block.plans.get(fortressIndex), () -> factory.canQueuePlan(fortressIndex), () -> factory.configure(fortressIndex));
+                addUnitButton(grid, "d", block.plans.get(fortressIndex), () -> anyAbilityFactoryCanQueue(factory, fortressIndex), () -> queueAbilityFactoryPlan(factory, fortressIndex));
             }else{
                 addEmpty(grid);
             }
             if(ghostIndex != -1){
-                addUnitButton(grid, "g", block.plans.get(ghostIndex), () -> factory.canQueuePlan(ghostIndex), () -> factory.configure(ghostIndex));
+                addUnitButton(grid, "g", block.plans.get(ghostIndex), () -> anyAbilityFactoryCanQueue(factory, ghostIndex), () -> queueAbilityFactoryPlan(factory, ghostIndex));
             }else{
                 addEmpty(grid);
             }
@@ -1501,7 +1512,7 @@ public class UnitAbilityPanel extends Table{
             for(int i = 0; i < row1Keys.length; i++){
                 if(i < block.plans.size){
                     int planIndex = i;
-                    addUnitButton(grid, row1Keys[i], block.plans.get(planIndex), () -> factory.canQueuePlan(planIndex), () -> factory.configure(planIndex));
+                    addUnitButton(grid, row1Keys[i], block.plans.get(planIndex), () -> anyAbilityFactoryCanQueue(factory, planIndex), () -> queueAbilityFactoryPlan(factory, planIndex));
                 }else{
                     addEmpty(grid);
                 }
@@ -1512,7 +1523,7 @@ public class UnitAbilityPanel extends Table{
             for(int i = 0; i < row2Keys.length; i++){
                 int planIndex = i + row1Keys.length;
                 if(planIndex < block.plans.size){
-                    addUnitButton(grid, row2Keys[i], block.plans.get(planIndex), () -> factory.canQueuePlan(planIndex), () -> factory.configure(planIndex));
+                    addUnitButton(grid, row2Keys[i], block.plans.get(planIndex), () -> anyAbilityFactoryCanQueue(factory, planIndex), () -> queueAbilityFactoryPlan(factory, planIndex));
                 }else{
                     addEmpty(grid);
                 }
@@ -1537,8 +1548,275 @@ public class UnitAbilityPanel extends Table{
         }
         addEmpty(grid);
         addIconButton(grid, "l", Icon.export, () -> factory.canLift(), () -> queueFactoryLift(factory));
-        addCancelButton(grid, () -> factory.configure(UnitFactory.sc2AddonCancelConfig));
+        addCancelButton(grid, () -> cancelAbilityFactoryQueued(factory));
         add(grid);
+    }
+
+    private boolean anyAbilityFactoryCanQueue(UnitFactory.UnitFactoryBuild reference, int planIndex){
+        if(reference == null || reference.block == null) return false;
+        for(Building build : abilityBuildings()){
+            if(build instanceof UnitFactory.UnitFactoryBuild f && f.isValid() && f.block == reference.block && f.sc2QueueEnabled()){
+                if(f.canQueuePlan(planIndex)){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private float factoryEffectiveQueue(UnitFactory.UnitFactoryBuild factory){
+        if(factory == null) return Float.POSITIVE_INFINITY;
+        int active = Math.max(1, factory.activeUnitSlots());
+        return (float)factory.queued / (float)active;
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild findFactoryById(Seq<UnitFactory.UnitFactoryBuild> list, int id){
+        if(id < 0) return null;
+        for(UnitFactory.UnitFactoryBuild f : list){
+            if(f != null && f.id == id){
+                return f;
+            }
+        }
+        return null;
+    }
+
+    private IntIntMap categoryLastIdMap(int category){
+        if(category == factoryCatDouble) return factoryDistributeLastDoubleId;
+        if(category == factoryCatTech) return factoryDistributeLastTechId;
+        return factoryDistributeLastNoneId;
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild chooseFactoryRoundRobin(Seq<UnitFactory.UnitFactoryBuild> list, int lastId){
+        if(list.isEmpty()) return null;
+
+        float min = Float.POSITIVE_INFINITY;
+        for(UnitFactory.UnitFactoryBuild f : list){
+            min = Math.min(min, factoryEffectiveQueue(f));
+        }
+        if(Float.isInfinite(min)) return null;
+
+        for(UnitFactory.UnitFactoryBuild f : list){
+            if(f == null) continue;
+            if(Mathf.equal(factoryEffectiveQueue(f), min, 0.0001f)){
+                return f;
+            }
+        }
+        return list.first();
+    }
+
+    private @Nullable UnitFactory.UnitFactoryBuild chooseFactoryAtLoad(Seq<UnitFactory.UnitFactoryBuild> list, int lastId, float load){
+        if(list.isEmpty() || Float.isInfinite(load)) return null;
+
+        for(UnitFactory.UnitFactoryBuild f : list){
+            if(f == null) continue;
+            if(Mathf.equal(factoryEffectiveQueue(f), load, 0.0001f)){
+                return f;
+            }
+        }
+        return null;
+    }
+
+    private void sortFactoriesByBuildOrder(Seq<UnitFactory.UnitFactoryBuild> list){
+        if(list.size <= 1) return;
+        list.sort((a, b) -> Integer.compare(a.id, b.id));
+    }
+
+    private boolean cancelAbilityFactoryQueued(UnitFactory.UnitFactoryBuild reference){
+        if(reference == null || reference.block == null) return false;
+        int blockId = reference.block.id;
+
+        for(int i = factoryDistributeHistoryFactory.size - 1; i >= 0; i--){
+            if(factoryDistributeHistoryBlock.get(i) != blockId) continue;
+
+            int factoryId = factoryDistributeHistoryFactory.get(i);
+            factoryDistributeHistoryBlock.removeIndex(i);
+            factoryDistributeHistoryFactory.removeIndex(i);
+
+            UnitFactory.UnitFactoryBuild found = null;
+            for(Building build : abilityBuildings()){
+                if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+                if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+                if(f.id == factoryId){
+                    found = f;
+                    break;
+                }
+            }
+
+            if(found != null && found.queued > 0){
+                found.configure(UnitFactory.sc2AddonCancelConfig);
+                factoryDistributeLastFactoryId.put(blockId, found.id);
+                if(found.hasDoubleAddon()){
+                    factoryDistributeLastDoubleId.put(blockId, found.id);
+                }else if(found.hasTechAddon()){
+                    factoryDistributeLastTechId.put(blockId, found.id);
+                }else{
+                    factoryDistributeLastNoneId.put(blockId, found.id);
+                }
+                return true;
+            }
+        }
+
+        UnitFactory.UnitFactoryBuild best = null;
+        float bestLoad = -1f;
+        for(Building build : abilityBuildings()){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+            if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+            if(f.queued <= 0) continue;
+            float load = factoryEffectiveQueue(f);
+            if(load > bestLoad){
+                best = f;
+                bestLoad = load;
+            }
+        }
+
+        if(best != null){
+            best.configure(UnitFactory.sc2AddonCancelConfig);
+            factoryDistributeLastFactoryId.put(blockId, best.id);
+            if(best.hasDoubleAddon()){
+                factoryDistributeLastDoubleId.put(blockId, best.id);
+            }else if(best.hasTechAddon()){
+                factoryDistributeLastTechId.put(blockId, best.id);
+            }else{
+                factoryDistributeLastNoneId.put(blockId, best.id);
+            }
+            return true;
+        }
+
+        //Fallback: cancel on reference (may cancel addon build)
+        reference.configure(UnitFactory.sc2AddonCancelConfig);
+        return true;
+    }
+
+    private void queueAbilityFactoryPlan(UnitFactory.UnitFactoryBuild reference, int planIndex){
+        if(reference == null || reference.block == null) return;
+
+        int blockId = reference.block.id;
+        Seq<UnitFactory.UnitFactoryBuild> doubles = new Seq<>();
+        Seq<UnitFactory.UnitFactoryBuild> none = new Seq<>();
+        Seq<UnitFactory.UnitFactoryBuild> tech = new Seq<>();
+        Seq<UnitFactory.UnitFactoryBuild> eligible = new Seq<>();
+
+        for(Building build : abilityBuildings()){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+            if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+            if(!f.canQueuePlan(planIndex)) continue;
+
+            eligible.add(f);
+            if(f.hasDoubleAddon()){
+                doubles.add(f);
+            }else if(f.hasTechAddon()){
+                tech.add(f);
+            }else{
+                none.add(f);
+            }
+        }
+
+        if(eligible.isEmpty()) return;
+
+        //Keep consistent build order within each group: earlier built factories get chosen first when loads tie.
+        sortFactoriesByBuildOrder(doubles);
+        sortFactoriesByBuildOrder(none);
+        sortFactoriesByBuildOrder(tech);
+
+        float minDouble = Float.POSITIVE_INFINITY;
+        float minNone = Float.POSITIVE_INFINITY;
+        float minTech = Float.POSITIVE_INFINITY;
+        for(UnitFactory.UnitFactoryBuild f : doubles){
+            minDouble = Math.min(minDouble, factoryEffectiveQueue(f));
+        }
+        for(UnitFactory.UnitFactoryBuild f : none){
+            minNone = Math.min(minNone, factoryEffectiveQueue(f));
+        }
+        for(UnitFactory.UnitFactoryBuild f : tech){
+            minTech = Math.min(minTech, factoryEffectiveQueue(f));
+        }
+
+        //SC2-like group selection:
+        //Prefer higher-priority factories, but once they're >=1 "effective queue" ahead, start filling the next group.
+        int chosenCategory = !doubles.isEmpty() ? factoryCatDouble : (!none.isEmpty() ? factoryCatNone : factoryCatTech);
+        float chosenMin = chosenCategory == factoryCatDouble ? minDouble : (chosenCategory == factoryCatNone ? minNone : minTech);
+        float groupThreshold = 1f;
+        float eps = 0.0001f;
+
+        for(;;){
+            int nextCategory = -1;
+            float nextMin = Float.POSITIVE_INFINITY;
+
+            if(chosenCategory == factoryCatDouble){
+                if(!none.isEmpty()){
+                    nextCategory = factoryCatNone;
+                    nextMin = minNone;
+                }else if(!tech.isEmpty()){
+                    nextCategory = factoryCatTech;
+                    nextMin = minTech;
+                }
+            }else if(chosenCategory == factoryCatNone){
+                if(!tech.isEmpty()){
+                    nextCategory = factoryCatTech;
+                    nextMin = minTech;
+                }
+            }
+
+            if(nextCategory == -1 || Float.isInfinite(nextMin)) break;
+            if(chosenMin + eps >= nextMin + groupThreshold){
+                chosenCategory = nextCategory;
+                chosenMin = nextMin;
+                continue;
+            }
+            break;
+        }
+
+        //Global sticky: fill the last-used factory's free active slot before distributing elsewhere.
+        int lastOverallId = factoryDistributeLastFactoryId.get(blockId, -1);
+        UnitFactory.UnitFactoryBuild stickyOverall = findFactoryById(eligible, lastOverallId);
+        if(stickyOverall != null && stickyOverall.canQueuePlan(planIndex)){
+            boolean stickyDouble = stickyOverall.hasDoubleAddon();
+            boolean stickyTech = stickyOverall.hasTechAddon();
+            int stickyCat = stickyDouble ? factoryCatDouble : (stickyTech ? factoryCatTech : factoryCatNone);
+            int stickyActive = Math.max(1, stickyOverall.activeUnitSlots());
+            boolean stickyForcePair = stickyActive > 1 && (stickyOverall.queued < stickyActive || (stickyOverall.queued % stickyActive != 0));
+            boolean stickyFreeActive = stickyOverall.queued < stickyActive;
+
+            //For multi-slot factories (reactor/double addon), always enqueue in pairs to keep both active slots busy.
+            //Otherwise, only fill the free active slot when it matches the chosen group.
+            if(stickyForcePair || (stickyFreeActive && stickyCat == chosenCategory)){
+                stickyOverall.configure(planIndex);
+                factoryDistributeHistoryBlock.add(blockId);
+                factoryDistributeHistoryFactory.add(stickyOverall.id);
+                if(factoryDistributeHistoryFactory.size > 1024){
+                    factoryDistributeHistoryBlock.removeIndex(0);
+                    factoryDistributeHistoryFactory.removeIndex(0);
+                }
+                factoryDistributeLastFactoryId.put(blockId, stickyOverall.id);
+                if(stickyOverall.hasDoubleAddon()){
+                    factoryDistributeLastDoubleId.put(blockId, stickyOverall.id);
+                }else if(stickyOverall.hasTechAddon()){
+                    factoryDistributeLastTechId.put(blockId, stickyOverall.id);
+                }else{
+                    factoryDistributeLastNoneId.put(blockId, stickyOverall.id);
+                }
+                return;
+            }
+        }
+        Seq<UnitFactory.UnitFactoryBuild> chosenList = chosenCategory == factoryCatDouble ? doubles : (chosenCategory == factoryCatTech ? tech : none);
+        IntIntMap lastIdMap = categoryLastIdMap(chosenCategory);
+        int lastId = lastIdMap.get(blockId, -1);
+
+        UnitFactory.UnitFactoryBuild chosen = chooseFactoryAtLoad(chosenList, lastId, chosenMin);
+        if(chosen == null){
+            chosen = chooseFactoryRoundRobin(chosenList, lastId);
+        }
+        if(chosen == null) return;
+
+        chosen.configure(planIndex);
+        factoryDistributeHistoryBlock.add(blockId);
+        factoryDistributeHistoryFactory.add(chosen.id);
+        if(factoryDistributeHistoryFactory.size > 1024){
+            factoryDistributeHistoryBlock.removeIndex(0);
+            factoryDistributeHistoryFactory.removeIndex(0);
+        }
+        factoryDistributeLastFactoryId.put(blockId, chosen.id);
+        lastIdMap.put(blockId, chosen.id);
     }
 
     private void buildSupplyPanel(){
@@ -5213,14 +5491,14 @@ public class UnitAbilityPanel extends Table{
                 int fortressIndex = block.plans.indexOf(p -> p.unit == UnitTypes.fortress);
                 int ghostIndex = block.plans.indexOf(p -> p.unit == UnitTypes.ghost);
 
-                if(Core.input.keyTap(KeyCode.a) && daggerIndex != -1 && factory.canQueuePlan(daggerIndex)){
-                    factory.configure(daggerIndex);
-                }else if(Core.input.keyTap(KeyCode.r) && reaperIndex != -1 && factory.canQueuePlan(reaperIndex)){
-                    factory.configure(reaperIndex);
-                }else if(Core.input.keyTap(KeyCode.d) && fortressIndex != -1 && factory.canQueuePlan(fortressIndex)){
-                    factory.configure(fortressIndex);
-                }else if(Core.input.keyTap(KeyCode.g) && ghostIndex != -1 && factory.canQueuePlan(ghostIndex)){
-                    factory.configure(ghostIndex);
+                if(Core.input.keyTap(KeyCode.a) && daggerIndex != -1 && anyAbilityFactoryCanQueue(factory, daggerIndex)){
+                    queueAbilityFactoryPlan(factory, daggerIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && reaperIndex != -1 && anyAbilityFactoryCanQueue(factory, reaperIndex)){
+                    queueAbilityFactoryPlan(factory, reaperIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && fortressIndex != -1 && anyAbilityFactoryCanQueue(factory, fortressIndex)){
+                    queueAbilityFactoryPlan(factory, fortressIndex);
+                }else if(Core.input.keyTap(KeyCode.g) && ghostIndex != -1 && anyAbilityFactoryCanQueue(factory, ghostIndex)){
+                    queueAbilityFactoryPlan(factory, ghostIndex);
                 }
             }else if(block == Blocks.tankFabricator){
                 int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
@@ -5230,18 +5508,18 @@ public class UnitAbilityPanel extends Table{
                 int maceIndex = block.plans.indexOf(p -> p.unit == UnitTypes.mace);
                 int scepterIndex = block.plans.indexOf(p -> p.unit == UnitTypes.scepter);
 
-                if(Core.input.keyTap(KeyCode.e) && locusIndex != -1 && factory.canQueuePlan(locusIndex)){
-                    factory.configure(locusIndex);
-                }else if(Core.input.keyTap(KeyCode.d) && crawlerIndex != -1 && factory.canQueuePlan(crawlerIndex)){
-                    factory.configure(crawlerIndex);
-                }else if(Core.input.keyTap(KeyCode.n) && hurricaneIndex != -1 && factory.canQueuePlan(hurricaneIndex)){
-                    factory.configure(hurricaneIndex);
-                }else if(Core.input.keyTap(KeyCode.s) && preceptIndex != -1 && factory.canQueuePlan(preceptIndex)){
-                    factory.configure(preceptIndex);
-                }else if(Core.input.keyTap(KeyCode.r) && maceIndex != -1 && factory.canQueuePlan(maceIndex)){
-                    factory.configure(maceIndex);
-                }else if(Core.input.keyTap(KeyCode.t) && scepterIndex != -1 && factory.canQueuePlan(scepterIndex)){
-                    factory.configure(scepterIndex);
+                if(Core.input.keyTap(KeyCode.e) && locusIndex != -1 && anyAbilityFactoryCanQueue(factory, locusIndex)){
+                    queueAbilityFactoryPlan(factory, locusIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && crawlerIndex != -1 && anyAbilityFactoryCanQueue(factory, crawlerIndex)){
+                    queueAbilityFactoryPlan(factory, crawlerIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && hurricaneIndex != -1 && anyAbilityFactoryCanQueue(factory, hurricaneIndex)){
+                    queueAbilityFactoryPlan(factory, hurricaneIndex);
+                }else if(Core.input.keyTap(KeyCode.s) && preceptIndex != -1 && anyAbilityFactoryCanQueue(factory, preceptIndex)){
+                    queueAbilityFactoryPlan(factory, preceptIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && maceIndex != -1 && anyAbilityFactoryCanQueue(factory, maceIndex)){
+                    queueAbilityFactoryPlan(factory, maceIndex);
+                }else if(Core.input.keyTap(KeyCode.t) && scepterIndex != -1 && anyAbilityFactoryCanQueue(factory, scepterIndex)){
+                    queueAbilityFactoryPlan(factory, scepterIndex);
                 }else if(Core.input.keyTap(KeyCode.y)){
                     enterCommandMode(CommandMode.RALLY);
                 }
@@ -5253,26 +5531,26 @@ public class UnitAbilityPanel extends Table{
                 int horizonIndex = block.plans.indexOf(p -> p.unit == UnitTypes.horizon);
                 int antumbraIndex = block.plans.indexOf(p -> p.unit == UnitTypes.antumbra);
 
-                if(Core.input.keyTap(KeyCode.v) && flareIndex != -1 && factory.canQueuePlan(flareIndex)){
-                    factory.configure(flareIndex);
-                }else if(Core.input.keyTap(KeyCode.d) && megaIndex != -1 && factory.canQueuePlan(megaIndex)){
-                    factory.configure(megaIndex);
-                }else if(Core.input.keyTap(KeyCode.n) && liberatorIndex != -1 && factory.canQueuePlan(liberatorIndex)){
-                    factory.configure(liberatorIndex);
-                }else if(Core.input.keyTap(KeyCode.r) && avertIndex != -1 && factory.canQueuePlan(avertIndex)){
-                    factory.configure(avertIndex);
-                }else if(Core.input.keyTap(KeyCode.e) && horizonIndex != -1 && factory.canQueuePlan(horizonIndex)){
-                    factory.configure(horizonIndex);
-                }else if(Core.input.keyTap(KeyCode.b) && antumbraIndex != -1 && factory.canQueuePlan(antumbraIndex)){
-                    factory.configure(antumbraIndex);
+                if(Core.input.keyTap(KeyCode.v) && flareIndex != -1 && anyAbilityFactoryCanQueue(factory, flareIndex)){
+                    queueAbilityFactoryPlan(factory, flareIndex);
+                }else if(Core.input.keyTap(KeyCode.d) && megaIndex != -1 && anyAbilityFactoryCanQueue(factory, megaIndex)){
+                    queueAbilityFactoryPlan(factory, megaIndex);
+                }else if(Core.input.keyTap(KeyCode.n) && liberatorIndex != -1 && anyAbilityFactoryCanQueue(factory, liberatorIndex)){
+                    queueAbilityFactoryPlan(factory, liberatorIndex);
+                }else if(Core.input.keyTap(KeyCode.r) && avertIndex != -1 && anyAbilityFactoryCanQueue(factory, avertIndex)){
+                    queueAbilityFactoryPlan(factory, avertIndex);
+                }else if(Core.input.keyTap(KeyCode.e) && horizonIndex != -1 && anyAbilityFactoryCanQueue(factory, horizonIndex)){
+                    queueAbilityFactoryPlan(factory, horizonIndex);
+                }else if(Core.input.keyTap(KeyCode.b) && antumbraIndex != -1 && anyAbilityFactoryCanQueue(factory, antumbraIndex)){
+                    queueAbilityFactoryPlan(factory, antumbraIndex);
                 }else if(Core.input.keyTap(KeyCode.y)){
                     enterCommandMode(CommandMode.RALLY);
                 }
             }else{
                 KeyCode[] keyCodes = {KeyCode.a, KeyCode.r, KeyCode.d, KeyCode.g, KeyCode.f, KeyCode.t};
                 for(int i = 0; i < keyCodes.length && i < block.plans.size; i++){
-                    if(Core.input.keyTap(keyCodes[i]) && factory.canQueuePlan(i)){
-                        factory.configure(i);
+                    if(Core.input.keyTap(keyCodes[i]) && anyAbilityFactoryCanQueue(factory, i)){
+                        queueAbilityFactoryPlan(factory, i);
                         break;
                     }
                 }
@@ -5294,7 +5572,7 @@ public class UnitAbilityPanel extends Table{
                 }
             }
             if(Core.input.keyTap(KeyCode.escape)){
-                factory.configure(UnitFactory.sc2AddonCancelConfig);
+                cancelAbilityFactoryQueued(factory);
             }
             return;
         }

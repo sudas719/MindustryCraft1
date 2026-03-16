@@ -38,7 +38,7 @@ public class UnitFactory extends UnitBlock{
     public int[] capacities = {};
     public boolean sc2Queue = false;
     public boolean sc2AddonSupport = false;
-    public int sc2QueueSlots = 6;
+    public int sc2QueueSlots = 5;
     public int sc2QueueSlotsAddon = 8;
     public static final int sc2AddonTechConfig = -2;
     public static final int sc2AddonDoubleConfig = -3;

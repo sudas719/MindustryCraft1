@@ -1982,6 +1982,22 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 camera.bounds(Tmp.r1);
                 selectedUnits.addAll(selectedCommandUnits(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height, u -> u.type == unit.type));
                 Events.fire(Trigger.unitCommandChange);
+                return;
+            }
+
+            Building build = buildAt(input.mouseWorldX(), input.mouseWorldY());
+            if(build != null && build.team == player.team()){
+                selectedUnits.clear();
+                commandBuildings.clear();
+                selectedResource = null;
+                camera.bounds(Tmp.r1);
+                var buildings = selectedCommandBuildingsRaw(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height);
+                for(Building b : buildings){
+                    if(b != null && b.isValid() && b.team == player.team() && b.block == build.block){
+                        commandBuildings.add(b);
+                    }
+                }
+                Events.fire(Trigger.unitCommandChange);
             }
         }
     }
@@ -2034,7 +2050,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                                 commandBuildings.clear();
                             }
                             camera.bounds(Tmp.r1);
-                            var buildings = selectedCommandBuildings(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height);
+                            var buildings = selectedCommandBuildingsRaw(Tmp.r1.x, Tmp.r1.y, Tmp.r1.width, Tmp.r1.height);
                             for(var b : buildings){
                                 if(b.block == build.block){
                                     commandBuildings.add(b);

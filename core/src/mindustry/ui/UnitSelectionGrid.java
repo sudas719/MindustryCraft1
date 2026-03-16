@@ -560,7 +560,16 @@ public class UnitSelectionGrid extends Table{
         Building bb = ((BuildingDisplay)b).building;
         int blockCmp = Integer.compare(ba.block.id, bb.block.id);
         if(blockCmp != 0) return blockCmp;
+        int addonCmp = Integer.compare(factoryAddonCategory(ba), factoryAddonCategory(bb));
+        if(addonCmp != 0) return addonCmp;
         return Integer.compare(ba.id, bb.id);
+    }
+
+    private int factoryAddonCategory(@Nullable Building build){
+        if(!(build instanceof UnitFactory.UnitFactoryBuild factory) || !factory.sc2QueueEnabled()) return 0;
+        if(factory.hasDoubleAddon()) return 0;
+        if(factory.hasTechAddon()) return 2;
+        return 1;
     }
 
     private int unitSelectionGroup(@Nullable UnitType type){
@@ -628,6 +637,12 @@ public class UnitSelectionGrid extends Table{
             Table iconTable = new Table();
             iconTable.add(icon).size(UnitAbilityPanel.abilityIconSize);
             stack.add(iconTable);
+            if(item instanceof BuildingDisplay buildingDisplay){
+                Building build = buildingDisplay.building;
+                if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
+                    stack.add(factoryQueueSlotsElement(factory));
+                }
+            }
             portrait.add(stack).size(gridPortraitSize());
 
             portrait.clicked(() -> {
@@ -1963,6 +1978,48 @@ public class UnitSelectionGrid extends Table{
                 float innerInset = outerInset + 3f;
                 Lines.rect(x + outerInset, y + outerInset, width - outerInset * 2f, height - outerInset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
+                Draw.reset();
+            }
+        };
+    }
+
+    private Element factoryQueueSlotsElement(UnitFactory.UnitFactoryBuild factory){
+        final Color empty = Color.valueOf("6a6a6a");
+        final Color border = Color.black;
+        final Color filled = Color.white;
+        return new Element(){
+            @Override
+            public void draw(){
+                if(factory == null || !factory.isValid() || !factory.sc2QueueEnabled()) return;
+                int slots = Math.min(8, factory.queueSlots());
+                if(slots <= 0) return;
+                int queued = Mathf.clamp(factory.queued, 0, slots);
+
+                float margin = 5f;
+                float gap = 1f;
+                float avail = Math.max(0f, width - margin * 2f);
+                float box = (avail - gap * (slots - 1f)) / slots;
+                box = Mathf.clamp(box, 2.5f, 5f);
+
+                float totalWidth = slots * box + (slots - 1f) * gap;
+                float startX = x + margin;
+                //ensure it never goes out of bounds if the portrait is narrow
+                if(totalWidth > avail && slots > 0){
+                    float scale = avail / totalWidth;
+                    box *= scale;
+                    gap *= scale;
+                    totalWidth = slots * box + (slots - 1f) * gap;
+                }
+
+                float baseY = y + 2.5f;
+                Lines.stroke(1f);
+                for(int i = 0; i < slots; i++){
+                    float bx = startX + i * (box + gap);
+                    Draw.color(i < queued ? filled : empty);
+                    Fill.crect(bx, baseY, box, box);
+                    Draw.color(border);
+                    Lines.rect(bx, baseY, box, box);
+                }
                 Draw.reset();
             }
         };
