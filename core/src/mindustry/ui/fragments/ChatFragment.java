@@ -305,8 +305,7 @@ public class ChatFragment extends Table{
         float minimapSize = Core.settings.getInt("minimapsize", 200);
         float uiHeight = minimapSize + 10f;
         float panelHeight = Core.settings.getInt("controlpanelheight", 200);
-        float bottomOffset = Core.settings.getInt("bottomuioffset", 0);
-        return Math.max(uiHeight, panelHeight) + bottomOffset;
+        return Math.max(uiHeight, panelHeight);
     }
 
     private float getChatPanelOffset(){

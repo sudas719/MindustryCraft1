@@ -111,6 +111,13 @@ public class NetClient implements ApplicationListener{
                 locale = Locale.getDefault().toString();
             }
 
+            if(mods.list().contains(m -> m.enabled())){
+                ui.showErrorMessage("Mods are disabled in multiplayer.");
+                ui.loadfrag.hide();
+                disconnectQuietly();
+                return;
+            }
+
             var c = new ConnectPacket();
             c.name = player.name;
             c.locale = locale;
@@ -272,6 +279,14 @@ public class NetClient implements ApplicationListener{
     public static void sendMessage(String message){
         if(Vars.ui != null){
             Vars.ui.chatfrag.addMessage(message);
+            Sounds.uiChat.play();
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.server)
+    public static void sendJoinLeaveMessage(String message){
+        if(Vars.ui != null){
+            Vars.ui.joinleavefrag.addMessage(message);
             Sounds.uiChat.play();
         }
     }

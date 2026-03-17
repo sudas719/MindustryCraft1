@@ -69,6 +69,10 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public static final float selectionSolidRadiusOffset = 0f;
     public static final float selectionDashedRadiusOffset = -selectionRingRadiusStep;
     public static final float selectionRotatingDashedRadiusOffset = selectionRingRadiusStep * 2f;
+
+    public static float selectionRingLayer(){
+        return Core.settings.getBool("selectionringabove", true) ? Layer.overlayUI + 0.01f : Layer.blockUnder - 0.01f;
+    }
     /** Maximum line length. */
     final static int maxLength = 100;
     final static Rect r1 = new Rect(), r2 = new Rect();
@@ -135,6 +139,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     private final Seq<Unit> subgroupUnits = new Seq<>();
     private final Seq<Building> subgroupBuildings = new Seq<>();
     private int activeSubgroup = -1;
+    private final IntSet commandBuildingDedup = new IntSet();
 
     private Seq<BuildPlan> plansOut = new Seq<>(BuildPlan.class);
     private QuadTree<BuildPlan> playerPlanTree = new QuadTree<>(new Rect());
@@ -1648,7 +1653,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         itemDepositCooldown -= Time.delta / 60f;
 
-        commandBuildings.removeAll(b -> !b.isValid() || b.team != player.team());
+        refreshSelectedBuildingsAfterReplace();
         if(selectedResource != null){
             if(!isResourceTile(selectedResource)){
                 selectedResource = null;
@@ -1861,6 +1866,35 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public Seq<Building> abilitySubgroupBuildings(){
         refreshSubgroupSelection();
         return subgroupBuildings;
+    }
+
+    private void refreshSelectedBuildingsAfterReplace(){
+        boolean changed = false;
+
+        //Replace invalid buildings (construction/upgrade completion) with the new building at the same tile.
+        for(int i = 0; i < commandBuildings.size; i++){
+            Building build = commandBuildings.get(i);
+            if(build == null || build.isValid()) continue;
+            Building next = world.build(build.pos());
+            if(next != null && next.isValid() && next.team == player.team()){
+                commandBuildings.set(i, next);
+                changed = true;
+            }
+        }
+
+        //Remove invalid/enemy/duplicates while keeping stable order.
+        commandBuildingDedup.clear();
+        for(int i = commandBuildings.size - 1; i >= 0; i--){
+            Building build = commandBuildings.get(i);
+            if(build == null || !build.isValid() || build.team != player.team() || !commandBuildingDedup.add(build.id)){
+                commandBuildings.remove(i);
+                changed = true;
+            }
+        }
+
+        if(changed){
+            Events.fire(Trigger.unitCommandChange);
+        }
     }
 
     public boolean isUnitInActiveAbilitySubgroup(@Nullable UnitType type){
@@ -2393,7 +2427,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public void drawCommanded(){
         //Draw outer ring on top of units
-        Draw.draw(Layer.overlayUI, () -> {
+        Draw.draw(selectionRingLayer(), () -> {
             drawCommandedRing(true);
             drawCommandedRing(false);
             drawCommandedBuildings();
@@ -2763,7 +2797,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(commandRect && commandMode){
             float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
             float rotation = Time.time * 360f / (60f * 4f);
-            Draw.z(Layer.overlayUI + 0.01f);
+            Draw.z(selectionRingLayer());
             Draw.color(Pal.accent, 0.3f);
             Fill.crect(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
             var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);

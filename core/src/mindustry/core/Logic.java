@@ -2,9 +2,12 @@ package mindustry.core;
 
 import arc.*;
 import arc.math.*;
+import arc.math.geom.*;
+import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.ai.*;
+import mindustry.ai.types.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
 import mindustry.core.GameState.*;
@@ -18,6 +21,7 @@ import mindustry.maps.*;
 import mindustry.type.*;
 import mindustry.type.Weather.*;
 import mindustry.world.*;
+import mindustry.world.blocks.environment.*;
 import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 
@@ -34,6 +38,11 @@ import static mindustry.Vars.*;
  * This class should <i>not</i> call any outside methods to change state of modules, but instead fire events.
  */
 public class Logic implements ApplicationListener{
+
+    private static final String pvpScvStartTag = "pvp-scv-started";
+    private static final int pvpInitialScvs = 12;
+    private static final int pvpRingScvs = 12;
+    private static final int pvpHarvestSearchRadiusTiles = 40;
 
     public Logic(){
 
@@ -118,6 +127,18 @@ public class Logic implements ApplicationListener{
 
             //save settings
             Core.settings.manualSave();
+        });
+
+        Events.on(WorldLoadEndEvent.class, e -> {
+            if(net.client()) return;
+            if(state.isEditor()) return;
+            if(!state.rules.pvp) return;
+
+            //prevent duplication for reloaded saves
+            if(state.rules.tags.containsKey(pvpScvStartTag)) return;
+            state.rules.tags.put(pvpScvStartTag, "true");
+
+            spawnPvpStartScvs();
         });
 
         //sync research
@@ -518,6 +539,237 @@ public class Logic implements ApplicationListener{
         }else if(netServer.isWaitingForPlayers() && runStateCheck){
             checkGameState();
         }
+    }
+
+    private void spawnPvpStartScvs(){
+        float centerX = world.width() * tilesize / 2f;
+        float centerY = world.height() * tilesize / 2f;
+
+        for(Team team : Team.all){
+            CoreBuild core = team.core();
+            if(core == null || !core.isValid()) continue;
+
+            Vec2 fallbackDir = new Vec2(core.x - centerX, core.y - centerY);
+            if(fallbackDir.isZero(0.001f)) fallbackDir.set(0f, 1f);
+            fallbackDir.nor();
+
+            Vec2 harvestDir = new Vec2();
+            Tile harvestTarget = scanHarvestTarget(core, fallbackDir, harvestDir);
+
+            spawnScvsAroundCore(core, pvpInitialScvs, harvestTarget);
+            spawnScvsOnCoreRing(core, pvpRingScvs, harvestDir, harvestTarget);
+        }
+    }
+
+    private void spawnScvsAroundCore(CoreBuild core, int amount, @Nullable Tile harvestTarget){
+        if(amount <= 0) return;
+        UnitType type = UnitTypes.nova;
+        float offset = core.hitSize() / 2f + type.hitSize / 2f + 6f;
+
+        for(int i = 0; i < amount; i++){
+            float angle = i * 360f / amount;
+            float x = core.x + Angles.trnsx(angle, offset);
+            float y = core.y + Angles.trnsy(angle, offset);
+            Unit unit = type.create(core.team);
+            unit.set(x, y);
+            unit.add();
+            applyHarvestCommand(unit, harvestTarget);
+        }
+    }
+
+    private void spawnScvsOnCoreRing(CoreBuild core, int amount, Vec2 preferDir, @Nullable Tile harvestTarget){
+        if(amount <= 0) return;
+
+        Seq<Tile> ring = coreRingTiles(core);
+        if(ring.isEmpty()) return;
+
+        float half = tilesize / 2f;
+        Vec2 dir = Tmp.v1.set(preferDir);
+        if(dir.isZero(0.001f)){
+            dir.set(0f, 1f);
+        }else{
+            dir.nor();
+        }
+
+        ring.sort(Structs.comparingFloat(t -> {
+            float dx = (t.worldx() + half) - core.x;
+            float dy = (t.worldy() + half) - core.y;
+            float len = Mathf.sqrt(dx * dx + dy * dy);
+            if(len < 0.001f) return 0f;
+            dx /= len;
+            dy /= len;
+            return -(dx * dir.x + dy * dir.y);
+        }));
+
+        ObjectSet<Tile> used = new ObjectSet<>();
+        int spawned = 0;
+        for(int i = 0; i < ring.size && spawned < amount; i++){
+            Tile tile = ring.get(i);
+            if(tile == null || used.contains(tile)) continue;
+            if(tile.build != null) continue;
+            if(tile.solid()) continue;
+
+            Unit unit = UnitTypes.nova.create(core.team);
+            unit.set(tile.worldx() + half, tile.worldy() + half);
+            unit.add();
+            applyHarvestCommand(unit, harvestTarget);
+            used.add(tile);
+            spawned++;
+        }
+    }
+
+    private void applyHarvestCommand(Unit unit, @Nullable Tile harvestTarget){
+        if(unit == null || !unit.isValid()) return;
+        if(harvestTarget == null) return;
+
+        if(!(unit.controller() instanceof CommandAI)){
+            unit.controller(new CommandAI());
+        }
+
+        if(unit.controller() instanceof CommandAI ai){
+            ai.setHarvestTarget(Tmp.v2.set(harvestTarget.worldx(), harvestTarget.worldy()));
+        }
+    }
+
+    private Seq<Tile> coreRingTiles(CoreBuild core){
+        Seq<Tile> out = new Seq<>();
+        if(core == null || core.tile == null) return out;
+
+        int bx = core.tile.x;
+        int by = core.tile.y;
+        int size = core.block.size;
+
+        for(int x = bx - 1; x <= bx + size; x++){
+            for(int y = by - 1; y <= by + size; y++){
+                if(x == bx - 1 || x == bx + size || y == by - 1 || y == by + size){
+                    Tile tile = world.tile(x, y);
+                    if(tile != null) out.add(tile);
+                }
+            }
+        }
+
+        return out;
+    }
+
+    private @Nullable Tile scanHarvestTarget(CoreBuild core, Vec2 fallbackDir, Vec2 outDir){
+        outDir.set(fallbackDir);
+
+        if(core == null || core.tile == null){
+            outDir.nor();
+            return null;
+        }
+
+        int cx = core.tile.x + core.block.size / 2;
+        int cy = core.tile.y + core.block.size / 2;
+
+        ObjectSet<Tile> resources = new ObjectSet<>();
+        int radius = Math.min(pvpHarvestSearchRadiusTiles, Math.min(world.width(), world.height()) / 2);
+
+        for(int dx = -radius; dx <= radius; dx++){
+            for(int dy = -radius; dy <= radius; dy++){
+                Tile tile = world.tile(cx + dx, cy + dy);
+                if(tile == null) continue;
+
+                Tile resolved = resolveHarvestTile(tile);
+                if(resolved == null) continue;
+                if(!isValidHarvestTarget(resolved)) continue;
+                resources.add(resolved);
+            }
+        }
+
+        if(resources.isEmpty()){
+            outDir.nor();
+            return null;
+        }
+
+        float half = tilesize / 2f;
+
+        Vec2 sum = Tmp.v1.setZero();
+        for(Tile tile : resources){
+            float dx = (tile.worldx() + half) - core.x;
+            float dy = (tile.worldy() + half) - core.y;
+            float dst = Mathf.sqrt(dx * dx + dy * dy);
+            float w = 1f / (dst / tilesize + 1f);
+            sum.add(dx * w, dy * w);
+        }
+
+        if(sum.isZero(0.001f)){
+            outDir.set(fallbackDir).nor();
+        }else{
+            outDir.set(sum).nor();
+        }
+
+        //pick a target near the "middle" of the preferred direction
+        float sumDist = 0f;
+        int distCount = 0;
+        for(Tile tile : resources){
+            float dx = (tile.worldx() + half) - core.x;
+            float dy = (tile.worldy() + half) - core.y;
+            float dst = Mathf.sqrt(dx * dx + dy * dy);
+            if(dst < 0.001f) continue;
+            float align = (dx * outDir.x + dy * outDir.y) / dst;
+            if(align > 0.5f){
+                sumDist += dst;
+                distCount++;
+            }
+        }
+
+        float avgDist = distCount <= 0 ? 0f : sumDist / distCount;
+
+        Tile best = null;
+        float bestScore = -999999f;
+        for(Tile tile : resources){
+            float dx = (tile.worldx() + half) - core.x;
+            float dy = (tile.worldy() + half) - core.y;
+            float dst = Mathf.sqrt(dx * dx + dy * dy);
+            if(dst < 0.001f) continue;
+
+            float align = (dx * outDir.x + dy * outDir.y) / dst;
+            float middle = avgDist <= 0f ? 0f : -Math.abs(dst - avgDist) / (avgDist + 1f);
+            float score = align * 3f + middle;
+            if(score > bestScore){
+                bestScore = score;
+                best = tile;
+            }
+        }
+
+        if(best != null) return best;
+
+        //fallback: nearest valid resource
+        float bestDst = Float.MAX_VALUE;
+        for(Tile tile : resources){
+            float dst = Mathf.dst(tile.worldx() + half, tile.worldy() + half, core.x, core.y);
+            if(dst < bestDst){
+                bestDst = dst;
+                best = tile;
+            }
+        }
+
+        return best;
+    }
+
+    private static boolean isValidHarvestTarget(Tile tile){
+        if(tile == null) return false;
+        if(tile.block() instanceof CrystalMineralWall) return true;
+        if(tile.floor() instanceof SteamVent vent){
+            Tile data = vent.dataTile(tile);
+            if(data == null || !vent.checkAdjacent(data)) return false;
+            return vent.isInfinite(data) || vent.getReserves(data) > 0;
+        }
+        return false;
+    }
+
+    private static @Nullable Tile resolveHarvestTile(@Nullable Tile tile){
+        if(tile == null) return null;
+        if(tile.block() instanceof CrystalMineralWall) return tile;
+        if(tile.floor() instanceof SteamVent vent){
+            Tile data = vent.dataTile(tile);
+            if(data == null || !vent.checkAdjacent(data)) return null;
+            Tile center = data.nearby(-1, -1);
+            if(center != null && center.floor() == vent) return center;
+            return data;
+        }
+        return null;
     }
 
     /** @return whether the wave timer is paused due to enemies */

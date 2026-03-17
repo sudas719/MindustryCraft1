@@ -479,15 +479,13 @@ public class SettingsMenuDialog extends BaseDialog{
             graphics.checkPref("coreitems", true);
         }
         graphics.checkPref("minimap", !mobile);
+        graphics.checkPref("selectionringabove", true);
 
         //Minimap size setting
         graphics.sliderPref("minimapsize", 200, 100, 400, 10, s -> s + "px");
 
-        //Bottom UI offset setting (linked to minimap)
-        graphics.sliderPref("bottomuioffset", 0, 0, 200, 10, s -> s + "px");
-
-        //Control panel height setting (extended range for background drawing)
-        graphics.sliderPref("controlpanelheight", 200, 600, 2000, 10, s -> s + "px");
+        //Control panel height setting (background vertical size)
+        graphics.sliderPref("controlpanelheight", 600, 300, 1200, 1, s -> s + "px").widthScale(2f);
 
         //Chat panel vertical offset (can move above or below control panel top)
         graphics.sliderPref("chatpaneloffset", 0, -1000, 1000, 1, s -> s + "px");
@@ -807,6 +805,7 @@ public class SettingsMenuDialog extends BaseDialog{
         public static class SliderSetting extends Setting{
             int def, min, max, step;
             StringProcessor sp;
+            float widthScale = 1f;
 
             public SliderSetting(String name, int def, int min, int max, int step, StringProcessor s){
                 super(name);
@@ -815,6 +814,11 @@ public class SettingsMenuDialog extends BaseDialog{
                 this.max = max;
                 this.step = step;
                 this.sp = s;
+            }
+
+            public SliderSetting widthScale(float scale){
+                this.widthScale = scale;
+                return this;
             }
 
             @Override
@@ -837,7 +841,9 @@ public class SettingsMenuDialog extends BaseDialog{
 
                 slider.change();
 
-                addDesc(table.stack(slider, content).width(Math.min(Core.graphics.getWidth() / 1.2f, 460f)).left().padTop(4f).get());
+                float baseWidth = Math.min(Core.graphics.getWidth() / 1.2f, 460f);
+                float width = Math.min(baseWidth * widthScale, Core.graphics.getWidth() - 60f);
+                addDesc(table.stack(slider, content).width(width).left().padTop(4f).get());
                 table.row();
             }
         }

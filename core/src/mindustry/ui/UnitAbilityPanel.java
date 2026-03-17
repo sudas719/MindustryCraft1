@@ -126,6 +126,13 @@ public class UnitAbilityPanel extends Table{
     private final IntSeq factoryDistributeHistoryBlock = new IntSeq();
     private final IntSeq factoryDistributeHistoryFactory = new IntSeq();
 
+    //Core (base) multi-selection distribution state (SC2-like)
+    private final IntSeq coreDistributeHistoryCore = new IntSeq();
+    private static final int coreUpgradeOrbital = 0;
+    private static final int coreUpgradeFortress = 1;
+    private final IntSeq coreDistributeHistoryUpgradeCore = new IntSeq();
+    private final IntSeq coreDistributeHistoryUpgradeType = new IntSeq();
+
     //Command definitions
     private static class RTSCommand{
         String name;
@@ -1376,7 +1383,7 @@ public class UnitAbilityPanel extends Table{
         }
         setPanelRows(3);
         Table grid = new Table();
-        boolean showAddonButtons = factory.canShowAddonButtons();
+        boolean showAddonButtons = anyAbilityFactoryCanShowAddon(factory, Blocks.memoryBank) || anyAbilityFactoryCanShowAddon(factory, Blocks.rotaryPump);
         UnitFactory block = (UnitFactory)factory.block;
         if(block == Blocks.tankFabricator){
             int locusIndex = block.plans.indexOf(p -> p.unit == UnitTypes.locus);
@@ -1538,10 +1545,12 @@ public class UnitAbilityPanel extends Table{
         if(showAddonButtons){
             addAddonBuildButton(grid, "x", "Tech Addon", Blocks.memoryBank,
                 UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost, UnitFactory.sc2AddonTechTime,
-                () -> true, () -> factory.configure(UnitFactory.sc2AddonTechConfig));
+                () -> anyAbilityFactoryCanStartAddon(factory, Blocks.memoryBank, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost),
+                () -> queueAbilityFactoryAddon(factory, UnitFactory.sc2AddonTechConfig, Blocks.memoryBank, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost));
             addAddonBuildButton(grid, "c", "Double Addon", Blocks.rotaryPump,
                 UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost, UnitFactory.sc2AddonDoubleTime,
-                () -> true, () -> factory.configure(UnitFactory.sc2AddonDoubleConfig));
+                () -> anyAbilityFactoryCanStartAddon(factory, Blocks.rotaryPump, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost),
+                () -> queueAbilityFactoryAddon(factory, UnitFactory.sc2AddonDoubleConfig, Blocks.rotaryPump, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost));
         }else{
             addEmpty(grid);
             addEmpty(grid);
@@ -1562,6 +1571,75 @@ public class UnitAbilityPanel extends Table{
             }
         }
         return false;
+    }
+
+    private boolean anyAbilityFactoryCanShowAddon(UnitFactory.UnitFactoryBuild reference, Block addon){
+        if(reference == null || reference.block == null || addon == null) return false;
+        for(Building build : abilityBuildings()){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+            if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+            if(!f.canShowAddonButtons()) continue;
+            if(!factoryAddonPlaceValid(f, addon)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean anyAbilityFactoryCanStartAddon(UnitFactory.UnitFactoryBuild reference, Block addon, int crystalCost, int gasCost){
+        if(reference == null || reference.block == null || addon == null) return false;
+        for(Building build : abilityBuildings()){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+            if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+            if(!f.canShowAddonButtons()) continue;
+            if(!f.canAffordAddon(crystalCost, gasCost)) continue;
+            if(!factoryAddonPlaceValid(f, addon)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean factoryAddonPlaceValid(UnitFactory.UnitFactoryBuild factory, Block addon){
+        if(factory == null || addon == null || factory.tile == null || factory.block == null) return false;
+        int size = factory.block.size;
+        int baseX = factory.tile.x - (size - 1) / 2;
+        int baseY = factory.tile.y - (size - 1) / 2;
+        Tile addonTile = world.tile(baseX + size, baseY);
+        if(addonTile == null) return false;
+        return Build.validPlaceIgnoreUnits(addon, factory.team, addonTile.x, addonTile.y, 0, true, true);
+    }
+
+    private void queueAbilityFactoryAddon(UnitFactory.UnitFactoryBuild reference, int config, Block addon, int crystalCost, int gasCost){
+        if(reference == null || reference.block == null || addon == null) return;
+
+        int blockId = reference.block.id;
+        UnitFactory.UnitFactoryBuild chosen = null;
+        for(Building build : abilityBuildings()){
+            if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
+            if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
+            if(!f.canShowAddonButtons()) continue;
+            if(!f.canAffordAddon(crystalCost, gasCost)) continue;
+            if(!factoryAddonPlaceValid(f, addon)) continue;
+            if(chosen == null || f.id < chosen.id){
+                chosen = f;
+            }
+        }
+        if(chosen == null) return;
+
+        chosen.configure(config);
+        factoryDistributeHistoryBlock.add(blockId);
+        factoryDistributeHistoryFactory.add(chosen.id);
+        if(factoryDistributeHistoryFactory.size > 1024){
+            factoryDistributeHistoryBlock.removeIndex(0);
+            factoryDistributeHistoryFactory.removeIndex(0);
+        }
+        factoryDistributeLastFactoryId.put(blockId, chosen.id);
+        if(chosen.hasDoubleAddon()){
+            factoryDistributeLastDoubleId.put(blockId, chosen.id);
+        }else if(chosen.hasTechAddon()){
+            factoryDistributeLastTechId.put(blockId, chosen.id);
+        }else{
+            factoryDistributeLastNoneId.put(blockId, chosen.id);
+        }
     }
 
     private float factoryEffectiveQueue(UnitFactory.UnitFactoryBuild factory){
@@ -1642,7 +1720,7 @@ public class UnitAbilityPanel extends Table{
                 }
             }
 
-            if(found != null && found.queued > 0){
+            if(found != null && (found.isAddonBuilding() || found.queued > 0)){
                 found.configure(UnitFactory.sc2AddonCancelConfig);
                 factoryDistributeLastFactoryId.put(blockId, found.id);
                 if(found.hasDoubleAddon()){
@@ -1661,8 +1739,8 @@ public class UnitAbilityPanel extends Table{
         for(Building build : abilityBuildings()){
             if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
             if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
-            if(f.queued <= 0) continue;
-            float load = factoryEffectiveQueue(f);
+            if(!f.isAddonBuilding() && f.queued <= 0) continue;
+            float load = f.isAddonBuilding() ? 9999f : factoryEffectiveQueue(f);
             if(load > bestLoad){
                 best = f;
                 bestLoad = load;
@@ -2275,22 +2353,14 @@ public class UnitAbilityPanel extends Table{
         boolean orbital = core.block == Blocks.coreOrbital;
 
         //Row 1
-        addIconButton(grid, "s", new TextureRegionDrawable(UnitTypes.nova.uiIcon), () -> core.canQueueUnit(UnitTypes.nova), () -> {
-            queueCoreUnit(core);
+        addIconButton(grid, "s", new TextureRegionDrawable(UnitTypes.nova.uiIcon), this::anySelectedCoreCanQueueScv, () -> {
+            queueSelectedCoreUnit();
             corePanel = CorePanel.BUILD;
         });
         addEmpty(grid);
         addEmpty(grid);
-        Button orbitalButton = addHoverableIconButton(grid, "b", new TextureRegionDrawable(Blocks.coreOrbital.uiIcon), () -> core.canStartOrbitalUpgrade(), () -> {
-            if(core.block != Blocks.coreNucleus){
-                ui.hudfrag.setHudText("Already upgraded");
-            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                ui.hudfrag.setHudText("Cannot upgrade while training");
-            }else if(core.isUpgrading()){
-                ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!startCoreOrbitalUpgrade(core)){
-                ui.hudfrag.setHudText("Not enough crystals");
-            }
+        Button orbitalButton = addHoverableIconButton(grid, "b", new TextureRegionDrawable(Blocks.coreOrbital.uiIcon), this::anySelectedCoreCanStartOrbitalUpgrade, () -> {
+            queueSelectedCoreUpgrade(coreUpgradeOrbital);
         });
         BuildInfo orbitalInfo = makeOrbitalUpgradeInfo(core, "b");
         orbitalButton.update(() -> {
@@ -2301,18 +2371,8 @@ public class UnitAbilityPanel extends Table{
             }
         });
         Drawable fortressIcon = Blocks.corePlanetaryFortress == null || Blocks.corePlanetaryFortress.uiIcon == null ? Icon.warning : new TextureRegionDrawable(Blocks.corePlanetaryFortress.uiIcon);
-        Button fortressButton = addIconButton(grid, "p", fortressIcon, () -> core.canStartFortressUpgrade(), () -> {
-            if(core.block != Blocks.coreNucleus){
-                ui.hudfrag.setHudText("Already upgraded");
-            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                ui.hudfrag.setHudText("Cannot upgrade while training");
-            }else if(core.isUpgrading()){
-                ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!core.hasEngineeringStation()){
-                ui.hudfrag.setHudText("Requires Engineering Station");
-            }else if(!startCoreFortressUpgrade(core)){
-                ui.hudfrag.setHudText("Not enough crystals or gas");
-            }
+        Button fortressButton = addIconButton(grid, "p", fortressIcon, this::anySelectedCoreCanStartFortressUpgrade, () -> {
+            queueSelectedCoreUpgrade(coreUpgradeFortress);
         });
         BuildInfo fortressInfo = makeFortressUpgradeInfo(core, "p");
         fortressButton.update(() -> {
@@ -4832,6 +4892,331 @@ public class UnitAbilityPanel extends Table{
         return false;
     }
 
+    private boolean anySelectedCoreCanQueueScv(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.canQueueUnit(UnitTypes.nova)){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean anySelectedCoreHasQueue(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private float coreEffectiveQueue(CoreBuild core){
+        if(core == null) return Float.POSITIVE_INFINITY;
+        int active = Math.max(1, core.activeUnitSlots());
+        int queued = core.unitQueue == null ? 0 : core.unitQueue.size;
+        return (float)queued / (float)active;
+    }
+
+    private void queueSelectedCoreUnit(){
+        if(control == null || control.input == null) return;
+
+        CoreBuild chosen = null;
+        float min = Float.POSITIVE_INFINITY;
+        boolean anyCore = false;
+        boolean anyNotUpgrading = false;
+        boolean anyNotFull = false;
+
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof CoreBuild core) || !core.isValid() || core.team != player.team()) continue;
+            anyCore = true;
+            if(core.isUpgrading()) continue;
+            anyNotUpgrading = true;
+            if(core.unitQueue == null || core.unitQueue.size < core.queueSlots()){
+                anyNotFull = true;
+            }
+            if(!core.canQueueUnit(UnitTypes.nova)) continue;
+
+            float load = coreEffectiveQueue(core);
+            if(load < min - 0.0001f || (Mathf.equal(load, min, 0.0001f) && (chosen == null || core.id < chosen.id))){
+                min = load;
+                chosen = core;
+            }
+        }
+
+        if(!anyCore) return;
+        if(chosen == null){
+            if(!anyNotUpgrading){
+                ui.hudfrag.setHudText("Cannot train while upgrading");
+            }else if(!anyNotFull){
+                ui.hudfrag.setHudText("Queue full");
+            }else{
+                ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
+            }
+            return;
+        }
+
+        Call.coreQueueUnit(player, chosen.pos(), UnitTypes.nova.id);
+        coreDistributeHistoryCore.add(chosen.id);
+        if(coreDistributeHistoryCore.size > 1024){
+            coreDistributeHistoryCore.removeIndex(0);
+        }
+    }
+
+    private void cancelSelectedCoreUnit(){
+        if(control == null || control.input == null) return;
+
+        for(int i = coreDistributeHistoryCore.size - 1; i >= 0; i--){
+            int coreId = coreDistributeHistoryCore.get(i);
+            coreDistributeHistoryCore.removeIndex(i);
+
+            CoreBuild found = null;
+            for(Building build : control.input.commandBuildings){
+                if(build instanceof CoreBuild core && core.isValid() && core.team == player.team() && core.id == coreId){
+                    found = core;
+                    break;
+                }
+            }
+            if(found != null && found.unitQueue != null && !found.unitQueue.isEmpty()){
+                Call.coreCancelUnit(player, found.pos());
+                return;
+            }
+        }
+
+        CoreBuild best = null;
+        float bestLoad = -1f;
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof CoreBuild core) || !core.isValid() || core.team != player.team()) continue;
+            if(core.unitQueue == null || core.unitQueue.isEmpty()) continue;
+            float load = coreEffectiveQueue(core);
+            if(load > bestLoad){
+                bestLoad = load;
+                best = core;
+            }
+        }
+        if(best != null){
+            Call.coreCancelUnit(player, best.pos());
+        }
+    }
+
+    private boolean anySelectedCoreCanStartOrbitalUpgrade(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.canStartOrbitalUpgrade()){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean anySelectedCoreCanStartFortressUpgrade(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.canStartFortressUpgrade()){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean anySelectedCoreUpgradingOrbital(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.isUpgradingOrbital()){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean anySelectedCoreUpgradingFortress(){
+        if(control == null || control.input == null) return false;
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.isUpgradingFortress()){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void queueSelectedCoreUpgrade(int type){
+        if(control == null || control.input == null) return;
+
+        CoreBuild chosen = null;
+        boolean anyNucleus = false;
+        boolean anyTraining = false;
+        boolean anyUpgrading = false;
+        boolean anyMissingEngineering = false;
+        boolean anyResources = false;
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof CoreBuild core) || !core.isValid() || core.team != player.team()) continue;
+            if(core.block == Blocks.coreNucleus){
+                anyNucleus = true;
+            }
+            if(core.isUpgrading()){
+                anyUpgrading = true;
+            }
+            if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                anyTraining = true;
+            }
+            if(type == coreUpgradeFortress && !core.hasEngineeringStation()){
+                anyMissingEngineering = true;
+            }
+            if(state.rules.infiniteResources || core.team.rules().infiniteResources){
+                anyResources = true;
+            }else if(core.items != null){
+                if(type == coreUpgradeOrbital){
+                    if(core.items.has(Items.graphite, CoreBlock.orbitalUpgradeCost)){
+                        anyResources = true;
+                    }
+                }else{
+                    if(core.items.has(Items.graphite, CoreBlock.fortressUpgradeCost) && core.items.has(Items.highEnergyGas, CoreBlock.fortressUpgradeGasCost)){
+                        anyResources = true;
+                    }
+                }
+            }
+            boolean can = type == coreUpgradeOrbital ? core.canStartOrbitalUpgrade() : core.canStartFortressUpgrade();
+            if(!can) continue;
+            if(chosen == null || core.id < chosen.id){
+                chosen = core;
+            }
+        }
+        if(chosen == null){
+            if(!anyNucleus){
+                ui.hudfrag.setHudText("Already upgraded");
+            }else if(anyTraining){
+                ui.hudfrag.setHudText("Cannot upgrade while training");
+            }else if(anyUpgrading){
+                ui.hudfrag.setHudText("Upgrade already in progress");
+            }else if(type == coreUpgradeFortress && anyMissingEngineering){
+                ui.hudfrag.setHudText("Requires Engineering Station");
+            }else if(!anyResources){
+                ui.hudfrag.setHudText(type == coreUpgradeOrbital ? "Not enough crystals" : "Not enough crystals or gas");
+            }else{
+                ui.hudfrag.setHudText("No eligible base");
+            }
+            return;
+        }
+
+        if(type == coreUpgradeOrbital){
+            Call.coreStartOrbitalUpgrade(player, chosen.pos());
+        }else{
+            Call.coreStartFortressUpgrade(player, chosen.pos());
+        }
+
+        coreDistributeHistoryUpgradeCore.add(chosen.id);
+        coreDistributeHistoryUpgradeType.add(type);
+        if(coreDistributeHistoryUpgradeCore.size > 1024){
+            coreDistributeHistoryUpgradeCore.removeIndex(0);
+            coreDistributeHistoryUpgradeType.removeIndex(0);
+        }
+    }
+
+    private void cancelSelectedCoreUpgrade(int type){
+        if(control == null || control.input == null) return;
+
+        for(int i = coreDistributeHistoryUpgradeCore.size - 1; i >= 0; i--){
+            if(coreDistributeHistoryUpgradeType.get(i) != type) continue;
+
+            int coreId = coreDistributeHistoryUpgradeCore.get(i);
+            coreDistributeHistoryUpgradeCore.removeIndex(i);
+            coreDistributeHistoryUpgradeType.removeIndex(i);
+
+            CoreBuild found = null;
+            for(Building build : control.input.commandBuildings){
+                if(build instanceof CoreBuild core && core.isValid() && core.team == player.team() && core.id == coreId){
+                    found = core;
+                    break;
+                }
+            }
+            if(found == null) continue;
+
+            if(type == coreUpgradeOrbital && found.isUpgradingOrbital()){
+                Call.coreCancelOrbitalUpgrade(player, found.pos());
+                return;
+            }
+            if(type == coreUpgradeFortress && found.isUpgradingFortress()){
+                Call.coreCancelFortressUpgrade(player, found.pos());
+                return;
+            }
+        }
+
+        for(Building build : control.input.commandBuildings){
+            if(!(build instanceof CoreBuild core) || !core.isValid() || core.team != player.team()) continue;
+            if(type == coreUpgradeOrbital && core.isUpgradingOrbital()){
+                Call.coreCancelOrbitalUpgrade(player, core.pos());
+                return;
+            }
+            if(type == coreUpgradeFortress && core.isUpgradingFortress()){
+                Call.coreCancelFortressUpgrade(player, core.pos());
+                return;
+            }
+        }
+    }
+
+    private boolean anySelectedCoreUpgrading(){
+        return anySelectedCoreUpgradingOrbital() || anySelectedCoreUpgradingFortress();
+    }
+
+    private void cancelSelectedCoreAnyUpgrade(){
+        if(control == null || control.input == null) return;
+
+        for(int i = coreDistributeHistoryUpgradeCore.size - 1; i >= 0; i--){
+            int type = coreDistributeHistoryUpgradeType.get(i);
+            int coreId = coreDistributeHistoryUpgradeCore.get(i);
+            coreDistributeHistoryUpgradeCore.removeIndex(i);
+            coreDistributeHistoryUpgradeType.removeIndex(i);
+
+            CoreBuild found = null;
+            for(Building build : control.input.commandBuildings){
+                if(build instanceof CoreBuild core && core.isValid() && core.team == player.team() && core.id == coreId){
+                    found = core;
+                    break;
+                }
+            }
+            if(found == null) continue;
+
+            if(type == coreUpgradeOrbital && found.isUpgradingOrbital()){
+                Call.coreCancelOrbitalUpgrade(player, found.pos());
+                return;
+            }
+            if(type == coreUpgradeFortress && found.isUpgradingFortress()){
+                Call.coreCancelFortressUpgrade(player, found.pos());
+                return;
+            }
+        }
+
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.isUpgradingOrbital()){
+                    Call.coreCancelOrbitalUpgrade(player, core.pos());
+                    return;
+                }
+            }
+        }
+        for(Building build : control.input.commandBuildings){
+            if(build instanceof CoreBuild core && core.isValid() && core.team == player.team()){
+                if(core.isUpgradingFortress()){
+                    Call.coreCancelFortressUpgrade(player, core.pos());
+                    return;
+                }
+            }
+        }
+    }
+
     public boolean isCoreBuildPage(){
         var core = selectedCore();
         if(core == null) return false;
@@ -5151,30 +5536,12 @@ public class UnitAbilityPanel extends Table{
         }
 
         if(Core.input.keyTap(KeyCode.s)){
-            queueCoreUnit(core);
+            queueSelectedCoreUnit();
             corePanel = CorePanel.BUILD;
         }else if(Core.input.keyTap(KeyCode.b)){
-            if(core.block != Blocks.coreNucleus){
-                ui.hudfrag.setHudText("Already upgraded");
-            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                ui.hudfrag.setHudText("Cannot upgrade while training");
-            }else if(core.isUpgrading()){
-                ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!startCoreOrbitalUpgrade(core)){
-                ui.hudfrag.setHudText("Not enough crystals");
-            }
+            queueSelectedCoreUpgrade(coreUpgradeOrbital);
         }else if(Core.input.keyTap(KeyCode.p)){
-            if(core.block != Blocks.coreNucleus){
-                ui.hudfrag.setHudText("Already upgraded");
-            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                ui.hudfrag.setHudText("Cannot upgrade while training");
-            }else if(core.isUpgrading()){
-                ui.hudfrag.setHudText("Upgrade already in progress");
-            }else if(!core.hasEngineeringStation()){
-                ui.hudfrag.setHudText("Requires Engineering Station");
-            }else if(!startCoreFortressUpgrade(core)){
-                ui.hudfrag.setHudText("Not enough crystals or gas");
-            }
+            queueSelectedCoreUpgrade(coreUpgradeFortress);
         }else if(Core.input.keyTap(KeyCode.y)){
             enterCommandMode(CommandMode.RALLY);
         }else if(Core.input.keyTap(KeyCode.e) && core.block == Blocks.coreOrbital){
@@ -5204,12 +5571,10 @@ public class UnitAbilityPanel extends Table{
         }
 
         if(Core.input.keyTap(KeyCode.escape)){
-            if(core.isUpgradingOrbital()){
-                cancelCoreOrbitalUpgrade(core);
-            }else if(core.isUpgradingFortress()){
-                cancelCoreFortressUpgrade(core);
-            }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                cancelCoreUnit(core);
+            if(anySelectedCoreUpgrading()){
+                cancelSelectedCoreAnyUpgrade();
+            }else if(anySelectedCoreHasQueue()){
+                cancelSelectedCoreUnit();
             }else{
                 corePanel = CorePanel.MAIN;
             }
@@ -5564,12 +5929,10 @@ public class UnitAbilityPanel extends Table{
                 }
             }
 
-            if(factory.canShowAddonButtons()){
-                if(Core.input.keyTap(KeyCode.x)){
-                    factory.configure(UnitFactory.sc2AddonTechConfig);
-                }else if(Core.input.keyTap(KeyCode.c)){
-                    factory.configure(UnitFactory.sc2AddonDoubleConfig);
-                }
+            if(Core.input.keyTap(KeyCode.x) && anyAbilityFactoryCanStartAddon(factory, Blocks.memoryBank, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost)){
+                queueAbilityFactoryAddon(factory, UnitFactory.sc2AddonTechConfig, Blocks.memoryBank, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonTechGasCost);
+            }else if(Core.input.keyTap(KeyCode.c) && anyAbilityFactoryCanStartAddon(factory, Blocks.rotaryPump, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost)){
+                queueAbilityFactoryAddon(factory, UnitFactory.sc2AddonDoubleConfig, Blocks.rotaryPump, UnitFactory.sc2AddonCrystalCost, UnitFactory.sc2AddonDoubleGasCost);
             }
             if(Core.input.keyTap(KeyCode.escape)){
                 cancelAbilityFactoryQueued(factory);
@@ -5601,28 +5964,6 @@ public class UnitAbilityPanel extends Table{
         if(Core.input.keyTap(KeyCode.escape)){
             cancelConstruct(cons);
         }
-    }
-
-    private void queueCoreUnit(CoreBuild core){
-        if(core == null) return;
-        if(core.isUpgrading()){
-            ui.hudfrag.setHudText("Cannot train while upgrading");
-            return;
-        }
-        if(!core.canQueueUnit(UnitTypes.nova)){
-            if(core.unitQueue != null && core.unitQueue.size >= core.queueSlots()){
-                ui.hudfrag.setHudText("Queue full");
-            }else{
-                ui.hudfrag.setHudText(Core.bundle.get("bar.noresources", "Not enough resources"));
-            }
-            return;
-        }
-        Call.coreQueueUnit(player, core.pos(), UnitTypes.nova.id);
-    }
-
-    private void cancelCoreUnit(CoreBuild core){
-        if(core == null || core.unitQueue == null || core.unitQueue.isEmpty()) return;
-        Call.coreCancelUnit(player, core.pos());
     }
 
     private boolean requestCoreLoadScvs(CoreBuild core){

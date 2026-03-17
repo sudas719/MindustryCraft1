@@ -1407,6 +1407,7 @@ public class DesktopInput extends InputHandler{
         if(ui.hudfrag.abilityPanel == null) return;
         if(commandFocusGuardTime > 0f) return;
 
+        screenY = clampScreenY(screenY);
         var mode = ui.hudfrag.abilityPanel.activeCommand;
         Vec2 world = Core.camera.unproject(screenX, screenY);
         if(!isValidCommandWorld(world.x, world.y)) return;
@@ -2329,12 +2330,14 @@ public class DesktopInput extends InputHandler{
     public boolean touchDown(float x, float y, int pointer, KeyCode button){
         if(scene.hasMouse() || !commandMode) return false;
 
+        float clampedY = clampScreenY(y);
+
         //If in active RTS command mode, handle left-click on press (not release)
         if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
             if(button == KeyCode.mouseLeft){
                 //Execute command immediately on mouse press
                 abilityTargetConsumeMillis = Time.millis();
-                executeActiveCommand(x, y);
+                executeActiveCommand(x, clampedY);
                 return true;
             }
             //Right-click cancels command mode
@@ -2350,15 +2353,15 @@ public class DesktopInput extends InputHandler{
             //Check if Shift is held for waypoint queuing
             boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
             if(shiftHeld && (selectedUnits.size > 0 || commandBuildings.size > 0)){
-                commandTap(x, y, true);
+                commandTap(x, clampedY, true);
             }else{
-                commandTap(x, y);
+                commandTap(x, clampedY);
             }
         }
 
         if(button == Binding.commandQueue.value.key){
             if(commandFocusGuardTime <= 0f){
-                commandTap(x, y, true);
+                commandTap(x, clampedY, true);
             }
         }
 
@@ -2377,7 +2380,15 @@ public class DesktopInput extends InputHandler{
 
     @Override
     public float getMouseY(){
-        return Core.input.mouseY();
+        return clampScreenY(Core.input.mouseY());
+    }
+
+    private float clampScreenY(float screenY){
+        float inset = renderer.getUiBottomInsetPx();
+        if(inset > 0f && screenY < inset){
+            return inset;
+        }
+        return screenY;
     }
 
     @Override

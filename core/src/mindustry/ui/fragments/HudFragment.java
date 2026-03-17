@@ -490,7 +490,7 @@ public class HudFragment{
                 }
             }).name("waves/editor");
 
-            wavesMain.visible(() -> shown && !state.isEditor());
+            wavesMain.visible(() -> false);
             wavesMain.top().left().name = "waves";
 
             wavesMain.table(s -> {
@@ -795,9 +795,8 @@ public class HudFragment{
             }).width(350f);
             t.update(() -> {
                 float size = Core.settings.getInt("minimapsize", 200);
-                float offset = Core.settings.getInt("bottomuioffset", 0);
                 float uiHeight = size + 10f;
-                t.marginBottom(uiHeight + offset + 6f);
+                t.marginBottom(uiHeight + 6f);
             });
         });
 
@@ -886,12 +885,15 @@ public class HudFragment{
                     //Calculate background position and size
                     //Start after minimap (with margin), extend to screen right edge
                     float minimapMargin = 10f; //5px margin on each side of minimap = 10px total
-                    float bgStartX = minimapSize + minimapMargin;
-                    float bgWidth = Core.graphics.getWidth() - bgStartX;
+                    float leftInset = Core.scene.marginLeft;
+                    float rightInset = Core.scene.marginRight;
+                    float bgStartX = leftInset + minimapSize + minimapMargin;
+                    float bgWidth = Core.graphics.getWidth() - rightInset - bgStartX;
+                    if(bgWidth < 0f) bgWidth = 0f;
 
                     //Draw black background from minimap's right edge to screen right edge
                     Draw.color(Color.black);
-                    Fill.rect(bgStartX, y, bgWidth, panelHeight);
+                    Fill.rect(bgStartX + bgWidth / 2f, y + panelHeight / 2f, bgWidth, panelHeight);
                     Draw.color();
 
                     //Then draw custom background image on top if set
@@ -986,8 +988,7 @@ public class HudFragment{
 
             //Apply bottom offset to the parent table, not the stack
             t.update(() -> {
-                float offset = Core.settings.getInt("bottomuioffset", 0);
-                t.marginBottom(offset);
+                t.marginBottom(0f);
             });
         });
 

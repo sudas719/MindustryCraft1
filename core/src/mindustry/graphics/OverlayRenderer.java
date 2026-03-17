@@ -443,7 +443,7 @@ public class OverlayRenderer{
             }
         }
 
-        Draw.z(Layer.overlayUI + 0.01f);
+        Draw.z(InputHandler.selectionRingLayer());
         Lines.stroke(InputHandler.selectionRingStroke);
         Draw.color(hoverColor(hover));
 

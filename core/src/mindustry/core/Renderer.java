@@ -9,6 +9,7 @@ import arc.graphics.g2d.*;
 import arc.graphics.gl.*;
 import arc.math.*;
 import arc.math.geom.*;
+import arc.scene.*;
 import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
@@ -329,6 +330,15 @@ public class Renderer implements ApplicationListener{
 
         Draw.proj(camera);
 
+        boolean clipWorld = false;
+        float clipInsetPx = 0f;
+        if(state.isGame()){
+            clipInsetPx = getUiBottomInsetPx();
+            if(clipInsetPx > 0f){
+                clipWorld = pushWorldClip(clipInsetPx);
+            }
+        }
+
         blocks.checkChanges();
         blocks.floor.checkChanges();
         blocks.processBlocks();
@@ -413,9 +423,16 @@ public class Renderer implements ApplicationListener{
 
         Draw.draw(Layer.overlayUI, overlays::drawTop);
         boolean spectatorView = net.active() && player != null && player.team() != null && (player.team() == mindustry.game.Team.derelict || !player.team().data().isAlive());
+        boolean clipForFog = clipWorld;
+        if(clipForFog){
+            popWorldClip();
+        }
         if(state.rules.fog && !spectatorView){
             Draw.draw(Layer.fogOfWar, fog::drawFog);
             Draw.draw(Layer.fogOfWar + 0.01f, overlays::drawRadarIntelPostFog);
+        }
+        if(clipForFog && clipInsetPx > 0f){
+            clipWorld = pushWorldClip(clipInsetPx);
         }
         Draw.draw(Layer.space, () -> {
             if(launchAnimator == null || landTime <= 0f) return;
@@ -434,6 +451,10 @@ public class Renderer implements ApplicationListener{
 
         if(drawDebugHitboxes){
             DebugCollisionRenderer.draw();
+        }
+
+        if(clipWorld){
+            popWorldClip();
         }
 
         Draw.reset();
@@ -544,6 +565,32 @@ public class Renderer implements ApplicationListener{
 
     public float getScale(){
         return targetscale;
+    }
+
+    public float getUiBottomInsetPx(){
+        if(state == null || !state.isGame() || Core.scene == null) return 0f;
+        float panelHeight = Core.settings.getInt("controlpanelheight", 200);
+        float inset = panelHeight + Core.scene.marginBottom;
+        if(inset < 0f) inset = 0f;
+        return Math.min(inset, Core.graphics.getHeight());
+    }
+
+    private boolean pushWorldClip(float insetPx){
+        float h = graphics.getHeight() - insetPx;
+        if(h <= 1f) return false;
+        try{
+            return ScissorStack.push(Tmp.r1.set(0f, insetPx, graphics.getWidth(), h));
+        }catch(Throwable t){
+            return false;
+        }
+    }
+
+    private void popWorldClip(){
+        try{
+            ScissorStack.pop();
+        }catch(Throwable t){
+            Gl.disable(Gl.scissorTest);
+        }
     }
 
     private float fixedGameplayMinScale(){

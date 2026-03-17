@@ -1041,6 +1041,7 @@ public class Mods implements Loadable{
 
         ModMeta meta = json.fromJson(ModMeta.class, Jval.read(metaFile.readString()).toString(Jformat.plain));
         meta.cleanup();
+        meta.isPlugin = metaFile.nameWithoutExtension().equals("plugin");
         return meta;
     }
 
@@ -1209,10 +1210,8 @@ public class Mods implements Loadable{
                 mainMod = null;
             }
 
-            //all plugins are hidden implicitly
-            if(mainMod instanceof Plugin){
-                meta.hidden = true;
-            }
+            //ignore 'hidden' in mod metadata; only plugins are hidden
+            meta.hidden = meta.isPlugin || mainMod instanceof Plugin;
 
             //disallow putting a description after the version
             if(meta.version != null){
@@ -1415,6 +1414,8 @@ public class Mods implements Loadable{
         public @Nullable String displayName, author, description, subtitle, version, main, repo;
         public Seq<String> dependencies = Seq.with();
         public Seq<String> softDependencies = Seq.with();
+        /** True if this metadata is loaded from plugin.json/hjson. */
+        public transient boolean isPlugin;
         /** Hidden mods are only server-side or client-side, and do not support adding new content. */
         public boolean hidden;
         /** If true, this mod should be loaded as a Java class mod. This is technically optional, but highly recommended. */

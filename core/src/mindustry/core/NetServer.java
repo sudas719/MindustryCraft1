@@ -204,7 +204,7 @@ public class NetServer implements ApplicationListener{
         Events.on(PlayerJoin.class, event -> {
             event.player.sendMessage(formatWelcomeTemplate(welcomeTemplate, event.player));
             if(customWelcomeEnabled){
-                Call.sendMessage(formatWelcomeTemplate(welcomeJoinTemplate, event.player));
+                Call.sendJoinLeaveMessage(formatWelcomeTemplate(welcomeJoinTemplate, event.player));
             }
         });
 
@@ -212,7 +212,7 @@ public class NetServer implements ApplicationListener{
         // scripts/wayzer/ext/welcomeMsg.kts
         Events.on(PlayerLeave.class, event -> {
             if(customWelcomeEnabled && !"[Silent_Leave]".equals(event.player.lastText())){
-                Call.sendMessage(formatWelcomeTemplate(welcomeLeaveTemplate, event.player));
+                Call.sendJoinLeaveMessage(formatWelcomeTemplate(welcomeLeaveTemplate, event.player));
             }
         });
 
@@ -2202,7 +2202,7 @@ public class NetServer implements ApplicationListener{
         if(!player.con.hasDisconnected){
             if(player.con.hasConnected){
                 Events.fire(new PlayerLeave(player));
-                if(Config.showConnectMessages.bool()) Call.sendMessage("[accent]" + player.name + "[accent] has disconnected.");
+                if(Config.showConnectMessages.bool()) Call.sendJoinLeaveMessage("[accent]" + player.name + "[accent] has disconnected.");
                 Call.playerDisconnect(player.id());
             }
 
@@ -3074,7 +3074,7 @@ public class NetServer implements ApplicationListener{
         player.con.hasConnected = true;
 
         if(Config.showConnectMessages.bool()){
-            Call.sendMessage("[accent]" + player.name + "[accent] has connected.");
+            Call.sendJoinLeaveMessage("[accent]" + player.name + "[accent] has connected.");
             String message = Strings.format("&lb@&fi&lk has connected. &fi&lk[&lb@&fi&lk]", player.plainName(), player.uuid());
             info(message);
         }

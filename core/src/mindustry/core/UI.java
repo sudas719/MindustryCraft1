@@ -43,6 +43,7 @@ public class UI implements ApplicationListener, Loadable{
     public MenuFragment menufrag;
     public HudFragment hudfrag;
     public ChatFragment chatfrag;
+    public JoinLeaveFragment joinleavefrag;
     public ConsoleFragment consolefrag;
     public MinimapFragment minimapfrag;
     public PlayerListFragment listfrag;
@@ -198,6 +199,7 @@ public class UI implements ApplicationListener, Loadable{
         hudfrag = new HudFragment();
         hints = new HintsFragment();
         chatfrag = new ChatFragment();
+        joinleavefrag = new JoinLeaveFragment();
         minimapfrag = new MinimapFragment();
         listfrag = new PlayerListFragment();
         loadfrag = new LoadingFragment();
@@ -247,6 +249,7 @@ public class UI implements ApplicationListener, Loadable{
         hudfrag.build(hudGroup);
         menufrag.build(menuGroup);
         chatfrag.build(hudGroup);
+        joinleavefrag.build(hudGroup);
         minimapfrag.build(hudGroup);
         listfrag.build(hudGroup);
         consolefrag.build(hudGroup);

@@ -641,6 +641,8 @@ public class UnitSelectionGrid extends Table{
                 Building build = buildingDisplay.building;
                 if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
                     stack.add(factoryQueueSlotsElement(factory));
+                }else if(build instanceof CoreBuild core){
+                    stack.add(coreQueueSlotsElement(core));
                 }
             }
             portrait.add(stack).size(gridPortraitSize());
@@ -2004,6 +2006,47 @@ public class UnitSelectionGrid extends Table{
                 float totalWidth = slots * box + (slots - 1f) * gap;
                 float startX = x + margin;
                 //ensure it never goes out of bounds if the portrait is narrow
+                if(totalWidth > avail && slots > 0){
+                    float scale = avail / totalWidth;
+                    box *= scale;
+                    gap *= scale;
+                    totalWidth = slots * box + (slots - 1f) * gap;
+                }
+
+                float baseY = y + 2.5f;
+                Lines.stroke(1f);
+                for(int i = 0; i < slots; i++){
+                    float bx = startX + i * (box + gap);
+                    Draw.color(i < queued ? filled : empty);
+                    Fill.crect(bx, baseY, box, box);
+                    Draw.color(border);
+                    Lines.rect(bx, baseY, box, box);
+                }
+                Draw.reset();
+            }
+        };
+    }
+
+    private Element coreQueueSlotsElement(CoreBuild core){
+        final Color empty = Color.valueOf("6a6a6a");
+        final Color border = Color.black;
+        final Color filled = Color.white;
+        return new Element(){
+            @Override
+            public void draw(){
+                if(core == null || !core.isValid()) return;
+                int slots = Math.min(8, core.queueSlots());
+                if(slots <= 0) return;
+                int queued = core.unitQueue == null ? 0 : Mathf.clamp(core.unitQueue.size, 0, slots);
+
+                float margin = 5f;
+                float gap = 1f;
+                float avail = Math.max(0f, width - margin * 2f);
+                float box = (avail - gap * (slots - 1f)) / slots;
+                box = Mathf.clamp(box, 2.5f, 5f);
+
+                float totalWidth = slots * box + (slots - 1f) * gap;
+                float startX = x + margin;
                 if(totalWidth > avail && slots > 0){
                     float scale = avail / totalWidth;
                     box *= scale;
