@@ -71,7 +71,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public static final float selectionRotatingDashedRadiusOffset = selectionRingRadiusStep * 2f;
 
     public static float selectionRingLayer(){
-        return Core.settings.getBool("selectionringabove", true) ? Layer.overlayUI + 0.01f : Layer.blockUnder - 0.01f;
+        return Core.settings.getBool("selectionringabove", true) ? Layer.end - 1f : Layer.blockUnder - 0.01f;
     }
     /** Maximum line length. */
     final static int maxLength = 100;
@@ -2426,6 +2426,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public void drawCommanded(){
+        if(Core.settings.getBool("selectionringabove", true)) return;
         //Draw outer ring on top of units
         Draw.draw(selectionRingLayer(), () -> {
             drawCommandedRing(true);
@@ -2433,11 +2434,28 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             drawCommandedBuildings();
         });
 
-        Draw.draw(Layer.overlayUI, () -> {
+        Draw.draw(selectionRingLayer(), () -> {
             drawUnitWaypoints();
             drawCommandedTargets();
             drawCommandedRally();
         });
+    }
+
+    public void drawCommandedTop(){
+        if(!Core.settings.getBool("selectionringabove", true)) return;
+        Draw.z(selectionRingLayer());
+        drawCommandedRing(true);
+        Draw.z(selectionRingLayer());
+        drawCommandedRing(false);
+        Draw.z(selectionRingLayer());
+        drawCommandedBuildings();
+        Draw.z(selectionRingLayer());
+        drawUnitWaypoints();
+        Draw.z(selectionRingLayer());
+        drawCommandedTargets();
+        Draw.z(selectionRingLayer());
+        drawCommandedRally();
+        Draw.reset();
     }
 
     public void drawCommandedTargets(){
@@ -2794,6 +2812,33 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public void drawUnitSelection(){
+        if(Core.settings.getBool("selectionringabove", true)) return;
+        if(commandRect && commandMode){
+            float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
+            float rotation = Time.time * 360f / (60f * 4f);
+            Draw.draw(selectionRingLayer(), () -> {
+                Draw.color(Pal.accent, 0.3f);
+                Fill.crect(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                for(var unit : units){
+                    float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+                }
+                for(var build : buildings){
+                    float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+                }
+            });
+        }
+
+        if(commandMode && !commandRect){
+            //no hover selection ring
+        }
+    }
+
+    public void drawUnitSelectionTop(){
+        if(!Core.settings.getBool("selectionringabove", true)) return;
         if(commandRect && commandMode){
             float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
             float rotation = Time.time * 360f / (60f * 4f);
@@ -2810,10 +2855,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
                 OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
             }
-        }
-
-        if(commandMode && !commandRect){
-            //no hover selection ring
+            Draw.reset();
         }
     }
 

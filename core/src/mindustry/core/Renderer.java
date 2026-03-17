@@ -17,6 +17,7 @@ import mindustry.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.input.*;
 import mindustry.graphics.g3d.*;
 import mindustry.maps.*;
 import mindustry.type.*;
@@ -451,6 +452,14 @@ public class Renderer implements ApplicationListener{
 
         if(drawDebugHitboxes){
             DebugCollisionRenderer.draw();
+        }
+
+        if(Core.settings.getBool("selectionringabove", true)){
+            Draw.z(InputHandler.selectionRingLayer());
+            control.input.drawCommandedTop();
+            control.input.drawUnitSelectionTop();
+            overlays.drawHoverRing();
+            Draw.reset();
         }
 
         if(clipWorld){

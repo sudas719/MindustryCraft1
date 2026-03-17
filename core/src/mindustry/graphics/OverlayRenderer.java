@@ -261,7 +261,9 @@ public class OverlayRenderer{
 
         input.drawOverSelect();
 
-        drawHoverRing();
+        if(!Core.settings.getBool("selectionringabove", true)){
+            Draw.draw(InputHandler.selectionRingLayer(), this::drawHoverRing);
+        }
 
         if(dead) return; //dead players don't draw the rest
 
@@ -418,7 +420,7 @@ public class OverlayRenderer{
         Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
     }
 
-    private void drawHoverRing(){
+    public void drawHoverRing(){
         if(control.input == null) return;
 
         var hover = control.input.updateHover(false);
@@ -443,7 +445,6 @@ public class OverlayRenderer{
             }
         }
 
-        Draw.z(InputHandler.selectionRingLayer());
         Lines.stroke(InputHandler.selectionRingStroke);
         Draw.color(hoverColor(hover));
 

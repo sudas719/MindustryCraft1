@@ -3079,7 +3079,7 @@ public class Blocks{
             outputLiquid = new LiquidStack(Liquids.water, 30f / 60f);
             consumePower(0.5f);
             liquidCapacity = 60f;
-            solid = false;
+            solid = true;
         }
 
         @Override
