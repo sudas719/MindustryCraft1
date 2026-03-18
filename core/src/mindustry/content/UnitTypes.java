@@ -7860,6 +7860,9 @@ public class UnitTypes{
                 rightGunRegion = Core.atlas.find("dagger-weapon");
                 if(!rightGunRegion.found()) rightGunRegion = Core.atlas.find("unit-dagger-weapon");
                 if(!rightGunRegion.found()) rightGunRegion = Core.atlas.find("weapon");
+                if(rightGunRegion.found() && !Mathf.equal(appliedSpriteScale, 1f, 0.0001f)){
+                    rightGunRegion = copyScaledRegion(rightGunRegion, appliedSpriteScale);
+                }
             }
 
             @Override
@@ -7880,8 +7883,15 @@ public class UnitTypes{
                     swayY = Tmp.v1.y + Tmp.v2.y;
                 }
 
-                float wx = unit.x + swayX + Angles.trnsx(rot, 3.8f, 0.8f);
-                float wy = unit.y + swayY + Angles.trnsy(rot, 3.8f, 0.8f);
+                float ox = 3.8f, oy = 0.8f;
+                if(!weapons.isEmpty()){
+                    Weapon w = weapons.first();
+                    ox = w.x;
+                    oy = w.y;
+                }
+
+                float wx = unit.x + swayX + Angles.trnsx(rot, ox, oy);
+                float wy = unit.y + swayY + Angles.trnsy(rot, ox, oy);
 
                 Draw.z(Layer.groundUnit + 0.05f);
                 Draw.rect(rightGunRegion, wx, wy, rot);
@@ -7890,6 +7900,9 @@ public class UnitTypes{
 
             {
             speed = 3.15f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.825f * tilesize;
             health = 45f;
             armor = 0f;
             rotateSpeed = 6f;
@@ -7962,6 +7975,9 @@ public class UnitTypes{
 
         reaper = new UnitType("reaper"){{
             speed = 5.25f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.825f * tilesize;
             health = 60f;
             armor = 0f;
             rotateSpeed = 6f;
@@ -8055,7 +8071,10 @@ public class UnitTypes{
         }
         @Override
         public void load(){
+            float prevRatio = spriteHitSizeRatio;
+            spriteHitSizeRatio = -1f;
             super.load();
+            spriteHitSizeRatio = prevRatio;
             region = Core.atlas.find("alpha");
             outlineRegion = region;
             baseRegion = Core.atlas.find("nova-base", region);
@@ -8063,7 +8082,8 @@ public class UnitTypes{
             uiIcon = Core.atlas.find("unit-alpha-ui", fullIcon);
             shadowRegion = fullIcon;
             clipSize = Math.max(region.width * 2f, clipSize);
-            updateHitSizeFromRegion();
+            hitSize = 0.825f * tilesize;
+            applySpriteHitSizeRatio();
         }
         @Override
         public void drawMech(Mechc mech){
@@ -8094,7 +8114,9 @@ public class UnitTypes{
 
             {
             speed = 3.15f;
-            hitSize = 10f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.975f * tilesize;
             fogRadius = 10f;
             health = 135f;
             armor = 0f;
@@ -8280,7 +8302,10 @@ public class UnitTypes{
         fortress = new UnitType("fortress"){
             @Override
             public void load(){
+                float prevRatio = spriteHitSizeRatio;
+                spriteHitSizeRatio = -1f;
                 super.load();
+                spriteHitSizeRatio = prevRatio;
                 if(!weapons.isEmpty()){
                     Weapon weapon = weapons.first();
                     if(weapon.region == null || !weapon.region.found()){
@@ -8296,6 +8321,7 @@ public class UnitTypes{
                         weapon.outlineRegion = Core.atlas.find("small-mount-weapon-outline");
                     }
                 }
+                applySpriteHitSizeRatio();
             }
 
             @Override
@@ -8352,6 +8378,10 @@ public class UnitTypes{
 
             {
             visualHitSizeScale = 0.7f;
+            spriteDrawScale = 0.7f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f / 0.7f;
+            hitSize = 0.975f * tilesize;
             rotateSpeed = 3f; // 180 deg/sec
             targetAir = false;
             speed = 3.15f;
@@ -8565,6 +8595,10 @@ public class UnitTypes{
         ghost = new UnitType("ghost"){{
             visualHitSizeScale = 0.7f;
             speed = 3.15f;
+            spriteDrawScale = 0.7f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f / 0.7f;
+            hitSize = 0.825f * tilesize;
             fogRadius = 11f;
             health = 100f;
             armor = 0f;
@@ -8741,7 +8775,10 @@ public class UnitTypes{
         }
         @Override
         public void load(){
+            float prevRatio = spriteHitSizeRatio;
+            spriteHitSizeRatio = -1f;
             super.load();
+            spriteHitSizeRatio = prevRatio;
             region = Core.atlas.find("atrax");
             outlineRegion = region;
             baseRegion = Core.atlas.find("nova-base", region);
@@ -8750,7 +8787,8 @@ public class UnitTypes{
             uiIcon = Core.atlas.find("unit-atrax-ui", fullIcon);
             shadowRegion = fullIcon;
             clipSize = Math.max(region.width * 2f, clipSize);
-            updateHitSizeFromRegion();
+            hitSize = 0.825f * tilesize;
+            applySpriteHitSizeRatio();
         }
         };
 
@@ -8784,7 +8822,10 @@ public class UnitTypes{
             {
                 visualHitSizeScale = scepterVisualScale;
                 speed = 2.62f;
-                hitSize = 0.9125f * tilesize;
+                spriteDrawScale = scepterVisualScale;
+                hitSizeFromRegion = false;
+                spriteHitSizeRatio = 1.1f / scepterVisualScale;
+                hitSize = 1.875f * tilesize;
                 fogRadius = 11f;
                 rotateSpeed = 6f; // 360 deg/sec
                 omniMovement = true;
@@ -9254,7 +9295,9 @@ public class UnitTypes{
         nova = new UnitType("nova"){{
             speed = 3.94f;
             accel = 10f;
-            hitSize = 8f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.825f * tilesize;
             fogRadius = 8f;
             health = 45f;
             armor = 1f;
@@ -9294,7 +9337,9 @@ public class UnitTypes{
         pulsar = new UnitType("pulsar"){{
             speed = 3.94f;
             accel = 10f;
-            hitSize = 11f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.825f * tilesize;
             health = 320f;
             armor = 4f;
 
@@ -9558,7 +9603,9 @@ public class UnitTypes{
             aiController = GroundAI::new;
 
             speed = 3.94f;
-            hitSize = 8f;
+            hitSizeFromRegion = false;
+            spriteHitSizeRatio = 1.1f;
+            hitSize = 0.975f * tilesize;
             fogRadius = 7f;
             health = 90f;
             armor = 0f;
@@ -12826,7 +12873,8 @@ public class UnitTypes{
             @Override
             public void drawWeaponOutlines(Unit unit){
                 float prevX = Draw.xscl, prevY = Draw.yscl;
-                Draw.scl(prevX * scaledTankVisualScale, prevY * scaledTankVisualScale);
+                float scl = spriteHitSizeRatio > 0f ? 1f : scaledTankVisualScale;
+                Draw.scl(prevX * scl, prevY * scl);
                 super.drawWeaponOutlines(unit);
                 Draw.scl(prevX, prevY);
             }
@@ -12834,7 +12882,8 @@ public class UnitTypes{
             @Override
             public void drawWeapons(Unit unit){
                 float prevX = Draw.xscl, prevY = Draw.yscl;
-                Draw.scl(prevX * scaledTankVisualScale, prevY * scaledTankVisualScale);
+                float scl = spriteHitSizeRatio > 0f ? 1f : scaledTankVisualScale;
+                Draw.scl(prevX * scl, prevY * scl);
                 super.drawWeapons(unit);
                 Draw.scl(prevX, prevY);
             }
@@ -12862,7 +12911,9 @@ public class UnitTypes{
 
             {
                 visualHitSizeScale = scaledTankVisualScale;
-                hitSize = 18f;
+                hitSizeFromRegion = false;
+                spriteHitSizeRatio = 1.1f;
+                hitSize = 0.975f * tilesize;
                 fogRadius = 10f;
                 speed = 5.95f;
                 rotateSpeed = 6f; // 360 deg/sec
@@ -13137,7 +13188,9 @@ public class UnitTypes{
 
             {
                 visualHitSizeScale = scaledTankVisualScale;
-                hitSize = 12f;
+                hitSizeFromRegion = false;
+                spriteHitSizeRatio = 1.1f;
+                hitSize = 1.575f * tilesize;
                 fogRadius = 11f;
                 treadPullOffset = 5;
                 speed = 3.15f;
@@ -13470,7 +13523,8 @@ public class UnitTypes{
             @Override
             public void drawWeaponOutlines(Unit unit){
                 float prevX = Draw.xscl, prevY = Draw.yscl;
-                Draw.scl(prevX * scaledTankVisualScale, prevY * scaledTankVisualScale);
+                float scl = spriteHitSizeRatio > 0f ? 1f : scaledTankVisualScale;
+                Draw.scl(prevX * scl, prevY * scl);
                 super.drawWeaponOutlines(unit);
                 Draw.scl(prevX, prevY);
             }
@@ -13478,7 +13532,8 @@ public class UnitTypes{
             @Override
             public void drawWeapons(Unit unit){
                 float prevX = Draw.xscl, prevY = Draw.yscl;
-                Draw.scl(prevX * scaledTankVisualScale, prevY * scaledTankVisualScale);
+                float scl = spriteHitSizeRatio > 0f ? 1f : scaledTankVisualScale;
+                Draw.scl(prevX * scl, prevY * scl);
                 super.drawWeapons(unit);
                 Draw.scl(prevX, prevY);
             }
@@ -13503,7 +13558,10 @@ public class UnitTypes{
         hurricane = new TankUnitType("hurricane"){
             @Override
             public void load(){
+                float prevRatio = spriteHitSizeRatio;
+                spriteHitSizeRatio = -1f;
                 super.load();
+                spriteHitSizeRatio = prevRatio;
 
                 String copy = "precept";
                 region = Core.atlas.find(copy);
@@ -13526,13 +13584,16 @@ public class UnitTypes{
                     wreckRegions[i] = Core.atlas.find(copy + "-wreck" + i);
                 }
                 clipSize = Math.max(region.width * 2f, clipSize);
-                updateHitSizeFromRegion();
+                hitSize = 0.975f * tilesize;
+                applySpriteHitSizeRatio();
             }
 
             {
                 visualHitSizeScale = scaledTankVisualScale;
                 fullOverride = "precept";
-                hitSize = 12f;
+                hitSizeFromRegion = false;
+                spriteHitSizeRatio = 1.1f;
+                hitSize = 0.975f * tilesize;
                 fogRadius = 11f;
                 treadPullOffset = 5;
                 speed = 4.72f;

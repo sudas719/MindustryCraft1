@@ -3,7 +3,6 @@ package mindustry.desktop;
 import arc.*;
 import arc.Files.*;
 import arc.backend.sdl.*;
-import arc.backend.sdl.jni.*;
 import arc.discord.*;
 import arc.discord.DiscordRPC.*;
 import arc.files.*;
@@ -414,6 +413,33 @@ public class DesktopLauncher extends ClientLauncher{
     }
 
     private static void message(String message){
-        SDL.SDL_ShowSimpleMessageBox(SDL.SDL_MESSAGEBOX_ERROR, "oh no", message);
+        //Prefer SDL message boxes (no AWT); fall back to stderr if unavailable.
+        try{
+            Class<?> cls = Class.forName("org.lwjgl.sdl.SDLMessageBox");
+            int flags = 0;
+            try{
+                flags = cls.getField("SDL_MESSAGEBOX_ERROR").getInt(null);
+            }catch(Throwable ignored){
+            }
+
+            //SDL3 signature: SDL_ShowSimpleMessageBox(int flags, CharSequence title, CharSequence message, long window)
+            try{
+                cls.getMethod("SDL_ShowSimpleMessageBox", int.class, CharSequence.class, CharSequence.class, long.class)
+                .invoke(null, flags, "oh no", message, 0L);
+                return;
+            }catch(Throwable ignored){
+            }
+
+            //SDL2-style signature: SDL_ShowSimpleMessageBox(int flags, CharSequence title, CharSequence message, long window)
+            try{
+                cls.getMethod("SDL_ShowSimpleMessageBox", int.class, CharSequence.class, CharSequence.class, long.class)
+                .invoke(null, flags, "oh no", message, 0L);
+                return;
+            }catch(Throwable ignored){
+            }
+        }catch(Throwable ignored){
+        }
+
+        System.err.println(message);
     }
 }

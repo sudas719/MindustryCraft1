@@ -560,6 +560,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public float collisionPushScale(){
+        if(holdPositionActive()) return 999f;
         if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())) return 999f;
         if(harvestSoftTime <= 0f) return 1f;
         return Mathf.lerp(1f, harvestSoftScale, harvestSoftTime / harvestSoftDuration);
@@ -568,6 +569,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     @Override
     @Replace
     public void impulse(float x, float y){
+        if(holdPositionActive()) return;
         if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())) return;
         float mass = hitSize * hitSize * Mathf.pi;
         vel.add(x / mass, y / mass);
@@ -1089,6 +1091,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(firingLockActive() && !UnitTypes.allowMoveWhileShooting(self())){
             vel.setZero();
         }
+        if(holdPositionActive()){
+            vel.setZero();
+        }
 
         //clear controller when it becomes invalid
         if(!controller.isValidController()){
@@ -1134,6 +1139,10 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
     public boolean firingLockActive(){
         return firingLockTime > 0f;
+    }
+
+    private boolean holdPositionActive(){
+        return controller instanceof CommandAI cmd && cmd.holdPositionActive();
     }
 
     /** @return a preview UI icon for this unit. */

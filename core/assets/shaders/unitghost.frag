@@ -39,28 +39,35 @@ void main(){
     if(u_mode < 1.5){
         float stepSize = max(u_lineStep, 0.001);
         float lineW = clamp(u_lineWidth, 0.001, 0.45);
-        // move scanlines from front(y=0) to back(y=1)
-        float band = fract((coords.y - u_time * 0.9) / stepSize);
+
+        // Water-ripple bands that propagate from top to bottom.
+        float warp = sin(coords.x * 10.0 + u_time * 1.4) * 0.10 + sin(coords.x * 22.0 - u_time * 0.9) * 0.06;
+        float band = fract((coords.y - u_time * 0.85 + warp) / stepSize);
         float line = step(band, lineW) + step(1.0 - lineW, band);
         line = min(line, 1.0);
 
-        float inside = smoothstep(0.04, 0.18, alpha);
-        float ghost = clamp(edge * 0.95 + line * 0.55, 0.0, 1.0) * inside;
+        float wave = sin((coords.y - u_time * 0.85) * 18.0 + warp * 4.0);
+        line *= 0.62 + 0.38 * (0.5 + 0.5 * wave);
+
+        vec2 offset = vec2(sin((coords.y - u_time) * 45.0 + coords.x * 7.0) * 0.0026, 0.0);
+        float warped = texture2D(u_texture, v_texCoords + offset).a;
+
+        float inside = smoothstep(0.04, 0.18, warped);
+        float ghost = clamp(edge * 0.90 + line * 0.72, 0.0, 1.0) * inside;
         gl_FragColor = vec4(u_color.rgb, u_color.a * ghost) * v_color;
         return;
     }
 
     if(u_mode < 2.5){
         // Distortion silhouette mode: shimmer inside the sprite alpha mask.
-        float waveA = sin(coords.y * 70.0 + u_time * 7.0);
-        float waveB = sin(coords.x * 95.0 - u_time * 8.5);
-        vec2 offset = vec2((waveA + waveB) * 0.003, (waveB - waveA) * 0.002);
+        float phase = (coords.y - u_time * 1.05) * 58.0 + sin(coords.x * 14.0 + u_time * 1.7) * 3.0;
+        vec2 offset = vec2(sin(phase) * 0.0042, 0.0);
 
         float warped = texture2D(u_texture, v_texCoords + offset).a;
-        float body = smoothstep(0.035, 0.22, warped);
         float rim = smoothstep(0.02, 0.28, edge);
-        float shimmer = 0.5 + 0.5 * sin((coords.x + coords.y) * 46.0 + u_time * 11.0);
-        float ghost = clamp(body * (0.34 + shimmer * 0.30) + rim * 0.44, 0.0, 1.0);
+        float body = smoothstep(0.045, 0.24, warped);
+        float ripple = 1.0 - smoothstep(0.0, 0.28, abs(sin(phase * 0.5)));
+        float ghost = clamp(rim * 0.62 + ripple * 0.36 + body * 0.18, 0.0, 1.0);
 
         gl_FragColor = vec4(u_color.rgb, u_color.a * ghost) * v_color;
         return;

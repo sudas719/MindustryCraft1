@@ -32,6 +32,8 @@ import mindustry.world.blocks.environment.*;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.*;
 
+import java.util.*;
+
 import static arc.Core.*;
 import static mindustry.Vars.*;
 import static mindustry.input.PlaceMode.*;
@@ -65,7 +67,19 @@ public class DesktopInput extends InputHandler{
     private static Class<?> sdlAppClass;
     private static java.lang.reflect.Field sdlWindowField;
     private static java.lang.reflect.Method sdlGetWindowFlagsMethod;
-    private static int sdlWindowFocusFlag;
+    private static long sdlWindowFocusFlag;
+
+    private static Class<?> cursorWarpInputClass;
+    private static java.lang.reflect.Method cursorWarpMethod;
+    private static Class<?> cursorCatchInputClass;
+    private static java.lang.reflect.Method cursorCatchMethod;
+    private static Class<?> cursorDeltaInputClass;
+    private static java.lang.reflect.Method cursorDeltaXMethod;
+    private static java.lang.reflect.Method cursorDeltaYMethod;
+    private static Class<?> cursorWarpGraphicsClass;
+    private static java.lang.reflect.Method cursorWarpGraphicsMethod;
+    private static Class<?> cursorCatchGraphicsClass;
+    private static java.lang.reflect.Method cursorCatchGraphicsMethod;
     /** Delta time between consecutive clicks. */
     public long selectMillis = 0;
     /** Previously selected tile. */
@@ -103,8 +117,212 @@ public class DesktopInput extends InputHandler{
     private boolean spectatorHighView = false;
     private float spectatorBaseScale = -1f;
 
+    private boolean middleMousePanning = false;
+    private int middleMouseStartX, middleMouseStartY;
+    private int middleMouseLastX, middleMouseLastY;
+    private boolean middleMouseCaptured = false;
+    private Cursor blankCursor;
+
     private boolean abilityTargetingActive(){
         return ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand != mindustry.ui.UnitAbilityPanel.CommandMode.NONE;
+    }
+
+    public boolean isMiddleMousePanning(){
+        return middleMousePanning;
+    }
+
+    private Cursor blankCursor(){
+        if(blankCursor == null){
+            blankCursor = Core.graphics.newCursor("blank", Fonts.cursorScale());
+        }
+        return blankCursor;
+    }
+
+    private static java.lang.reflect.Method findCursorCatchMethod(Class<?> type){
+        for(Class<?> c = type; c != null; c = c.getSuperclass()){
+            for(var method : c.getDeclaredMethods()){
+                var params = method.getParameterTypes();
+                if(params.length != 1 || params[0] != boolean.class) continue;
+
+                String name = method.getName().toLowerCase(Locale.ROOT);
+                if(!(name.contains("cursor") || name.contains("mouse"))) continue;
+                if(name.contains("catch") || name.contains("captur") || name.contains("grab") || name.contains("lock") || name.contains("relative")){
+                    try{
+                        method.setAccessible(true);
+                    }catch(Throwable ignored){
+                    }
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean setCursorCatched(boolean catched){
+        boolean invoked = false;
+
+        if(Core.input != null){
+            Class<?> inputClass = Core.input.getClass();
+            if(cursorCatchInputClass != inputClass){
+                cursorCatchInputClass = inputClass;
+                cursorCatchMethod = null;
+
+                try{
+                    cursorCatchMethod = inputClass.getMethod("setCursorCatched", boolean.class);
+                }catch(Throwable ignored){
+                    try{
+                        cursorCatchMethod = inputClass.getMethod("setCursorCaptured", boolean.class);
+                    }catch(Throwable ignored2){
+                        cursorCatchMethod = findCursorCatchMethod(inputClass);
+                    }
+                }
+            }
+
+            if(cursorCatchMethod != null){
+                try{
+                    cursorCatchMethod.invoke(Core.input, catched);
+                    invoked = true;
+                }catch(Throwable ignored){
+                }
+            }
+        }
+
+        if(!invoked && Core.graphics != null){
+            Class<?> graphicsClass = Core.graphics.getClass();
+            if(cursorCatchGraphicsClass != graphicsClass){
+                cursorCatchGraphicsClass = graphicsClass;
+                cursorCatchGraphicsMethod = findCursorCatchMethod(graphicsClass);
+            }
+
+            if(cursorCatchGraphicsMethod != null){
+                try{
+                    cursorCatchGraphicsMethod.invoke(Core.graphics, catched);
+                    invoked = true;
+                }catch(Throwable ignored){
+                }
+            }
+        }
+
+        return invoked;
+    }
+
+    private static java.lang.reflect.Method findCursorDeltaMethod(Class<?> inputClass, String suffix){
+        for(var method : inputClass.getMethods()){
+            if(method.getParameterTypes().length != 0) continue;
+
+            Class<?> ret = method.getReturnType();
+            if(ret != float.class && ret != int.class && ret != double.class) continue;
+
+            String name = method.getName().toLowerCase(Locale.ROOT);
+            if(name.endsWith(suffix) || name.contains("delt" + suffix) || name.contains("mouse" + suffix) || name.contains("cursor" + suffix)){
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static void resolveCursorDeltas(){
+        if(Core.input == null) return;
+
+        Class<?> inputClass = Core.input.getClass();
+        if(cursorDeltaInputClass == inputClass) return;
+
+        cursorDeltaInputClass = inputClass;
+        cursorDeltaXMethod = null;
+        cursorDeltaYMethod = null;
+
+        try{
+            cursorDeltaXMethod = inputClass.getMethod("deltaX");
+            cursorDeltaYMethod = inputClass.getMethod("deltaY");
+        }catch(Throwable ignored){
+            cursorDeltaXMethod = findCursorDeltaMethod(inputClass, "x");
+            cursorDeltaYMethod = findCursorDeltaMethod(inputClass, "y");
+        }
+    }
+
+    private static java.lang.reflect.Method findCursorWarpMethod(Class<?> type){
+        for(Class<?> c = type; c != null; c = c.getSuperclass()){
+            for(var method : c.getDeclaredMethods()){
+                String name = method.getName().toLowerCase(Locale.ROOT);
+                if(!name.startsWith("set")) continue;
+                if(!(name.contains("cursor") || name.contains("mouse"))) continue;
+
+                var params = method.getParameterTypes();
+                if(params.length != 2) continue;
+                if((params[0] == int.class && params[1] == int.class) || (params[0] == float.class && params[1] == float.class)){
+                    try{
+                        method.setAccessible(true);
+                    }catch(Throwable ignored){
+                    }
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean setCursorPosition(int x, int y){
+        boolean invoked = false;
+
+        if(Core.input != null){
+            Class<?> inputClass = Core.input.getClass();
+            if(cursorWarpInputClass != inputClass){
+                cursorWarpInputClass = inputClass;
+                cursorWarpMethod = null;
+
+                try{
+                    cursorWarpMethod = inputClass.getMethod("setCursorPosition", int.class, int.class);
+                }catch(Throwable ignored){
+                    try{
+                        cursorWarpMethod = inputClass.getMethod("setMousePosition", int.class, int.class);
+                    }catch(Throwable ignored2){
+                        try{
+                            cursorWarpMethod = inputClass.getMethod("setCursorPosition", float.class, float.class);
+                        }catch(Throwable ignored3){
+                            try{
+                                cursorWarpMethod = inputClass.getMethod("setMousePosition", float.class, float.class);
+                            }catch(Throwable ignored4){
+                                cursorWarpMethod = findCursorWarpMethod(inputClass);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(cursorWarpMethod != null){
+                try{
+                    if(cursorWarpMethod.getParameterTypes()[0] == int.class){
+                        cursorWarpMethod.invoke(Core.input, x, y);
+                    }else{
+                        cursorWarpMethod.invoke(Core.input, (float)x, (float)y);
+                    }
+                    invoked = true;
+                }catch(Throwable ignored){
+                }
+            }
+        }
+
+        if(!invoked && Core.graphics != null){
+            Class<?> graphicsClass = Core.graphics.getClass();
+            if(cursorWarpGraphicsClass != graphicsClass){
+                cursorWarpGraphicsClass = graphicsClass;
+                cursorWarpGraphicsMethod = findCursorWarpMethod(graphicsClass);
+            }
+
+            if(cursorWarpGraphicsMethod != null){
+                try{
+                    if(cursorWarpGraphicsMethod.getParameterTypes()[0] == int.class){
+                        cursorWarpGraphicsMethod.invoke(Core.graphics, x, y);
+                    }else{
+                        cursorWarpGraphicsMethod.invoke(Core.graphics, (float)x, (float)y);
+                    }
+                    invoked = true;
+                }catch(Throwable ignored){
+                }
+            }
+        }
+
+        return invoked;
     }
 
     private boolean suppressSelectionTap(){
@@ -133,12 +351,29 @@ public class DesktopInput extends InputHandler{
             try{
                 sdlAppClass = Class.forName("arc.backend.sdl.SdlApplication");
                 if(sdlAppClass.isInstance(Core.app)){
-                    Class<?> sdlClass = Class.forName("arc.backend.sdl.jni.SDL");
                     sdlWindowField = sdlAppClass.getDeclaredField("window");
                     sdlWindowField.setAccessible(true);
-                    sdlGetWindowFlagsMethod = sdlClass.getMethod("SDL_GetWindowFlags", long.class);
-                    sdlWindowFocusFlag = sdlClass.getField("SDL_WINDOW_INPUT_FOCUS").getInt(null);
-                    windowFocusSupported = true;
+                    windowFocusSupported = false;
+
+                    //SDL3 (LWJGL) backend
+                    try{
+                        Class<?> sdlClass = Class.forName("org.lwjgl.sdl.SDLVideo");
+                        sdlGetWindowFlagsMethod = sdlClass.getMethod("SDL_GetWindowFlags", long.class);
+                        Object value = sdlClass.getField("SDL_WINDOW_INPUT_FOCUS").get(null);
+                        sdlWindowFocusFlag = value instanceof Number ? ((Number)value).longValue() : 0L;
+                        windowFocusSupported = true;
+                    }catch(Throwable ignored){
+                        //SDL2 (JNI) backend
+                        try{
+                            Class<?> sdlClass = Class.forName("arc.backend.sdl.jni.SDL");
+                            sdlGetWindowFlagsMethod = sdlClass.getMethod("SDL_GetWindowFlags", long.class);
+                            Object value = sdlClass.getField("SDL_WINDOW_INPUT_FOCUS").get(null);
+                            sdlWindowFocusFlag = value instanceof Number ? ((Number)value).longValue() : 0L;
+                            windowFocusSupported = true;
+                        }catch(Throwable ignored2){
+                            windowFocusSupported = false;
+                        }
+                    }
                 }else{
                     windowFocusSupported = false;
                 }
@@ -152,8 +387,9 @@ public class DesktopInput extends InputHandler{
             if(!sdlAppClass.isInstance(Core.app)) return true;
             long window = sdlWindowField.getLong(Core.app);
             if(window == 0L) return true;
-            int flags = (int)sdlGetWindowFlagsMethod.invoke(null, window);
-            return (flags & sdlWindowFocusFlag) != 0;
+            Object result = sdlGetWindowFlagsMethod.invoke(null, window);
+            long flags = result instanceof Number ? ((Number)result).longValue() : 0L;
+            return (flags & sdlWindowFocusFlag) != 0L;
         }catch(Throwable t){
             return true;
         }
@@ -381,6 +617,10 @@ public class DesktopInput extends InputHandler{
     public void update(){
         super.update();
 
+        if(middleMousePanning){
+            Core.graphics.cursor(blankCursor());
+        }
+
         if(!isLocalSpectatorMode()){
             restoreSpectatorViewScale();
         }
@@ -428,8 +668,84 @@ public class DesktopInput extends InputHandler{
         boolean detached = settings.getBool("detach-camera", false);
         float arrowCamX = 0f, arrowCamY = 0f;
         boolean arrowCam = false;
+        boolean middlePan = false;
+
+        if(middleMousePanning && !Core.input.keyDown(KeyCode.mouseMiddle)){
+            middleMousePanning = false;
+            if(middleMouseCaptured){
+                Core.input.setCursorCaptured(false);
+                middleMouseCaptured = false;
+            }
+            Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY);
+            Core.graphics.restoreCursor();
+        }
 
         if(!scene.hasField() && !scene.hasDialog()){
+            boolean midDown = Core.input.keyDown(KeyCode.mouseMiddle);
+            if(midDown && !middleMousePanning && !ui.chatfrag.shown()){
+                middleMousePanning = true;
+                middleMouseStartX = (int)Core.input.mouseX();
+                middleMouseStartY = (int)Core.input.mouseY();
+                middleMouseLastX = middleMouseStartX;
+                middleMouseLastY = middleMouseStartY;
+
+                //lock/hide cursor + use relative deltas when supported (prevents edge clamping)
+                middleMouseCaptured = Core.input.setCursorCaptured(true);
+            }else if(!midDown && middleMousePanning){
+                middleMousePanning = false;
+                if(middleMouseCaptured){
+                    Core.input.setCursorCaptured(false);
+                    middleMouseCaptured = false;
+                }
+                Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY);
+                Core.graphics.restoreCursor();
+            }
+
+            if(middleMousePanning){
+                middlePan = true;
+                panning = true;
+                spectating = null;
+                spectatingPlayer = -1;
+
+                //ensure cursor stays hidden/locked even if some other UI code changes it
+                if(middleMouseCaptured){
+                    Core.input.setCursorCaptured(true);
+                }
+
+                int mx = (int)Core.input.mouseX();
+                int my = (int)Core.input.mouseY();
+                int dx = 0, dy = 0;
+
+                if(middleMouseCaptured){
+                    dx = Core.input.deltaX();
+                    dy = Core.input.deltaY();
+                }else{
+                    //fallback: no capture, use raw movement (will still hit screen edges)
+                    dx = mx - middleMouseLastX;
+                    dy = my - middleMouseLastY;
+                }
+
+                if(dx != 0 || dy != 0){
+                    float sx = Core.graphics.getWidth() <= 0 ? 0f : (Core.camera.width / Core.graphics.getWidth());
+                    float sy = Core.graphics.getHeight() <= 0 ? 0f : (Core.camera.height / Core.graphics.getHeight());
+                    Core.camera.position.x += dx * sx;
+                    Core.camera.position.y += dy * sy;
+                }
+
+                if(!middleMouseCaptured){
+                    //keep cursor position unchanged if possible
+                    if(Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY)){
+                        middleMouseLastX = middleMouseStartX;
+                        middleMouseLastY = middleMouseStartY;
+                    }else{
+                        middleMouseLastX = mx;
+                        middleMouseLastY = my;
+                    }
+                }else{
+                    //cursor is captured, OS cursor position does not matter
+                }
+            }
+
             if(input.keyTap(Binding.debugHitboxes)){
                 drawDebugHitboxes = !drawDebugHitboxes;
             }
@@ -443,7 +759,7 @@ public class DesktopInput extends InputHandler{
                 spectatingPlayer = -1;
             }
 
-            if(input.keyDown(Binding.pan)){
+            if(!middlePan && input.keyDown(Binding.pan)){
                 panCam = true;
                 panning = true;
                 spectating = null;
@@ -461,7 +777,7 @@ public class DesktopInput extends InputHandler{
                 if(Core.input.keyDown(KeyCode.right)) arrowCamX += 1f;
                 if(Core.input.keyDown(KeyCode.up)) arrowCamY += 1f;
                 if(Core.input.keyDown(KeyCode.down)) arrowCamY -= 1f;
-                arrowCam = arrowCamX != 0f || arrowCamY != 0f;
+                arrowCam = !middlePan && (arrowCamX != 0f || arrowCamY != 0f);
                 if(arrowCam){
                     panning = true;
                     spectating = null;
@@ -494,13 +810,13 @@ public class DesktopInput extends InputHandler{
                 Core.camera.position.lerpDelta(panTarget, Core.settings.getBool("smoothcamera") ? 0.08f : 1f);
             }
 
-            if(panCam){
+            if(panCam && !middlePan){
                 Core.camera.position.x += Mathf.clamp((Core.input.mouseX() - Core.graphics.getWidth() / 2f) * panScale, -1, 1) * camSpeed;
-                Core.camera.position.y += Mathf.clamp((Core.input.mouseY() - Core.graphics.getHeight() / 2f) * panScale, -1, 1) * camSpeed;
+                Core.camera.position.y += Mathf.clamp((Core.input.mouseY() - renderer.getGameScreenCenterYPx()) * panScale, -1, 1) * camSpeed;
             }
 
             //edge scrolling
-            if(Core.settings.getBool("edgescrolling") && windowFocused() && !scene.hasDialog() && !scene.hasField()){
+            if(!middlePan && Core.settings.getBool("edgescrolling") && windowFocused() && !scene.hasDialog() && !scene.hasField()){
                 float edgeDist = Core.settings.getInt("edgescrolldistance", 20);
                 float edgeSpeed = Core.settings.getInt("edgescrollspeed", 10) * Time.delta;
 
@@ -916,12 +1232,19 @@ public class DesktopInput extends InputHandler{
             cursorType = hoverCursor(hover);
         }
 
+        if(middleMousePanning){
+            cursorType = blankCursor();
+        }
+
         if(Core.input.keyRelease(Binding.select)){
             player.shooting = false;
         }
 
         boolean hoverCursor = cursorType == ui.hoverGreenCursor || cursorType == ui.hoverRedCursor || cursorType == ui.hoverYellowCursor;
-        if((!Core.scene.hasMouse() || hoverCursor) && !ui.minimapfrag.shown()){
+        if(middleMousePanning){
+            Core.graphics.cursor(blankCursor());
+            changedCursor = true;
+        }else if((!Core.scene.hasMouse() || hoverCursor) && !ui.minimapfrag.shown()){
             Core.graphics.cursor(cursorType);
             changedCursor = cursorType != SystemCursor.arrow;
         }else{
@@ -2410,6 +2733,15 @@ public class DesktopInput extends InputHandler{
         if(!locked()){
             panning = true;
             camera.position.set(position);
+            if(world.width() > 0 && world.height() > 0){
+                float half = tilesize / 2f;
+                float maxX = Math.max(world.unitWidth() - half, half);
+                float maxY = Math.max(world.unitHeight() - half, half);
+                float screenHeight = Core.graphics.getHeight();
+                float centerOffsetY = screenHeight <= 0f ? 0f : (renderer.getUiBottomInsetPx() / 2f) * (camera.height / screenHeight);
+                camera.position.x = Mathf.clamp(camera.position.x, half, maxX);
+                camera.position.y = Mathf.clamp(camera.position.y + centerOffsetY, half, maxY) - centerOffsetY;
+            }
         }
     }
 

@@ -127,9 +127,9 @@ public class PhysicsProcess implements AsyncProcess{
     }
 
     //world for simulating physics in a different thread
-    public static class PhysicsWorld{
-        //how much to soften movement by
-        private static final float scl = 1.25f;
+        public static class PhysicsWorld{
+            //how much to soften movement by
+            private static final float scl = 1.25f * 50f;
 
         private final QuadTree<PhysicsBody>[] trees = new QuadTree[layers];
         private final Seq<PhysicsBody> bodies = new Seq<>(false, 16, PhysicsBody.class);

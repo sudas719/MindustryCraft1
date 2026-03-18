@@ -577,6 +577,30 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void commandHoldPosition(Player player, int[] unitIds, @Nullable Vec2 posTarget){
+        if(player == null || unitIds == null || posTarget == null) return;
+
+        if(net.server() && !netServer.admins.allowAction(player, ActionType.commandUnits, event -> {
+            event.unitIDs = unitIds;
+        })){
+            throw new ValidateException(player, "Player cannot command units.");
+        }
+
+        recordPlayerAction(player);
+
+        Vec2 safePosTarget = sanitizeRemoteCommandTarget(posTarget);
+        for(int id : unitIds){
+            Unit unit = Groups.unit.getByID(id);
+            if(unit != null && unit.team == player.team() && unit.controller() instanceof CommandAI){
+                CommandAI ai = (CommandAI)unit.controller();
+                ai.command(UnitCommand.moveCommand);
+                ai.setHoldPosition(safePosTarget);
+                unit.lastCommanded = player.coloredName();
+            }
+        }
+    }
+
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
     public static void commandWidowMine(Player player, int[] unitIds, boolean burrow){
         if(player == null || unitIds == null) return;
 
@@ -3700,6 +3724,15 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void panCamera(Vec2 position){
         if(!locked()){
             camera.position.set(position);
+            if(world.width() > 0 && world.height() > 0){
+                float half = tilesize / 2f;
+                float maxX = Math.max(world.unitWidth() - half, half);
+                float maxY = Math.max(world.unitHeight() - half, half);
+                float screenHeight = Core.graphics.getHeight();
+                float centerOffsetY = screenHeight <= 0f ? 0f : (renderer.getUiBottomInsetPx() / 2f) * (camera.height / screenHeight);
+                camera.position.x = Mathf.clamp(camera.position.x, half, maxX);
+                camera.position.y = Mathf.clamp(camera.position.y + centerOffsetY, half, maxY) - centerOffsetY;
+            }
         }
     }
 

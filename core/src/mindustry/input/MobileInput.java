@@ -973,7 +973,15 @@ public class MobileInput extends InputHandler implements GestureListener{
             spectatingPlayer = -1;
         }
 
-        camera.position.clamp(-camera.width/4f, -camera.height/4f, world.unitWidth() + camera.width/4f, world.unitHeight() + camera.height/4f);
+        float half = tilesize / 2f;
+        float maxX = Math.max(world.unitWidth() - half, half);
+        float maxY = Math.max(world.unitHeight() - half, half);
+
+        float screenHeight = Core.graphics.getHeight();
+        float centerOffsetY = screenHeight <= 0f ? 0f : (renderer.getUiBottomInsetPx() / 2f) * (camera.height / screenHeight);
+
+        camera.position.x = Mathf.clamp(camera.position.x, half, maxX);
+        camera.position.y = Mathf.clamp(camera.position.y + centerOffsetY, half, maxY) - centerOffsetY;
 
         return false;
     }

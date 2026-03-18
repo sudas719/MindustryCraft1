@@ -423,6 +423,8 @@ public class OverlayRenderer{
     public void drawHoverRing(){
         if(control.input == null) return;
 
+        if(control.input instanceof DesktopInput input && input.isMiddleMousePanning()) return;
+
         var hover = control.input.updateHover(false);
         if(!hover.isValid()) return;
 

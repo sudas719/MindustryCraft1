@@ -415,6 +415,24 @@ public class UnitType extends UnlockableContent implements Senseable{
     /** visual-only draw scaling that should also affect hit size */
     public float visualHitSizeScale = 1f;
 
+    /** If false, {@link #hitSize} will not be recalculated from sprite region size during {@link #load()}. */
+    public boolean hitSizeFromRegion = true;
+
+    /** Scale factor applied by {@link #applySpriteHitSizeRatio()} for this load. Reset to 1 in {@link #load()}. */
+    public float appliedSpriteScale = 1f;
+
+    /** Whether {@link #applySpriteHitSizeRatio()} has already applied scaling during this load cycle. */
+    public boolean spriteScalingApplied = false;
+
+    /** Extra draw-time scaling applied by the unit's draw() override via {@link Draw#scl(float, float)}. Default is 1. */
+    public float spriteDrawScale = 1f;
+
+    /**
+     * If > 0, unit sprite regions are rescaled so that the main body sprite side equals {@link #hitSize} * this value.
+     * Applied during {@link #load()} after all regions are assigned.
+     */
+    public float spriteHitSizeRatio = -1f;
+
     /** amount of items this unit can carry; <0 to determine based on hitSize. */
     public int itemCapacity = -1;
     /** amount of ammo this unit can hold (if the rule is enabled); <0 to determine based on weapon fire rate. */
@@ -1198,6 +1216,8 @@ public class UnitType extends UnlockableContent implements Senseable{
     @Override
     public void load(){
         super.load();
+        appliedSpriteScale = 1f;
+        spriteScalingApplied = false;
 
         for(var part : parts){
             part.load(name);
@@ -1252,16 +1272,201 @@ public class UnitType extends UnlockableContent implements Senseable{
             segmentCellRegions[i] = Core.atlas.find(name + "-segment-cell" + i);
         }
 
+        applySpriteHitSizeRatio();
+
         clipSize = Math.max(region.width * 2f, clipSize);
     }
 
     protected void updateHitSizeFromRegion(){
+        if(!hitSizeFromRegion) return;
         if(region == null || !region.found()) return;
         float drawW = region.width * region.scale / 4f;
         float drawH = region.height * region.scale / 4f;
         float side = Math.max(drawW, drawH);
         if(side > 0.001f){
             hitSize = side * visualHitSizeScale;
+        }
+    }
+
+    protected void applySpriteHitSizeRatio(){
+        if(spriteHitSizeRatio <= 0f) return;
+        if(region == null || !region.found()) return;
+        float drawW = region.width * region.scale / 4f;
+        float drawH = region.height * region.scale / 4f;
+        float side = Math.max(drawW, drawH);
+        if(side <= 0.001f) return;
+
+        float desired = hitSize * spriteHitSizeRatio;
+        if(desired <= 0.001f) return;
+
+        float factor = desired / side;
+        if(!Float.isFinite(factor) || Mathf.equal(factor, 1f, 0.0001f)) return;
+        if(spriteScalingApplied && Mathf.equal(appliedSpriteScale, factor, 0.0001f)) return;
+        spriteScalingApplied = true;
+        appliedSpriteScale = factor;
+        float posFactor = factor * spriteDrawScale;
+
+        region = copyScaledRegion(region, factor);
+        previewRegion = copyScaledRegion(previewRegion, factor);
+        outlineRegion = copyScaledRegion(outlineRegion, factor);
+        fullIcon = copyScaledRegion(fullIcon, factor);
+        uiIcon = copyScaledRegion(uiIcon, factor);
+        shadowRegion = copyScaledRegion(shadowRegion, factor);
+        baseRegion = copyScaledRegion(baseRegion, factor);
+        legRegion = copyScaledRegion(legRegion, factor);
+        jointRegion = copyScaledRegion(jointRegion, factor);
+        baseJointRegion = copyScaledRegion(baseJointRegion, factor);
+        footRegion = copyScaledRegion(footRegion, factor);
+        treadRegion = copyScaledRegion(treadRegion, factor);
+        legBaseRegion = copyScaledRegion(legBaseRegion, factor);
+        cellRegion = copyScaledRegion(cellRegion, factor);
+
+        if(treadRegions != null){
+            for(int r = 0; r < treadRegions.length; r++){
+                TextureRegion[] arr = treadRegions[r];
+                if(arr == null) continue;
+                for(int i = 0; i < arr.length; i++){
+                    arr[i] = copyScaledRegion(arr[i], factor);
+                }
+            }
+        }
+
+        if(wreckRegions != null){
+            for(int i = 0; i < wreckRegions.length; i++){
+                wreckRegions[i] = copyScaledRegion(wreckRegions[i], factor);
+            }
+        }
+
+        if(segmentRegions != null){
+            for(int i = 0; i < segmentRegions.length; i++){
+                segmentRegions[i] = copyScaledRegion(segmentRegions[i], factor);
+            }
+        }
+        if(segmentOutlineRegions != null){
+            for(int i = 0; i < segmentOutlineRegions.length; i++){
+                segmentOutlineRegions[i] = copyScaledRegion(segmentOutlineRegions[i], factor);
+            }
+        }
+        if(segmentCellRegions != null){
+            for(int i = 0; i < segmentCellRegions.length; i++){
+                segmentCellRegions[i] = copyScaledRegion(segmentCellRegions[i], factor);
+            }
+        }
+
+        for(Weapon weapon : weapons){
+            if(weapon == null) continue;
+
+            //Scale mount offsets so weapon placement matches rescaled sprite size.
+            weapon.x *= posFactor;
+            weapon.y *= posFactor;
+            weapon.shootX *= posFactor;
+            weapon.shootY *= posFactor;
+            weapon.xRand *= posFactor;
+            weapon.yRand *= posFactor;
+            weapon.recoil *= posFactor;
+            if(weapon.shadow > 0f) weapon.shadow *= posFactor;
+
+            weapon.region = copyScaledRegion(weapon.region, factor);
+            weapon.heatRegion = copyScaledRegion(weapon.heatRegion, factor);
+            weapon.cellRegion = copyScaledRegion(weapon.cellRegion, factor);
+            weapon.outlineRegion = copyScaledRegion(weapon.outlineRegion, factor);
+
+            for(var part : weapon.parts){
+                scaleDrawPart(part, factor, posFactor);
+            }
+        }
+
+        for(var part : parts){
+            scaleDrawPart(part, factor, posFactor);
+        }
+    }
+
+    protected static TextureRegion copyScaledRegion(TextureRegion region, float factor){
+        if(region == null || !region.found()) return region;
+        TextureRegion copy = region instanceof AtlasRegion ar ? new AtlasRegion(ar) : new TextureRegion(region);
+        copy.scale = region.scale * factor;
+        return copy;
+    }
+
+    private static void scaleDrawPart(DrawPart part, float regionFactor, float posFactor){
+        if(part == null) return;
+
+        if(part instanceof RegionPart r){
+            r.x *= posFactor;
+            r.y *= posFactor;
+            r.originX *= posFactor;
+            r.originY *= posFactor;
+            r.moveX *= posFactor;
+            r.moveY *= posFactor;
+            r.growX *= posFactor;
+            r.growY *= posFactor;
+
+            r.heat = copyScaledRegion(r.heat, regionFactor);
+            r.light = copyScaledRegion(r.light, regionFactor);
+            if(r.regions != null){
+                for(int i = 0; i < r.regions.length; i++){
+                    r.regions[i] = copyScaledRegion(r.regions[i], regionFactor);
+                }
+            }
+            if(r.outlines != null){
+                for(int i = 0; i < r.outlines.length; i++){
+                    r.outlines[i] = copyScaledRegion(r.outlines[i], regionFactor);
+                }
+            }
+            return;
+        }
+
+        if(part instanceof ShapePart s){
+            s.x *= posFactor;
+            s.y *= posFactor;
+            s.moveX *= posFactor;
+            s.moveY *= posFactor;
+            s.radius *= posFactor;
+            if(s.radiusTo >= 0f) s.radiusTo *= posFactor;
+            s.stroke *= posFactor;
+            if(s.strokeTo >= 0f) s.strokeTo *= posFactor;
+            return;
+        }
+
+        if(part instanceof EffectSpawnerPart e){
+            e.x *= posFactor;
+            e.y *= posFactor;
+            e.width *= posFactor;
+            e.height *= posFactor;
+            return;
+        }
+
+        if(part instanceof HoverPart h){
+            h.x *= posFactor;
+            h.y *= posFactor;
+            h.radius *= posFactor;
+            h.stroke *= posFactor;
+            h.minStroke *= posFactor;
+            return;
+        }
+
+        if(part instanceof FlarePart f){
+            f.x *= posFactor;
+            f.y *= posFactor;
+            f.radius *= posFactor;
+            if(f.radiusTo >= 0f) f.radiusTo *= posFactor;
+            f.stroke *= posFactor;
+            return;
+        }
+
+        if(part instanceof HaloPart h){
+            h.x *= posFactor;
+            h.y *= posFactor;
+            h.moveX *= posFactor;
+            h.moveY *= posFactor;
+            h.radius *= posFactor;
+            if(h.radiusTo >= 0f) h.radiusTo *= posFactor;
+            h.stroke *= posFactor;
+            if(h.strokeTo >= 0f) h.strokeTo *= posFactor;
+            h.triLength *= posFactor;
+            if(h.triLengthTo >= 0f) h.triLengthTo *= posFactor;
+            h.haloRadius *= posFactor;
+            if(h.haloRadiusTo >= 0f) h.haloRadiusTo *= posFactor;
         }
     }
 
@@ -1720,6 +1925,9 @@ public class UnitType extends UnlockableContent implements Senseable{
     }
 
     private void drawStealthVisual(Unit unit, float z, boolean isPayload, boolean hidden, float transition){
+        Team viewer = stealthViewerTeam(unit);
+        boolean friendly = viewer != null && unit.team == viewer;
+
         if(!isPayload && (unit.isFlying() || shadowElevation > 0)){
             Draw.z(Math.min(Layer.darkness, z - 1f));
             drawShadow(unit);
@@ -1736,33 +1944,36 @@ public class UnitType extends UnlockableContent implements Senseable{
         }
 
         Draw.z(z);
-        Color tint = hidden ? stealthHiddenTint : stealthVisibleTint;
-        float mode = hidden ? 2f : 0f;
+        Color tint = friendly ? stealthVisibleTint : Tmp.c1.set(Color.white);
+        float mode = hidden ? 2f : 1f;
 
         if(drawBody && Core.atlas.isFound(outlineRegion)){
-            drawStealthRegion(outlineRegion, unit, tint, hidden ? 0.22f : 0.9f, hidden ? 2f : 1f, 1f);
+            drawStealthRegion(outlineRegion, unit, tint, friendly ? 0.55f : 0.22f, hidden ? 2f : 1f, 1f);
         }
         if(drawBody){
-            drawStealthRegion(region, unit, tint, hidden ? 0.26f : 0.42f, mode, 1f);
+            drawStealthRegion(region, unit, tint, friendly ? 0.28f : 0.26f, mode, 1f);
         }
         if(drawCell && !(unit instanceof Crawlc)){
-            drawStealthRegion(cellRegion, unit, tint, hidden ? 0.14f : 0.26f, mode, 1f);
+            drawStealthRegion(cellRegion, unit, tint, friendly ? 0.18f : 0.14f, mode, 1f);
         }
     }
 
     private void drawStealthCloakBurn(Unit unit, float z, boolean hidden, float progress){
         Draw.z(z);
-        Color tint = hidden ? stealthHiddenTint : stealthVisibleTint;
-        float alphaMul = hidden ? 0.72f : 0.86f;
+        Team viewer = stealthViewerTeam(unit);
+        boolean friendly = viewer != null && unit.team == viewer;
+
+        Color tint = friendly ? stealthVisibleTint : Tmp.c1.set(Color.white);
+        float alphaMul = friendly ? 0.86f : 0.72f;
 
         if(drawBody && Core.atlas.isFound(outlineRegion)){
-            drawStealthRegion(outlineRegion, unit, tint, 0.95f * alphaMul, 3f, progress);
+            drawStealthRegion(outlineRegion, unit, tint, 0.70f * alphaMul, 3f, progress);
         }
         if(drawBody){
-            drawStealthRegion(region, unit, tint, 0.88f * alphaMul, 3f, progress);
+            drawStealthRegion(region, unit, tint, 0.55f * alphaMul, 3f, progress);
         }
         if(drawCell && !(unit instanceof Crawlc)){
-            drawStealthRegion(cellRegion, unit, tint, 0.55f * alphaMul, 3f, progress);
+            drawStealthRegion(cellRegion, unit, tint, 0.36f * alphaMul, 3f, progress);
         }
     }
 

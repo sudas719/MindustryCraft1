@@ -105,6 +105,8 @@ public class CommandAI extends AIController{
     /** If true, follow is paused until the target moves. */
     private boolean followHold;
     private float followHoldX, followHoldY, followHoldDist;
+    private boolean holdPosition;
+    private final Vec2 holdPos = new Vec2();
     /** Last command type assigned. Used for detecting command changes. */
     protected @Nullable UnitCommand lastCommand;
     /** Queued command while the unit is locked inside a condenser. */
@@ -117,8 +119,33 @@ public class CommandAI extends AIController{
         return command == null ? UnitCommand.moveCommand : command;
     }
 
+    public boolean holdPositionActive(){
+        return holdPosition;
+    }
+
+    public void setHoldPosition(Vec2 pos){
+        if(pos == null) return;
+        holdPosition = true;
+        holdPos.set(pos);
+        targetPos = null;
+        attackTarget = null;
+        attackMovePosition = false;
+        retainAttackTargetOnMove = false;
+        followTarget = null;
+        commandQueue.clear();
+        queuedCommand = null;
+        queuedCommandPos = null;
+        queuedCommandTarget = null;
+        queuedFollowTarget = null;
+    }
+
+    public void clearHoldPosition(){
+        holdPosition = false;
+    }
+
     /** Attempts to assign a command to this unit. If not supported by the unit type, does nothing. */
     public void command(UnitCommand command){
+        clearHoldPosition();
         if(commandLocked()){
             queuedCommand = command;
             return;
@@ -320,7 +347,11 @@ public class CommandAI extends AIController{
     }
 
     public void defaultBehavior(){
-        updateFollowTarget();
+        if(!holdPosition){
+            updateFollowTarget();
+        }else{
+            followTarget = null;
+        }
 
         if(!net.client() && unit instanceof Payloadc){
             Payloadc pay = (Payloadc)unit;
@@ -383,6 +414,14 @@ public class CommandAI extends AIController{
             retainAttackTargetOnMove = false;
         }
 
+        if(holdPosition){
+            if(targetPos == null){
+                targetPos = new Vec2();
+                lastTargetPos = targetPos;
+            }
+            targetPos.set(holdPos);
+        }
+
         //move on to the next target
         if(attackTarget == null && targetPos == null){
             finishPath();
@@ -390,7 +429,7 @@ public class CommandAI extends AIController{
 
         boolean ramming = hasStance(UnitStance.ram);
 
-        if(attackTarget != null){
+        if(attackTarget != null && !holdPosition){
             if(!retainAttackTargetOnMove){
                 if(targetPos == null){
                     targetPos = new Vec2();
@@ -420,6 +459,9 @@ public class CommandAI extends AIController{
         }
         if(withinAttackRange){
             forceAttackTargetInRange();
+        }
+        if(holdPosition && attackTarget != null && !withinAttackRange){
+            attackTarget = null;
         }
 
         if(targetPos != null){
@@ -727,6 +769,7 @@ public class CommandAI extends AIController{
     /** Sets a crystal harvest target for this unit, forcing the harvest command. */
     public void setHarvestTarget(Vec2 target){
         if(target == null) return;
+        clearHoldPosition();
         pendingHarvestTarget = target.cpy();
         if(command != UnitCommand.harvestCommand){
             command(UnitCommand.harvestCommand);
@@ -1240,6 +1283,7 @@ public class CommandAI extends AIController{
     public void commandPosition(Vec2 pos){
         if(pos == null) return;
 
+        clearHoldPosition();
         commandPosition(pos, false, false);
     }
 
@@ -1249,6 +1293,7 @@ public class CommandAI extends AIController{
 
     public void commandPosition(Vec2 pos, boolean stopWhenInRange, boolean attackMovePosition){
         if(pos == null) return;
+        clearHoldPosition();
         if(commandLocked()){
             queuedCommandPos = pos.cpy();
             return;
@@ -1283,6 +1328,7 @@ public class CommandAI extends AIController{
     }
 
     public void commandTarget(Teamc moveTo, boolean stopAtTarget){
+        clearHoldPosition();
         if(commandLocked()){
             queuedCommandTarget = moveTo;
             return;
@@ -1300,6 +1346,7 @@ public class CommandAI extends AIController{
 
     public void commandFollow(Teamc target){
         if(target == null) return;
+        clearHoldPosition();
         if(commandLocked()){
             queuedFollowTarget = target;
             return;

@@ -19,6 +19,7 @@ buildscript{
         mavenCentral()
         google()
         maven{ url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven{ url "https://central.sonatype.com/repository/maven-snapshots" }
         maven{ url 'https://jitpack.io' }
     }
 
@@ -185,6 +186,7 @@ allprojects{
         mavenCentral()
         maven{ url "https://oss.sonatype.org/content/repositories/snapshots/" }
         maven{ url "https://oss.sonatype.org/content/repositories/releases/" }
+        maven{ url "https://central.sonatype.com/repository/maven-snapshots" }
         maven{ url 'https://jitpack.io' }
     }
 
@@ -256,7 +258,7 @@ project(":desktop"){
 
         implementation "com.github.Anuken:steamworks4j:$steamworksVersion"
 
-        implementation arcModule("backends:backend-sdl")
+        implementation arcModule("backends:backend-sdl3")
         annotationProcessor 'com.github.Anuken:jabel:0.9.0'
     }
 }

@@ -708,6 +708,7 @@ public class Control implements ApplicationListener, Loadable{
 
         if(state.isGame()){
             input.update();
+            clampCameraToWorld();
             if(!state.isPaused()){
                 indicators.update();
             }
@@ -765,5 +766,18 @@ public class Control implements ApplicationListener, Loadable{
                 platform.hide();
             }
         }
+    }
+
+    private void clampCameraToWorld(){
+        if(world.width() <= 0 || world.height() <= 0) return;
+
+        float half = tilesize / 2f;
+        float maxX = Math.max(world.unitWidth() - half, half);
+        float maxY = Math.max(world.unitHeight() - half, half);
+        float screenHeight = graphics.getHeight();
+        float centerOffsetY = screenHeight <= 0f ? 0f : (renderer.getUiBottomInsetPx() / 2f) * (camera.height / screenHeight);
+
+        camera.position.x = Mathf.clamp(camera.position.x, half, maxX);
+        camera.position.y = Mathf.clamp(camera.position.y + centerOffsetY, half, maxY) - centerOffsetY;
     }
 }

@@ -6246,8 +6246,7 @@ public class UnitAbilityPanel extends Table{
         }
         for(Unit unit : abilityUnits()){
             if(unit.isValid()){
-                //Send hold command (move to current position, will be interpreted as hold)
-                Call.commandUnits(player, new int[]{unit.id}, null, null, new Vec2(unit.x, unit.y), false, true, false);
+                Call.commandHoldPosition(player, new int[]{unit.id}, new Vec2(unit.x, unit.y));
             }
         }
         exitCommandMode();

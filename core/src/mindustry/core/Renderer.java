@@ -584,6 +584,12 @@ public class Renderer implements ApplicationListener{
         return Math.min(inset, Core.graphics.getHeight());
     }
 
+    public float getGameScreenCenterYPx(){
+        float height = Core.graphics.getHeight();
+        if(height <= 0f) return 0f;
+        return (height - getUiBottomInsetPx()) / 2f;
+    }
+
     private boolean pushWorldClip(float insetPx){
         float h = graphics.getHeight() - insetPx;
         if(h <= 1f) return false;
