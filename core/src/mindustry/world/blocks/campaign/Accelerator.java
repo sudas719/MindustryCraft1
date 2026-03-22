@@ -176,7 +176,7 @@ public class Accelerator extends Block{
                     Draw.rect(launchBlock.fullIcon, x, y);
                     Draw.reset();
                 }else{
-                    Drawf.shadow(x, y, launchBlock.size * tilesize * 2f, progress);
+                    Drawf.hardShadow(x, y, launchBlock.size * tilesize * 2f, progress);
                     Draw.draw(Layer.blockBuilding, () -> {
                         Draw.color(Pal.accent, heat);
 
@@ -568,9 +568,11 @@ public class Accelerator extends Block{
                 thrusterSize = i.apply(Mathf.clamp(fout*9f));
             }
 
-            Draw.color(Pal.lightTrail);
-            //TODO spikier heat
-            Draw.rect("circle-shadow", x, y, s, s);
+            if(!Drawf.buildingShadowsSuppressed()){
+                Draw.color(Pal.lightTrail);
+                //TODO spikier heat
+                Draw.rect("circle-shadow", x, y, s, s);
+            }
 
             Draw.scl(scl);
 

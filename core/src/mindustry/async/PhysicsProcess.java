@@ -169,8 +169,7 @@ public class PhysicsProcess implements AsyncProcess{
 
             for(int i = 0; i < bodySize; i++){
                 PhysicsBody body = bodyItems[i];
-                //for clients, the only body that collides is the local one; all other physics simulations are handled by the server.
-                if(!body.local || body.layer < 0) continue;
+                if(body.layer < 0) continue;
 
                 body.hitbox(rect);
 
@@ -205,10 +204,8 @@ public class PhysicsProcess implements AsyncProcess{
                         body.x += vec.x * m1 / scl1;
                         body.y += vec.y * m1 / scl1;
 
-                        if(other.local){
-                            other.x -= vec.x * m2 / scl2;
-                            other.y -= vec.y * m2 / scl2;
-                        }
+                        other.x -= vec.x * m2 / scl2;
+                        other.y -= vec.y * m2 / scl2;
                     }
                 }
                 body.collided = true;

@@ -227,7 +227,7 @@ public class CommandAI extends AIController{
         target = attackTarget;
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
-            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(weapon.noAttack || !weapon.aiControllable) continue;
             if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)){
                 mount.target = null;
                 mount.rotate = false;
@@ -524,6 +524,50 @@ public class CommandAI extends AIController{
             }
 
             Building targetBuild = world.buildWorld(targetPos.x, targetPos.y);
+            if(buildFinishRange < 0f && targetBuild != null && unit.isGrounded() && command != UnitCommand.enterPayloadCommand && (targetBuild.block.solid || targetBuild.checkSolid())){
+                float cx = targetBuild.x, cy = targetBuild.y;
+                float half = targetBuild.block.size * tilesize / 2f;
+                float unitRadius = unit.hitSize / 2f;
+                float edge = half + unitRadius + 0.1f;
+                float bestX = cx + edge, bestY = cy;
+                float dx = unit.x - bestX, dy = unit.y - bestY;
+                float bestDst = dx * dx + dy * dy;
+
+                float altX = cx - edge, altY = cy;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                float dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestDst = dst;
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                altX = cx;
+                altY = cy + edge;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestDst = dst;
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                altX = cx;
+                altY = cy - edge;
+                dx = unit.x - altX;
+                dy = unit.y - altY;
+                dst = dx * dx + dy * dy;
+                if(dst < bestDst){
+                    bestX = altX;
+                    bestY = altY;
+                }
+
+                vecMovePos.set(bestX, bestY);
+                pathTarget = vecMovePos;
+                buildFinishRange = edge;
+            }
 
             //TODO: should the unit stop when it finds a target?
             if(
@@ -673,7 +717,9 @@ public class CommandAI extends AIController{
             }else{
                 if(rotateAllowed){
                     if(attackTarget != null){
-                        unit.lookAt(attackTarget);
+                        if(unit.type.faceTarget){
+                            unit.lookAt(attackTarget);
+                        }
                     }else{
                         faceTarget();
                     }
@@ -1206,6 +1252,7 @@ public class CommandAI extends AIController{
 
     private boolean weaponCanHitTarget(Weapon weapon, @Nullable Teamc target){
         if(target == null) return false;
+        if(unit.type == UnitTypes.liberator && !liberatorWeaponActive(weapon)) return false;
         if(target instanceof Unit u){
             return u.isFlying() ? weapon.bullet.collidesAir : weapon.bullet.collidesGround;
         }
@@ -1216,11 +1263,31 @@ public class CommandAI extends AIController{
         return false;
     }
 
+    private boolean liberatorWeaponActive(Weapon weapon){
+        if(UnitTypes.liberatorIsDeploying(unit) || UnitTypes.liberatorIsUndeploying(unit)) return false;
+        boolean defense = UnitTypes.liberatorIsDefending(unit);
+        if(defense){
+            return weapon.bullet.collidesGround && !weapon.bullet.collidesAir;
+        }
+        return weapon.bullet.collidesAir && !weapon.bullet.collidesGround;
+    }
+
+    private boolean canEverHitTarget(@Nullable Teamc target){
+        if(target == null) return false;
+        for(var mount : unit.mounts){
+            Weapon weapon = mount.weapon;
+            if(weapon.noAttack || !weapon.aiControllable) continue;
+            if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
+            if(weaponCanHitTarget(weapon, target)) return true;
+        }
+        return false;
+    }
+
     private boolean forcedFriendlyAttackInWeaponRange(@Nullable Teamc target){
         if(!forcedFriendlyAttackTarget(target)) return false;
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
-            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(weapon.noAttack || !weapon.aiControllable) continue;
             if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
             if(!weaponCanHitTarget(weapon, target)) continue;
             float weaponRange = weapon.range() + unit.hitSize / 2f;
@@ -1235,7 +1302,7 @@ public class CommandAI extends AIController{
         if(target == null) return false;
         for(var mount : unit.mounts){
             Weapon weapon = mount.weapon;
-            if(!weapon.controllable || weapon.noAttack || !weapon.aiControllable) continue;
+            if(weapon.noAttack || !weapon.aiControllable) continue;
             if(unit.type == UnitTypes.precept && !preceptWeaponActive(weapon, unit)) continue;
             if(!weaponCanHitTarget(weapon, target)) continue;
             float weaponRange = weapon.range() + unit.hitSize / 2f;
@@ -1331,6 +1398,13 @@ public class CommandAI extends AIController{
         clearHoldPosition();
         if(commandLocked()){
             queuedCommandTarget = moveTo;
+            return;
+        }
+        if(moveTo != null && !canEverHitTarget(moveTo)){
+            attackTarget = null;
+            targetPos = null;
+            attackMovePosition = false;
+            retainAttackTargetOnMove = false;
             return;
         }
         followTarget = null;

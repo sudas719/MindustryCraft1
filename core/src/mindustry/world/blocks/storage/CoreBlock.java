@@ -54,7 +54,8 @@ public class CoreBlock extends StorageBlock{
     public static final int fortressUpgradeCost = 150;
     public static final int fortressUpgradeGasCost = 150;
     public static final float fortressUpgradeTime = 36f * 60f;
-    public static final int resourceExclusionRadiusTiles = 5;
+    public static final int resourceExclusionRadiusTiles = 3;
+    public static final int defaultRallyCrystalRangeTiles = 5;
 
     public int unitQueueSlots = maxUnitQueue;
     public int activeUnitSlots = 1;
@@ -420,6 +421,44 @@ public class CoreBlock extends StorageBlock{
             commandPos = new Vec2(target);
         }
 
+        public void resetCommandPositionToNearestCrystal(){
+            Tile target = findNearestCrystalRallyTile(defaultRallyCrystalRangeTiles);
+            commandPos = target == null ? null : new Vec2(target.worldx(), target.worldy());
+        }
+
+        public @Nullable Tile findNearestCrystalRallyTile(int rangeTiles){
+            if(tile == null) return null;
+
+            int bx = tile.x;
+            int by = tile.y;
+            int maxx = bx + block.size - 1;
+            int maxy = by + block.size - 1;
+            float bestDst2 = rangeTiles * rangeTiles + 0.001f;
+            Tile best = null;
+
+            for(int x = bx - rangeTiles; x <= maxx + rangeTiles; x++){
+                for(int y = by - rangeTiles; y <= maxy + rangeTiles; y++){
+                    Tile other = world.tile(x, y);
+                    if(other == null || !(other.block() instanceof CrystalMineralWall crystal)) continue;
+                    if(!crystal.isInfinite(other) && crystal.getReserves(other) <= 0) continue;
+
+                    int nearestX = Mathf.clamp(other.x, bx, maxx);
+                    int nearestY = Mathf.clamp(other.y, by, maxy);
+                    float dx = other.x - nearestX;
+                    float dy = other.y - nearestY;
+                    float dst2 = dx * dx + dy * dy;
+                    if(dst2 > bestDst2) continue;
+
+                    if(best == null || dst2 < bestDst2 || (dst2 == bestDst2 && other.pos() < best.pos())){
+                        bestDst2 = dst2;
+                        best = other;
+                    }
+                }
+            }
+
+            return best;
+        }
+
         @Override
         public boolean canUnload(){
             return block.unloadable && state.rules.allowCoreUnloaders;
@@ -587,9 +626,11 @@ public class CoreBlock extends StorageBlock{
                 thrusterSize = i.apply(Mathf.clamp(fout*9f));
             }
 
-            Draw.color(Pal.lightTrail);
-            //TODO spikier heat
-            Draw.rect("circle-shadow", x, y, s, s);
+            if(!Drawf.buildingShadowsSuppressed()){
+                Draw.color(Pal.lightTrail);
+                //TODO spikier heat
+                Draw.rect("circle-shadow", x, y, s, s);
+            }
 
             Draw.scl(scl);
 
@@ -1141,6 +1182,9 @@ public class CoreBlock extends StorageBlock{
                 next.unitQueue.addAll(queue);
                 next.unitProgress = progress;
                 next.commandPos = cmd;
+                if(next.commandPos == null){
+                    next.resetCommandPositionToNearestCrystal();
+                }
                 next.storedScvs = stored;
                 next.loadingScvs.clear();
                 next.loadingScvs.addAll(loading);
@@ -1172,6 +1216,9 @@ public class CoreBlock extends StorageBlock{
                 next.unitQueue.addAll(queue);
                 next.unitProgress = progress;
                 next.commandPos = cmd;
+                if(next.commandPos == null){
+                    next.resetCommandPositionToNearestCrystal();
+                }
                 next.storedScvs = stored;
                 next.loadingScvs.clear();
                 next.loadingScvs.addAll(loading);
@@ -1511,6 +1558,9 @@ public class CoreBlock extends StorageBlock{
         public void placed(){
             super.placed();
             state.teams.registerCore(this);
+            if(!net.client() && commandPos == null){
+                resetCommandPositionToNearestCrystal();
+            }
         }
 
         @Override
@@ -1557,9 +1607,7 @@ public class CoreBlock extends StorageBlock{
         if(tile.floor() instanceof SteamVent vent){
             Tile dataTile = vent.dataTile(tile);
             if(dataTile == null || !vent.checkAdjacent(dataTile)) return null;
-            Tile center = dataTile.nearby(-1, -1);
-            if(center != null && center.floor() == vent) return center;
-            return dataTile;
+            return tile;
         }
         return null;
     }
@@ -1584,6 +1632,14 @@ public class CoreBlock extends StorageBlock{
         }
 
         return false;
+    }
+
+    public static void resetCoreCommandPositionsToNearestCrystal(){
+        for(Building build : Groups.build){
+            if(build instanceof CoreBuild core && build.isValid()){
+                core.resetCommandPositionToNearestCrystal();
+            }
+        }
     }
 
     static @Nullable Tile findVentTile(Building build){

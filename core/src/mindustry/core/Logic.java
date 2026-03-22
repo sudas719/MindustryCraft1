@@ -40,7 +40,7 @@ import static mindustry.Vars.*;
 public class Logic implements ApplicationListener{
 
     private static final String pvpScvStartTag = "pvp-scv-started";
-    private static final int pvpInitialScvs = 12;
+    private static final int pvpInitialScvs = 0;
     private static final int pvpRingScvs = 12;
     private static final int pvpHarvestSearchRadiusTiles = 40;
 
@@ -132,6 +132,9 @@ public class Logic implements ApplicationListener{
         Events.on(WorldLoadEndEvent.class, e -> {
             if(net.client()) return;
             if(state.isEditor()) return;
+
+            CoreBlock.resetCoreCommandPositionsToNearestCrystal();
+
             if(!state.rules.pvp) return;
 
             //prevent duplication for reloaded saves
@@ -556,7 +559,9 @@ public class Logic implements ApplicationListener{
             Vec2 harvestDir = new Vec2();
             Tile harvestTarget = scanHarvestTarget(core, fallbackDir, harvestDir);
 
-            spawnScvsAroundCore(core, pvpInitialScvs, harvestTarget);
+            if(pvpInitialScvs > 0){
+                spawnScvsAroundCore(core, pvpInitialScvs, harvestTarget);
+            }
             spawnScvsOnCoreRing(core, pvpRingScvs, harvestDir, harvestTarget);
         }
     }

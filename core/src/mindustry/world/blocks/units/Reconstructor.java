@@ -297,7 +297,6 @@ public class Reconstructor extends UnitBlock{
                     Draw.alpha(1f - progress/ constructTime);
                     Draw.rect(payload.unit.type.fullIcon, x, y, payload.rotation() - 90);
                     Draw.reset();
-                    Drawf.construct(this, upgrade(payload.unit.type), payload.rotation() - 90f, progress / constructTime, speedScl, time);
                 });
             }else{
                 Draw.z(Layer.blockOver);

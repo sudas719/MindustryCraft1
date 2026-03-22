@@ -60,8 +60,9 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
     @Override
     public void getCollisions(Cons<QuadTree> consumer){
         Seq<TeamData> data = state.teams.present;
+        boolean includeOwn = type.collidesTeam || forcedFriendlyTarget() != null;
         for(int i = 0; i < data.size; i++){
-            if(data.items[i].team != team){
+            if(data.items[i].team != team || includeOwn){
                 consumer.get(data.items[i].tree());
             }
         }
@@ -113,6 +114,21 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 return forced;
             }
         }
+        if(owner instanceof Unit unit && unit.controller() instanceof Player player){
+            float mx = player.mouseX, my = player.mouseY;
+            Building build = world.buildWorld(mx, my);
+            if(build != null && build.team == team && Units.canTargetBuilding(type.collidesAir, type.collidesGround, build)){
+                return build;
+            }
+
+            float range = Math.max(8f, unit.hitSize);
+            Unit target = Units.closest(team, mx, my, range, u -> u != unit && u.isValid()
+                && u.checkTarget(type.collidesAir, type.collidesGround)
+                && u.within(mx, my, u.hitSize / 2f));
+            if(target != null){
+                return target;
+            }
+        }
         return null;
     }
 
@@ -126,6 +142,14 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
         return forced != null && forced == build;
     }
 
+    private boolean canHitTeam(Teamc other){
+        if(other.team() != team) return true;
+        if(other instanceof Building b && Units.targetableAllTeams(b)) return true;
+        if(other instanceof Building b && canHitForcedFriendly(b)) return true;
+        if(other instanceof Hitboxc h && canHitForcedFriendly(h)) return true;
+        return type.collidesTeam;
+    }
+
     @Replace
     public float clipSize(){
         return type.drawSize;
@@ -134,7 +158,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
     @Replace
     @Override
     public boolean collides(Hitboxc other){
-        return type.collides && (other instanceof Teamc t && (t.team() != team || canHitForcedFriendly(other)))
+        return type.collides && (other instanceof Teamc t) && canHitTeam(t)
             && !(other instanceof Unit f && !f.checkTarget(type.collidesAir, type.collidesGround))
             && !(type.pierce && hasCollided(other.id())) && stickyTarget == null; //prevent multiple collisions
     }
@@ -299,10 +323,10 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                 && intersectsBuildingCircle(build, lastX, lastY, this.x, this.y)
                 && Units.canTargetBuilding(type.collidesAir, type.collidesGround, build)
                 && build.collide(self()) && type.testCollision(self(), build)
-                && !build.dead() && ((type.collidesTeam || build.team != team || Units.targetableAllTeams(build)) || canHitForcedFriendly(build)) && !(type.pierceBuilding && hasCollided(build.id))){
+                && !build.dead() && !(type.pierceBuilding && hasCollided(build.id))){
 
                 if(type.sticky){
-                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build)){
+                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build) || type.collidesTeam){
                         //stick to edge of block
                         Vec2 hit = Geometry.raycastRect(lastX, lastY, x, y, Tmp.r1.setCentered(x * tilesize, y * tilesize, tilesize, tilesize));
                         if(hit != null){
@@ -318,7 +342,7 @@ abstract class BulletComp implements Timedc, Damagec, Hitboxc, Teamc, Posc, Draw
                     boolean remove = false;
                     float health = build.health;
 
-                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build)){
+                    if(build.team != team || Units.targetableAllTeams(build) || canHitForcedFriendly(build) || type.collidesTeam){
                         remove = build.collision(self());
                     }
 

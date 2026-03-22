@@ -35,6 +35,8 @@ import mindustry.world.*;
 import static mindustry.Vars.*;
 
 public class UnitFactory extends UnitBlock{
+    private static final float[] spawnAngleOffsets = {0f, 20f, -20f, 40f, -40f, 60f, -60f, 90f, -90f, 120f, -120f, 150f, -150f, 180f};
+    private static final float[] spawnDistanceOffsets = {0f, tilesize * 0.5f, tilesize, tilesize * 1.5f};
     public int[] capacities = {};
     public boolean sc2Queue = false;
     public boolean sc2AddonSupport = false;
@@ -459,14 +461,6 @@ public class UnitFactory extends UnitBlock{
                 Draw.alpha(1f);
                 drawLiftThrusters(liftThrusterTime);
                 Draw.reset();
-            }
-
-            int planIndex = activePlanIndex();
-            if(planIndex != -1){
-                UnitPlan plan = plans.get(planIndex);
-                float planProgress = currentPlan != -1 ? progress : progress2;
-                float planScl = currentPlan != -1 ? speedScl : speedScl2;
-                Draw.draw(Layer.blockOver, () -> Drawf.construct(this, plan.unit, rotdeg() - 90f, planProgress / plan.time, planScl, time));
             }
 
             Draw.z(Layer.blockOver);
@@ -1479,8 +1473,46 @@ public class UnitFactory extends UnitBlock{
                     dir.set(0f, -1f);
                 }
             }
-            dir.setLength(offset);
-            return Tmp.v2.set(x + dir.x, y + dir.y);
+            dir.nor();
+            return findSpawnPosition(unit, dir, offset);
+        }
+
+        private Vec2 findSpawnPosition(Unit unit, Vec2 dir, float offset){
+            float baseAngle = dir.angle();
+            Vec2 base = Tmp.v2.trns(baseAngle, offset).add(x, y);
+            if(!isSpawnBlocked(base, unit)) return base;
+
+            for(float distExtra : spawnDistanceOffsets){
+                float dist = offset + distExtra;
+                for(float angleOffset : spawnAngleOffsets){
+                    Vec2 candidate = Tmp.v3.trns(baseAngle + angleOffset, dist).add(x, y);
+                    if(!isSpawnBlocked(candidate, unit)){
+                        return Tmp.v2.set(candidate);
+                    }
+                }
+            }
+            return base;
+        }
+
+        private boolean isSpawnBlocked(Vec2 pos, Unit unit){
+            float size = unit.hitSize;
+            if(!unit.type.flying && collisions.overlapsTile(Tmp.r1.setCentered(pos.x, pos.y, size), EntityCollisions::solid)){
+                return true;
+            }
+
+            float radius = size / 2f;
+            boolean[] blocked = {false};
+            Units.nearbyBuildings(pos.x, pos.y, radius + tilesize, build -> {
+                if(blocked[0] || build == null || !build.isValid() || build == this) return;
+                float br = build.hitSize() / 2f;
+                if(Mathf.dst2(pos.x, pos.y, build.x, build.y) < (radius + br) * (radius + br)){
+                    blocked[0] = true;
+                }
+            });
+            if(blocked[0]) return true;
+
+            float hsize = size * 1.2f;
+            return Units.anyEntities(pos.x - hsize/2f, pos.y - hsize/2f, hsize, hsize, u -> u != null && u.isValid());
         }
     }
 }

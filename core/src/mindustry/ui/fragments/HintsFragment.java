@@ -60,7 +60,7 @@ public class HintsFragment{
                     display(hint);
                 }else{
                     //moused over a derelict structure
-                    var build = world.buildWorld(Core.input.mouseWorldX(), Core.input.mouseWorldY());
+                    var build = world.buildWorld(control.input.mouseWorldX(), control.input.mouseWorldY());
                     if(build != null && build.team == Team.derelict){
                         events.add("derelictmouse");
                     }

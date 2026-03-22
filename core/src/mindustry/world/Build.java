@@ -21,6 +21,7 @@ import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.environment.BorderAreaFloor;
 import mindustry.world.blocks.environment.CrystalMineralWall;
 import mindustry.world.blocks.environment.Floor;
+import mindustry.world.blocks.environment.OverlayFloor;
 import mindustry.world.blocks.environment.SteamVent;
 
 import static mindustry.Vars.*;
@@ -357,6 +358,11 @@ public class Build{
                 int wx = dx + offsetx + tile.x, wy = dy + offsety + tile.y;
 
                 Tile check = world.tile(wx, wy);
+                if(check != null && check.build != null){
+                    if(!(check.build instanceof ConstructBuild build && build.current == type && check.centerX() == tile.x && check.centerY() == tile.y)){
+                        return false;
+                    }
+                }
 
                 if(
                 check == null || //nothing there
@@ -414,6 +420,7 @@ public class Build{
 
     private static boolean isPlacementPlaceable(Tile tile){
         if(tile == null) return false;
+        if(tile.overlay() instanceof OverlayFloor overlay && !overlay.placeableOn) return false;
         Floor floor = tile.floor();
         return floor instanceof BorderAreaFloor border ? border.mixedPlaceableOn(tile) : floor.placeableOn;
     }

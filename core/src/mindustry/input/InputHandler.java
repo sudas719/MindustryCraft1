@@ -132,14 +132,20 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public boolean commandRect = false;
     public boolean tappedOne = false;
     public float commandRectX, commandRectY;
+    public float commandRectScreenX, commandRectScreenY;
+    public static final float transformSelectionPreserveDuration = 60f * 5f;
     /** Groups of units saved to different hotkeys */
     public IntSeq[] controlGroups = new IntSeq[controlGroupBindings.length];
     private final IntSeq subgroupOrder = new IntSeq();
     private final IntSet subgroupSet = new IntSet();
     private final Seq<Unit> subgroupUnits = new Seq<>();
     private final Seq<Building> subgroupBuildings = new Seq<>();
+    private final IntSeq preservedTransformSelection = new IntSeq();
     private int activeSubgroup = -1;
     private final IntSet commandBuildingDedup = new IntSet();
+    private final Seq<Unit> scvBuildCandidates = new Seq<>(false);
+    private int scvBuildAssignIndex = 0;
+    private float preservedTransformSelectionTime = 0f;
 
     private Seq<BuildPlan> plansOut = new Seq<>(BuildPlan.class);
     private QuadTree<BuildPlan> playerPlanTree = new QuadTree<>(new Rect());
@@ -658,6 +664,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        preserveLocalTransformSelection(player, unitIds);
         recordPlayerAction(player);
 
         for(int id : unitIds){
@@ -679,6 +686,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        preserveLocalTransformSelection(player, unitIds);
         recordPlayerAction(player);
 
         for(int id : unitIds){
@@ -700,6 +708,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        preserveLocalTransformSelection(player, unitIds);
         recordPlayerAction(player);
 
         for(int id : unitIds){
@@ -721,6 +730,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        preserveLocalTransformSelection(player, unitIds);
         recordPlayerAction(player);
 
         for(int id : unitIds){
@@ -746,6 +756,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             throw new ValidateException(player, "Player cannot command units.");
         }
 
+        preserveLocalTransformSelection(player, unitIds);
         recordPlayerAction(player);
 
         Vec2 safeTarget = sanitizeRemoteCommandTarget(zoneTarget);
@@ -1641,8 +1652,77 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         lastUnit = null;
         spectatingPlayer = -1;
         spectating = null;
+        preservedTransformSelection.clear();
+        preservedTransformSelectionTime = 0f;
         lastPlans.clear();
         player.shooting = false;
+    }
+
+    public void preserveUnitSelection(int[] unitIds, float duration){
+        if(unitIds == null || unitIds.length == 0) return;
+
+        preservedTransformSelection.clear();
+        for(int id : unitIds){
+            if(id >= 0){
+                preservedTransformSelection.add(id);
+            }
+        }
+        preservedTransformSelectionTime = Math.max(preservedTransformSelectionTime, duration);
+    }
+
+    public void preserveUnitSelection(IntSeq unitIds, float duration){
+        if(unitIds == null || unitIds.isEmpty()) return;
+        preserveUnitSelection(unitIds.toArray(), duration);
+    }
+
+    public void clearPreservedUnitSelection(){
+        preservedTransformSelection.clear();
+        preservedTransformSelectionTime = 0f;
+    }
+
+    public void restorePreservedUnitSelection(){
+        if(preservedTransformSelectionTime <= 0f){
+            clearPreservedUnitSelection();
+            return;
+        }
+
+        preservedTransformSelectionTime = Math.max(0f, preservedTransformSelectionTime - Time.delta);
+
+        if(!commandMode || !selectedUnits.isEmpty() || !commandBuildings.isEmpty() || selectedResource != null){
+            clearPreservedUnitSelection();
+            return;
+        }
+
+        boolean changed = false;
+        for(int i = 0; i < preservedTransformSelection.size; i++){
+            Unit unit = Groups.unit.getByID(preservedTransformSelection.get(i));
+            if(unit == null || !unit.isValid() || unit.team != player.team() || !unit.allowCommand()) continue;
+            boolean alreadySelected = false;
+            for(int j = 0; j < selectedUnits.size; j++){
+                Unit selected = selectedUnits.get(j);
+                if(selected != null && selected.id == unit.id){
+                    alreadySelected = true;
+                    break;
+                }
+            }
+            if(alreadySelected) continue;
+            selectedUnits.add(unit);
+            changed = true;
+        }
+
+        if(changed){
+            Events.fire(Trigger.unitCommandChange);
+            clearPreservedUnitSelection();
+        }else if(preservedTransformSelectionTime <= 0f){
+            clearPreservedUnitSelection();
+        }
+    }
+
+    private static void preserveLocalTransformSelection(Player player, int[] unitIds){
+        if(player == null || unitIds == null || unitIds.length == 0) return;
+        if(control == null || control.input == null) return;
+        if(Vars.player != player) return;
+        control.input.preserveUnitSelection(unitIds, transformSelectionPreserveDuration);
     }
 
     public void update(){
@@ -1802,6 +1882,72 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return Core.input.mouseY();
     }
 
+    public Vec2 mouseWorld(){
+        return mouseWorld(getMouseX(), getMouseY(), Tmp.v1);
+    }
+
+    public Vec2 mouseWorld(float screenX, float screenY){
+        return mouseWorld(screenX, screenY, Tmp.v1);
+    }
+
+    public Vec2 mouseWorld(float screenX, float screenY, Vec2 out){
+        if(renderer != null && !Mathf.zero(renderer.getViewRotation())){
+            return renderer.screenToWorld(screenX, screenY, out);
+        }
+        return Core.input.mouseWorld(screenX, screenY);
+    }
+
+    public float mouseWorldX(){
+        return mouseWorld(getMouseX(), getMouseY(), Tmp.v1).x;
+    }
+
+    public float mouseWorldY(){
+        return mouseWorld(getMouseX(), getMouseY(), Tmp.v1).y;
+    }
+
+    private boolean useScreenRectSelection(){
+        return renderer != null;
+    }
+
+    private Rect normalizeScreenRect(float x1, float y1, float x2, float y2, Rect out){
+        return out.set(x1, y1, x2 - x1, y2 - y1).normalize();
+    }
+
+    private Rect screenRectToWorldBounds(Rect screenRect, Rect out){
+        if(renderer == null) return out.set(0f, 0f, 0f, 0f);
+        Vec2 p1 = renderer.screenToWorld(screenRect.x, screenRect.y, Tmp.v1);
+        Vec2 p2 = renderer.screenToWorld(screenRect.x + screenRect.width, screenRect.y, Tmp.v2);
+        Vec2 p3 = renderer.screenToWorld(screenRect.x, screenRect.y + screenRect.height, Tmp.v3);
+        Vec2 p4 = renderer.screenToWorld(screenRect.x + screenRect.width, screenRect.y + screenRect.height, Tmp.v4);
+        float minX = Math.min(Math.min(p1.x, p2.x), Math.min(p3.x, p4.x));
+        float maxX = Math.max(Math.max(p1.x, p2.x), Math.max(p3.x, p4.x));
+        float minY = Math.min(Math.min(p1.y, p2.y), Math.min(p3.y, p4.y));
+        float maxY = Math.max(Math.max(p1.y, p2.y), Math.max(p3.y, p4.y));
+        return out.set(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    public void drawScreenSelectionRect(){
+        if(!useScreenRectSelection() || !commandRect || !commandMode) return;
+        float sx1 = commandRectScreenX, sy1 = commandRectScreenY;
+        float sx2 = getMouseX(), sy2 = getMouseY();
+        float sx = Math.min(sx1, sx2);
+        float sy = Math.min(sy1, sy2);
+        float sw = Math.abs(sx2 - sx1);
+        float sh = Math.abs(sy2 - sy1);
+        if(sw <= 0f && sh <= 0f) return;
+
+        Mat prev = Tmp.m1.set(Draw.proj());
+        Draw.proj(0f, 0f, Core.graphics.getWidth(), Core.graphics.getHeight());
+        Color rectColor = Color.valueOf("5bff53");
+        Draw.color(rectColor, 0.2f);
+        Fill.crect(sx, sy, sw, sh);
+        Draw.color(rectColor);
+        Lines.stroke(1.5f);
+        Lines.rect(sx, sy, sw, sh);
+        Draw.reset();
+        Draw.proj(prev);
+    }
+
     public void buildPlacementUI(Table table){
 
     }
@@ -1826,12 +1972,23 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public void selectUnitsRect(){
         if(commandMode && commandRect){
-            float dx = input.mouseWorldX() - commandRectX;
-            float dy = input.mouseWorldY() - commandRectY;
-            float dragThreshold = tilesize * 0.25f;
+            boolean useScreen = useScreenRectSelection();
+            float dx;
+            float dy;
+            float dragThreshold;
+            if(useScreen){
+                dx = getMouseX() - commandRectScreenX;
+                dy = getMouseY() - commandRectScreenY;
+                dragThreshold = tilesize * 0.25f * (renderer == null ? 1f : renderer.camerascale);
+            }else{
+                dx = mouseWorldX() - commandRectX;
+                dy = mouseWorldY() - commandRectY;
+                dragThreshold = tilesize * 0.25f;
+            }
             boolean dragged = dx * dx + dy * dy > dragThreshold * dragThreshold;
             if(!tappedOne || dragged){
-                var units = selectedCommandUnits(commandRectX, commandRectY, input.mouseWorldX() - commandRectX, input.mouseWorldY() - commandRectY);
+                var units = useScreen ? selectedCommandUnitsScreen(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY()) :
+                    selectedCommandUnits(commandRectX, commandRectY, mouseWorldX() - commandRectX, mouseWorldY() - commandRectY);
                 boolean multi = multiUnitSelect();
 
                 if(multi){
@@ -1847,7 +2004,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
                 //Select buildings only if no units are in the box
                 if(units.isEmpty()){
-                    var buildings = selectedCommandBuildings(commandRectX, commandRectY, input.mouseWorldX() - commandRectX, input.mouseWorldY() - commandRectY);
+                    var buildings = useScreen ? selectedCommandBuildingsScreen(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY()) :
+                        selectedCommandBuildings(commandRectX, commandRectY, mouseWorldX() - commandRectX, mouseWorldY() - commandRectY);
                     if(!buildings.isEmpty()){
                         if(multi){
                             commandBuildings.removeAll(buildings);
@@ -1862,7 +2020,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 }
 
                 if(units.isEmpty() && commandBuildings.isEmpty()){
-                    Tile crystal = findCrystalInRect(commandRectX, commandRectY, input.mouseWorldX(), input.mouseWorldY());
+                    Tile crystal = useScreen ? findCrystalInScreenRect(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY()) :
+                        findCrystalInRect(commandRectX, commandRectY, mouseWorldX(), mouseWorldY());
                     if(crystal != null){
                         if(!multi){
                             selectedUnits.clear();
@@ -1919,6 +2078,41 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(changed){
             Events.fire(Trigger.unitCommandChange);
         }
+    }
+
+    public boolean replaceSelectedUnit(@Nullable Unit from, @Nullable Unit to){
+        if(from == null || to == null) return false;
+
+        boolean changed = false;
+        boolean hasTarget = false;
+
+        for(int i = 0; i < selectedUnits.size; i++){
+            Unit unit = selectedUnits.get(i);
+            if(unit == to || (unit != null && unit.id == to.id)){
+                hasTarget = true;
+                break;
+            }
+        }
+
+        for(int i = 0; i < selectedUnits.size; i++){
+            Unit unit = selectedUnits.get(i);
+            if(unit != from && (unit == null || unit.id != from.id)) continue;
+
+            if(hasTarget){
+                selectedUnits.remove(i);
+                i--;
+            }else{
+                selectedUnits.set(i, to);
+                hasTarget = true;
+            }
+            changed = true;
+        }
+
+        if(changed){
+            Events.fire(Trigger.unitCommandChange);
+        }
+
+        return changed;
     }
 
     public boolean isUnitInActiveAbilitySubgroup(@Nullable UnitType type){
@@ -2034,7 +2228,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public void selectTypedUnits(){
         if(commandMode){
-            Unit unit = selectedCommandUnit(input.mouseWorldX(), input.mouseWorldY());
+            Unit unit = selectedCommandUnit(mouseWorldX(), mouseWorldY());
             if(unit != null){
                 selectedUnits.clear();
                 camera.bounds(Tmp.r1);
@@ -2043,7 +2237,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 return;
             }
 
-            Building build = buildAt(input.mouseWorldX(), input.mouseWorldY());
+            Building build = buildAt(mouseWorldX(), mouseWorldY());
             if(build != null && build.team == player.team()){
                 selectedUnits.clear();
                 commandBuildings.clear();
@@ -2063,7 +2257,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void tapCommandUnit(){
         if(commandMode){
 
-            Unit unit = selectedCommandUnit(input.mouseWorldX(), input.mouseWorldY());
+            Unit unit = selectedCommandUnit(mouseWorldX(), mouseWorldY());
             if(unit != null){
                 boolean shiftHeld = Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight);
                 boolean ctrlHeld = Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight);
@@ -2096,7 +2290,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     boolean ctrlHeld = Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight);
 
                     //Only check for buildings if no unit was found
-                    Building build = buildAt(input.mouseWorldX(), input.mouseWorldY());
+                    Building build = buildAt(mouseWorldX(), mouseWorldY());
                     if(build != null && build.team == player.team()){
                         if(!shiftHeld){
                             selectedUnits.clear();
@@ -2130,7 +2324,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                             selectedResource = null;
                         }
                     }else{
-                        Tile tile = world.tileWorld(input.mouseWorldX(), input.mouseWorldY());
+                        Tile tile = world.tileWorld(mouseWorldX(), mouseWorldY());
                         trySelectResource(tile, shiftHeld);
                     }
                 }
@@ -2184,27 +2378,111 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return target;
     }
 
+    private @Nullable Unit pickScvFromCandidates(){
+        if(scvBuildCandidates.isEmpty()) return null;
+        if(scvBuildAssignIndex >= scvBuildCandidates.size) scvBuildAssignIndex = 0;
+        Unit chosen = scvBuildCandidates.get(scvBuildAssignIndex);
+        scvBuildAssignIndex = (scvBuildAssignIndex + 1) % scvBuildCandidates.size;
+        return chosen;
+    }
+
+    protected @Nullable Unit pickScvBuildUnit(boolean queue, boolean allowBusyFallback){
+        scvBuildCandidates.clear();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
+            if(!queue && unit.isBuilding()) continue;
+            scvBuildCandidates.add(unit);
+        }
+
+        Unit chosen = pickScvFromCandidates();
+        if(chosen != null || !allowBusyFallback) return chosen;
+
+        scvBuildCandidates.clear();
+        for(Unit unit : selectedUnits){
+            if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
+            scvBuildCandidates.add(unit);
+        }
+
+        return pickScvFromCandidates();
+    }
+
     public void commandTap(float screenX, float screenY, boolean queue){
         if(commandMode){
             //right click: move to position
 
             //move to location - TODO right click instead?
-            Vec2 rawTarget = input.mouseWorld(screenX, screenY);
+            Vec2 rawTarget = mouseWorld(screenX, screenY);
             if(!isValidCommandWorld(rawTarget.x, rawTarget.y)) return;
             Vec2 target = clampCommandTarget(rawTarget.cpy());
 
             if(selectedUnits.size > 0){
+                boolean hasNova = false;
                 for(Unit unit : selectedUnits){
                     if(unit == null || !unit.isValid()) continue;
                     if(UnitTypes.isBattlecruiser(unit)){
                         UnitTypes.commandBattlecruiserCancelYamato(unit);
                     }
+                    if(unit.type == UnitTypes.nova){
+                        hasNova = true;
+                    }
                 }
+
+                Building buildAtPos = world.buildWorld(rawTarget.x, rawTarget.y);
+                if(buildAtPos == null){
+                    Tile tileAt = world.tileWorld(rawTarget.x, rawTarget.y);
+                    if(tileAt != null && tileAt.build != null){
+                        buildAtPos = tileAt.build;
+                    }
+                }
+                if(buildAtPos == null){
+                    Tile tileAt = world.tileWorld(target.x, target.y);
+                    if(tileAt != null && tileAt.build != null){
+                        buildAtPos = tileAt.build;
+                    }
+                }
+                if(buildAtPos == null){
+                    buildAtPos = world.buildWorld(target.x, target.y);
+                }
+
+                if(hasNova && buildAtPos != null && buildAtPos.team() == player.team() && buildAtPos.block == Blocks.ventCondenser){
+                    Tile ventTile = findVentTile(buildAtPos);
+                    if(ventTile != null){
+                        Vec2 harvestPos = Tmp.v1.set(ventTile.worldx(), ventTile.worldy());
+                        for(Unit unit : selectedUnits){
+                            if(unit.type != UnitTypes.nova) continue;
+                            if(unit.controller() instanceof CommandAI){
+                                ((CommandAI)unit.controller()).setHarvestTarget(harvestPos);
+                            }else if(unit.controller() instanceof HarvestAI){
+                                ((HarvestAI)unit.controller()).setHarvestTarget(harvestPos);
+                            }
+                        }
+                        return;
+                    }
+                }
+
                 // Check if clicking on a harvestable resource
                 Tile tile = world.tileWorld(target.x, target.y);
                 Tile resource = resolveResourceTile(tile);
+                if(resource == null && hasNova){
+                    Tile nearVent = findNearestVentCenter(target.x, target.y, 1);
+                    if(nearVent != null){
+                        resource = nearVent;
+                    }
+                }
                 if(resource != null){
                     if(resource.floor() instanceof SteamVent){
+                        if(hasNova && hasVentCondenser(resource)){
+                            Vec2 harvestPos = Tmp.v1.set(resource.worldx(), resource.worldy());
+                            for(Unit unit : selectedUnits){
+                                if(unit.type != UnitTypes.nova) continue;
+                                if(unit.controller() instanceof CommandAI){
+                                    ((CommandAI)unit.controller()).setHarvestTarget(harvestPos);
+                                }else if(unit.controller() instanceof HarvestAI){
+                                    ((HarvestAI)unit.controller()).setHarvestTarget(harvestPos);
+                                }
+                            }
+                            return;
+                        }
                         boolean showRefineryNotice = false;
                         float resX = resource.worldx();
                         float resY = resource.worldy();
@@ -2244,60 +2522,25 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 }
 
                 Teamc teamTarget = null;
-                Building buildAtPos = world.buildWorld(rawTarget.x, rawTarget.y);
-                if(buildAtPos == null){
-                    Tile tileAt = world.tileWorld(rawTarget.x, rawTarget.y);
-                    if(tileAt != null && tileAt.build != null){
-                        buildAtPos = tileAt.build;
-                    }
-                }
-                if(buildAtPos == null){
-                    Tile tileAt = world.tileWorld(target.x, target.y);
-                    if(tileAt != null && tileAt.build != null){
-                        buildAtPos = tileAt.build;
-                    }
-                }
-                if(buildAtPos == null){
-                    buildAtPos = world.buildWorld(target.x, target.y);
-                }
-
                 //SCV right-click on constructing building: assist construction by adding build plans.
                 if(buildAtPos instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild construct && construct.team == player.team()){
                     Block cur = construct.current;
                     if(cur != null && cur != Blocks.air){
-                        IntSeq scvIds = new IntSeq();
-                        int tx = construct.tile.x, ty = construct.tile.y;
-                        for(Unit unit : selectedUnits){
-                            if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
+                        Unit chosen = pickScvBuildUnit(queue, true);
+                        if(chosen != null){
+                            int tx = construct.tile.x, ty = construct.tile.y;
                             BuildPlan plan = new BuildPlan(tx, ty, construct.rotation, cur, cur.saveConfig ? construct.lastConfig : null);
                             plan.requireClose = true;
-                            unit.addBuild(plan);
-                            unit.updateBuilding(true);
-                            scvIds.add(unit.id);
-                        }
+                            chosen.addBuild(plan);
+                            chosen.updateBuilding(true);
 
-                        if(scvIds.size > 0){
                             float targetX = tx * tilesize + cur.offset;
                             float targetY = ty * tilesize + cur.offset;
-                            Call.commandUnits(player, scvIds.toArray(), null, null, new Vec2(targetX, targetY), queue, true, false);
+                            Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queue, true, false);
+                            return;
+                        }else if(hasNova){
                             return;
                         }
-                    }
-                }
-
-                if(buildAtPos != null && buildAtPos.team() == player.team() && buildAtPos.block == Blocks.ventCondenser){
-                    Tile ventTile = findVentTile(buildAtPos);
-                    if(ventTile != null){
-                        Vec2 harvestPos = Tmp.v1.set(ventTile.worldx(), ventTile.worldy());
-                        for(Unit unit : selectedUnits){
-                            if(unit.type != UnitTypes.nova) continue;
-                            if(unit.controller() instanceof CommandAI){
-                                ((CommandAI)unit.controller()).setHarvestTarget(harvestPos);
-                            }else if(unit.controller() instanceof HarvestAI){
-                                ((HarvestAI)unit.controller()).setHarvestTarget(harvestPos);
-                            }
-                        }
-                        return;
                     }
                 }
                 boolean attackableAnyTeamBuild = buildAtPos != null && Units.targetableAllTeams(buildAtPos);
@@ -2838,22 +3081,35 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void drawUnitSelection(){
         if(Core.settings.getBool("selectionringabove", true)) return;
         if(commandRect && commandMode){
-            float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
             float rotation = Time.time * 360f / (60f * 4f);
-            Draw.draw(selectionRingLayer(), () -> {
-                Draw.color(Pal.accent, 0.3f);
-                Fill.crect(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-                var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-                var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-                for(var unit : units){
-                    float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
-                    OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
-                }
-                for(var build : buildings){
-                    float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
-                    OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
-                }
-            });
+            if(useScreenRectSelection()){
+                Draw.draw(selectionRingLayer(), () -> {
+                    var units = selectedCommandUnitsScreen(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY());
+                    var buildings = selectedCommandBuildingsScreenRaw(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY());
+                    for(var unit : units){
+                        float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                        OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+                    }
+                    for(var build : buildings){
+                        float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                        OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+                    }
+                });
+            }else{
+                float x2 = mouseWorldX(), y2 = mouseWorldY();
+                Draw.draw(selectionRingLayer(), () -> {
+                    var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                    var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                    for(var unit : units){
+                        float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                        OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+                    }
+                    for(var build : buildings){
+                        float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                        OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+                    }
+                });
+            }
         }
 
         if(commandMode && !commandRect){
@@ -2864,22 +3120,35 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     public void drawUnitSelectionTop(){
         if(!Core.settings.getBool("selectionringabove", true)) return;
         if(commandRect && commandMode){
-            float x2 = input.mouseWorldX(), y2 = input.mouseWorldY();
             float rotation = Time.time * 360f / (60f * 4f);
-            Draw.z(selectionRingLayer());
-            Draw.color(Pal.accent, 0.3f);
-            Fill.crect(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-            var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-            var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
-            for(var unit : units){
-                float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
-                OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+            if(useScreenRectSelection()){
+                Draw.z(selectionRingLayer());
+                var units = selectedCommandUnitsScreen(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY());
+                var buildings = selectedCommandBuildingsScreenRaw(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY());
+                for(var unit : units){
+                    float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+                }
+                for(var build : buildings){
+                    float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+                }
+                Draw.reset();
+            }else{
+                float x2 = mouseWorldX(), y2 = mouseWorldY();
+                Draw.z(selectionRingLayer());
+                var units = selectedCommandUnits(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                var buildings = selectedCommandBuildingsRaw(commandRectX, commandRectY, x2 - commandRectX, y2 - commandRectY);
+                for(var unit : units){
+                    float radius = Math.max(1f, unit.hitSize / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(unit.x, unit.y, radius, rotation, Color.green);
+                }
+                for(var build : buildings){
+                    float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
+                    OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
+                }
+                Draw.reset();
             }
-            for(var build : buildings){
-                float radius = Math.max(1f, build.hitSize() / 2f + selectionRotatingDashedRadiusOffset);
-                OverlayRenderer.drawHoverArcRing(build.x, build.y, radius, rotation, Color.green);
-            }
-            Draw.reset();
         }
     }
 
@@ -2898,8 +3167,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         Block block = panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET ? Blocks.ravenTurret : panel.getPlacingBlock();
         if(block == null) return;
 
-        float worldX = input.mouseWorldX();
-        float worldY = input.mouseWorldY();
+        float worldX = mouseWorldX();
+        float worldY = mouseWorldY();
         int tx;
         int ty;
 
@@ -3239,8 +3508,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
             // FINISHME: When not snapping to cursor, perhaps it would be best to choose the corner closest to the cursor that's at least a block away?
             font.draw(width + "x" + height + " (" + area + ")",
-            snapToCursor ? input.mouseWorldX() + textOffset * (4 / renderer.camerascale) : result.x2,
-            snapToCursor ? input.mouseWorldY() - textOffset * (4 / renderer.camerascale) : result.y
+            snapToCursor ? mouseWorldX() + textOffset * (4 / renderer.camerascale) : result.x2,
+            snapToCursor ? mouseWorldY() - textOffset * (4 / renderer.camerascale) : result.y
             );
             font.setColor(Color.white);
             font.getData().setScale(1);
@@ -3430,11 +3699,11 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     protected void updateLine(int x1, int y1){
-        updateLine(x1, y1, tileX(getMouseX()), tileY(getMouseY()));
+        updateLine(x1, y1, tileX(getMouseX(), getMouseY()), tileY(getMouseX(), getMouseY()));
     }
 
     boolean checkConfigTap(){
-        return config.isShown() && config.getSelected().onConfigureTapped(input.mouseWorldX(), input.mouseWorldY());
+        return config.isShown() && config.getSelected().onConfigureTapped(mouseWorldX(), mouseWorldY());
     }
 
     /** Handles tile tap events that are not platform specific. */
@@ -3605,8 +3874,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         int tx2 = World.toTile(Math.max(x1, x2));
         int ty2 = World.toTile(Math.max(y1, y2));
 
-        float mx = input.mouseWorldX();
-        float my = input.mouseWorldY();
+        float mx = mouseWorldX();
+        float my = mouseWorldY();
         Tile best = null;
         float bestDst = Float.MAX_VALUE;
 
@@ -3616,6 +3885,41 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 Tile resource = resolveResourceTile(tile);
                 if(resource == null) continue;
                 if(!(resource.block() instanceof CrystalMineralWall) && !(resource.floor() instanceof SteamVent)) continue;
+
+                float dst = Mathf.dst2(mx, my, resource.worldx(), resource.worldy());
+                if(dst < bestDst){
+                    bestDst = dst;
+                    best = resource;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    public @Nullable Tile findCrystalInScreenRect(float x1, float y1, float x2, float y2){
+        if(renderer == null) return null;
+        Rect screenRect = normalizeScreenRect(x1, y1, x2, y2, Tmp.r1);
+        Rect worldRect = screenRectToWorldBounds(screenRect, Tmp.r2);
+        int tx1 = World.toTile(worldRect.x);
+        int ty1 = World.toTile(worldRect.y);
+        int tx2 = World.toTile(worldRect.x + worldRect.width);
+        int ty2 = World.toTile(worldRect.y + worldRect.height);
+
+        float mx = mouseWorldX();
+        float my = mouseWorldY();
+        Tile best = null;
+        float bestDst = Float.MAX_VALUE;
+
+        for(int x = tx1; x <= tx2; x++){
+            for(int y = ty1; y <= ty2; y++){
+                Tile tile = world.tile(x, y);
+                Tile resource = resolveResourceTile(tile);
+                if(resource == null) continue;
+                if(!(resource.block() instanceof CrystalMineralWall) && !(resource.floor() instanceof SteamVent)) continue;
+
+                Vec2 sp = renderer.worldToScreen(resource.worldx(), resource.worldy(), Tmp.v1);
+                if(!screenRect.contains(sp)) continue;
 
                 float dst = Mathf.dst2(mx, my, resource.worldx(), resource.worldy());
                 if(dst < bestDst){
@@ -3693,27 +3997,39 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     /** Returns the tile at the specified MOUSE coordinates. */
     Tile tileAt(float x, float y){
-        return world.tile(tileX(x), tileY(y));
+        Vec2 vec = mouseWorld(x, y);
+        if(selectedBlock()){
+            vec.sub(block.offset, block.offset);
+        }
+        return world.tile(World.toTile(vec.x), World.toTile(vec.y));
     }
 
     int rawTileX(){
-        return World.toTile(Core.input.mouseWorld().x);
+        return World.toTile(mouseWorld().x);
     }
 
     int rawTileY(){
-        return World.toTile(Core.input.mouseWorld().y);
+        return World.toTile(mouseWorld().y);
     }
 
     int tileX(float cursorX){
-        Vec2 vec = Core.input.mouseWorld(cursorX, 0);
+        return tileX(cursorX, getMouseY());
+    }
+
+    int tileY(float cursorY){
+        return tileY(getMouseX(), cursorY);
+    }
+
+    int tileX(float cursorX, float cursorY){
+        Vec2 vec = mouseWorld(cursorX, cursorY);
         if(selectedBlock()){
             vec.sub(block.offset, block.offset);
         }
         return World.toTile(vec.x);
     }
 
-    int tileY(float cursorY){
-        Vec2 vec = Core.input.mouseWorld(0, cursorY);
+    int tileY(float cursorX, float cursorY){
+        Vec2 vec = mouseWorld(cursorX, cursorY);
         if(selectedBlock()){
             vec.sub(block.offset, block.offset);
         }
@@ -3753,20 +4069,20 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public float mouseAngle(float x, float y){
-        return Core.input.mouseWorld(getMouseX(), getMouseY()).sub(x, y).angle();
+        return mouseWorld(getMouseX(), getMouseY()).sub(x, y).angle();
     }
 
     public @Nullable Unit selectedUnit(){
-        Unit unit = Units.closest(player.team(), Core.input.mouseWorld().x, Core.input.mouseWorld().y, 40f, u -> u.isAI() && u.playerControllable());
+        Unit unit = Units.closest(player.team(), mouseWorld().x, mouseWorld().y, 40f, u -> u.isAI() && u.playerControllable());
         if(unit != null){
             unit.hitbox(Tmp.r1);
             Tmp.r1.grow(6f);
-            if(Tmp.r1.contains(Core.input.mouseWorld())){
+            if(Tmp.r1.contains(mouseWorld())){
                 return unit;
             }
         }
 
-        Building build = buildAt(Core.input.mouseWorld().x, Core.input.mouseWorld().y);
+        Building build = buildAt(mouseWorld().x, mouseWorld().y);
         if(build instanceof ControlBlock){
             ControlBlock cont = (ControlBlock)build;
             if(cont.canControl() && build.team == player.team() && cont.unit() != player.unit() && cont.unit().isAI()){
@@ -3779,16 +4095,16 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public @Nullable Building selectedControlBuild(){
         //Check if there's a unit first - if so, don't select buildings
-        Unit unit = Units.closest(player.team(), Core.input.mouseWorld().x, Core.input.mouseWorld().y, 40f, u -> u.isAI() && u.playerControllable());
+        Unit unit = Units.closest(player.team(), mouseWorld().x, mouseWorld().y, 40f, u -> u.isAI() && u.playerControllable());
         if(unit != null){
             unit.hitbox(Tmp.r1);
             Tmp.r1.grow(6f);
-            if(Tmp.r1.contains(Core.input.mouseWorld())){
+            if(Tmp.r1.contains(mouseWorld())){
                 return null; //Unit present, don't select building
             }
         }
 
-        Building build = buildAt(Core.input.mouseWorld().x, Core.input.mouseWorld().y);
+        Building build = buildAt(mouseWorld().x, mouseWorld().y);
         if(build != null && !player.dead() && build.canControlSelect(player.unit()) && build.team == player.team()){
             return build;
         }
@@ -3810,8 +4126,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         if(checkUI && Core.scene != null && Core.scene.hasMouse()) return hover;
 
-        float x = Core.input.mouseWorldX();
-        float y = Core.input.mouseWorldY();
+        float x = mouseWorldX();
+        float y = mouseWorldY();
 
         Unit bestUnit = null;
         float bestDst = Float.MAX_VALUE;
@@ -4077,6 +4393,30 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return dx * dx + dy * dy <= radius * radius;
     }
 
+    public Seq<Building> selectedCommandBuildingsScreen(float x1, float y1, float x2, float y2){
+        var buildings = selectedCommandBuildingsScreenRaw(x1, y1, x2, y2);
+        applyBuildingSelectionPriority(buildings);
+        return buildings;
+    }
+
+    public Seq<Building> selectedCommandBuildingsScreenRaw(float x1, float y1, float x2, float y2){
+        var tree = player.team().data().buildingTree;
+        tmpBuildings.clear();
+        if(tree == null || renderer == null) return tmpBuildings;
+        Rect screenRect = normalizeScreenRect(x1, y1, x2, y2, Tmp.r1);
+        Rect worldRect = screenRectToWorldBounds(screenRect, Tmp.r2);
+        float screenScale = renderer.camerascale;
+        tree.intersect(worldRect, b -> {
+            float radius = b.hitSize() / 2f;
+            Vec2 sp = renderer.worldToScreen(b.x, b.y, Tmp.v1);
+            float sr = radius * screenScale;
+            if(overlapsCircleRect(sp.x, sp.y, sr, screenRect)){
+                tmpBuildings.add(b);
+            }
+        });
+        return tmpBuildings;
+    }
+
     public Seq<Unit> selectedCommandUnits(float x, float y, float w, float h, Boolf<Unit> predicate){
         var tree = player.team().data().tree();
         tmpUnits.clear();
@@ -4084,6 +4424,27 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         tree.intersect(Tmp.r1.set(x - rad/2f, y - rad/2f, rad*2f + w, rad*2f + h).normalize(), tmpUnits);
         tmpUnits.removeAll(u -> !u.isCommandable() || !predicate.get(u));
         return tmpUnits;
+    }
+
+    public Seq<Unit> selectedCommandUnitsScreen(float x1, float y1, float x2, float y2, Boolf<Unit> predicate){
+        var tree = player.team().data().tree();
+        tmpUnits.clear();
+        if(renderer == null) return tmpUnits;
+        Rect screenRect = normalizeScreenRect(x1, y1, x2, y2, Tmp.r1);
+        Rect worldRect = screenRectToWorldBounds(screenRect, Tmp.r2);
+        tree.intersect(worldRect, tmpUnits);
+        float screenScale = renderer.camerascale;
+        tmpUnits.removeAll(u -> {
+            if(!u.isCommandable() || !predicate.get(u)) return true;
+            Vec2 sp = renderer.worldToScreen(u.x, u.y, Tmp.v1);
+            float sr = Math.max(1f, u.hitSize / 2f) * screenScale;
+            return !overlapsCircleRect(sp.x, sp.y, sr, screenRect);
+        });
+        return tmpUnits;
+    }
+
+    public Seq<Unit> selectedCommandUnitsScreen(float x1, float y1, float x2, float y2){
+        return selectedCommandUnitsScreen(x1, y1, x2, y2, u -> true);
     }
 
     public Seq<Unit> selectedCommandUnits(float x, float y, float w, float h){
@@ -4149,7 +4510,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public boolean canDropItem(){
-        return droppingItem && !canTapPlayer(Core.input.mouseWorldX(), Core.input.mouseWorldY());
+        return droppingItem && !canTapPlayer(mouseWorldX(), mouseWorldY());
     }
 
     public void tryDropItems(@Nullable Building build, float x, float y){

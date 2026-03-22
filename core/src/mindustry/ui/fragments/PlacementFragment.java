@@ -126,7 +126,7 @@ public class PlacementFragment{
     }
 
     boolean updatePick(InputHandler input){
-        Tile tile = world.tileWorld(Core.input.mouseWorldX(), Core.input.mouseWorldY());
+        Tile tile = world.tileWorld(control.input.mouseWorldX(), control.input.mouseWorldY());
         if(tile != null && Core.input.keyTap(Binding.pick) && player.isBuilder() && !Core.scene.hasDialog()){ //mouse eyedropper select
             var build = tile.build;
 
@@ -139,7 +139,7 @@ public class PlacementFragment{
             Object tryConfig = build == null || !build.block.copyConfig ? null : build.config();
 
             for(BuildPlan req : player.unit().plans()){
-                if(!req.breaking && req.block.bounds(req.x, req.y, Tmp.r1).contains(Core.input.mouseWorld())){
+                if(!req.breaking && req.block.bounds(req.x, req.y, Tmp.r1).contains(control.input.mouseWorld())){
                     tryBlock = req.block;
                     tryConfig = req.config;
                     break;
@@ -257,7 +257,7 @@ public class PlacementFragment{
             if(hovered() instanceof Unit unit && unit.type.unlockedNow()){
                 ui.content.show(unit.type());
             }else{
-                var build = world.buildWorld(Core.input.mouseWorld().x, Core.input.mouseWorld().y);
+                var build = world.buildWorld(control.input.mouseWorld().x, control.input.mouseWorld().y);
                 Block hovering = build == null ? null : build instanceof ConstructBuild c ? c.current : build.block;
                 Block displayBlock = menuHoverBlock != null ? menuHoverBlock : input.block != null ? input.block : hovering;
                 if(displayBlock != null && displayBlock.unlockedNow()){
@@ -584,12 +584,12 @@ public class PlacementFragment{
         if(Core.scene.hasMouse(Core.input.mouseX(), Core.input.mouseY()) || topTable.hit(v.x, v.y, false) != null) return null;
 
         //check for a unit
-        Unit unit = Units.closestOverlap(player.team(), Core.input.mouseWorldX(), Core.input.mouseWorldY(), 5f, u -> !u.isLocal() && u.displayable());
+        Unit unit = Units.closestOverlap(player.team(), control.input.mouseWorldX(), control.input.mouseWorldY(), 5f, u -> !u.isLocal() && u.displayable());
         //if cursor has a unit, display it
         if(unit != null) return unit;
 
         //check tile being hovered over
-        Tile hoverTile = world.tileWorld(Core.input.mouseWorld().x, Core.input.mouseWorld().y);
+        Tile hoverTile = world.tileWorld(control.input.mouseWorld().x, control.input.mouseWorld().y);
         if(hoverTile != null){
             //if the tile has a building, display it
             if(hoverTile.build != null && hoverTile.build.displayable() && !hoverTile.build.inFogTo(player.team())){

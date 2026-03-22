@@ -7,6 +7,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
+import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
@@ -268,6 +269,17 @@ public final class FogControl implements CustomChunk{
                 synchronized(staticEvents){
                     //TODO slow?
                     for(var unit : team.units){
+                        if(UnitTypes.isBattlecruiser(unit)){
+                            UnitTypes.BattlecruiserData bdata = UnitTypes.getBattlecruiserData(unit);
+                            if((bdata.pendingWarp || bdata.warpCharging || bdata.warping) && bdata.warpVisionTime >= UnitTypes.battlecruiserWarpVisionDelay()){
+                                if(unit.lastFogPos != -1){
+                                    unit.lastFogPos = -1;
+                                    data.dynamicUpdated = true;
+                                }
+                                continue;
+                            }
+                        }
+
                         int tx = unit.tileX(), ty = unit.tileY(), pos = tx + ty * ww;
                         if(unit.type.fogRadius <= 0f) continue;
                         int radius = (int)unit.type.fogRadius;
@@ -604,6 +616,7 @@ public final class FogControl implements CustomChunk{
         int err = dx - dy;
 
         while(!(x == toX && y == toY)){
+            int prevX = x, prevY = y;
             int e2 = err << 1;
             if(e2 > -dy){
                 err -= dy;
@@ -614,18 +627,29 @@ public final class FogControl implements CustomChunk{
                 y += sy;
             }
 
+            if(x != prevX && y != prevY){
+                if(blocksVisionAt(x, prevY, viewerHeight) && blocksVisionAt(prevX, y, viewerHeight)){
+                    return false;
+                }
+            }
+
             if(x == toX && y == toY){
                 return true;
             }
 
-            Tile tile = world.tile(x, y);
-            int tileHeight = HeightLayerData.fogLayer(tile);
-            if(tileHeight > viewerHeight || (blocksVision(tile) && tileHeight >= viewerHeight)){
+            if(blocksVisionAt(x, y, viewerHeight)){
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static boolean blocksVisionAt(int x, int y, int viewerHeight){
+        Tile tile = world.tile(x, y);
+        if(tile == null) return true;
+        int tileHeight = HeightLayerData.fogLayer(tile);
+        return tileHeight > viewerHeight || (blocksVision(tile) && tileHeight >= viewerHeight);
     }
 
     static void circle(Bits arr, int x, int y, int radius, int viewerHeight, boolean ignoreHeight){

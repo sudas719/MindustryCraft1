@@ -178,11 +178,11 @@ public class MobileInput extends InputHandler implements GestureListener{
     }
 
     boolean isLinePlacing(){
-        return mode == placing && lineMode && Mathf.dst(lineStartX * tilesize, lineStartY * tilesize, Core.input.mouseWorld().x, Core.input.mouseWorld().y) >= 3 * tilesize;
+        return mode == placing && lineMode && Mathf.dst(lineStartX * tilesize, lineStartY * tilesize, mouseWorld().x, mouseWorld().y) >= 3 * tilesize;
     }
 
     boolean isAreaBreaking(){
-        return mode == breaking && lineMode && Mathf.dst(lineStartX * tilesize, lineStartY * tilesize, Core.input.mouseWorld().x, Core.input.mouseWorld().y) >= 2 * tilesize;
+        return mode == breaking && lineMode && Mathf.dst(lineStartX * tilesize, lineStartY * tilesize, mouseWorld().x, mouseWorld().y) >= 2 * tilesize;
     }
 
     //endregion
@@ -370,8 +370,8 @@ public class MobileInput extends InputHandler implements GestureListener{
 
         //Draw lines
         if(lineMode){
-            int tileX = tileX(Core.input.mouseX());
-            int tileY = tileY(Core.input.mouseY());
+            int tileX = tileX(Core.input.mouseX(), Core.input.mouseY());
+            int tileY = tileY(Core.input.mouseX(), Core.input.mouseY());
 
             if(mode == placing && block != null){
                 //draw placing
@@ -518,7 +518,7 @@ public class MobileInput extends InputHandler implements GestureListener{
         //get tile on cursor
         Tile cursor = tileAt(screenX, screenY);
 
-        float worldx = Core.input.mouseWorld(screenX, screenY).x, worldy = Core.input.mouseWorld(screenX, screenY).y;
+        float worldx = mouseWorld(screenX, screenY).x, worldy = mouseWorld(screenX, screenY).y;
 
         //ignore off-screen taps
         if(cursor == null || Core.scene.hasMouse(screenX, screenY)) return false;
@@ -532,8 +532,8 @@ public class MobileInput extends InputHandler implements GestureListener{
                 mode = rebuildMode ? rebuildSelect : schematicSelect;
 
                 //engage schematic selection mode
-                int tileX = tileX(screenX);
-                int tileY = tileY(screenY);
+                int tileX = tileX(screenX, screenY);
+                int tileY = tileY(screenX, screenY);
                 lineStartX = tileX;
                 lineStartY = tileY;
                 lastLineX = tileX;
@@ -560,8 +560,8 @@ public class MobileInput extends InputHandler implements GestureListener{
 
         //place down a line if in line mode
         if(lineMode){
-            int tileX = tileX(screenX);
-            int tileY = tileY(screenY);
+            int tileX = tileX(screenX, screenY);
+            int tileY = tileY(screenX, screenY);
 
             if(mode == placing && isPlacing()){
                 flushSelectPlans(linePlans);
@@ -584,9 +584,9 @@ public class MobileInput extends InputHandler implements GestureListener{
             rebuildArea(lineStartX, lineStartY, lastLineX, lastLineY);
             mode = none;
         }else if(!player.dead()){
-            Tile tile = tileAt(screenX, screenY);
-
-            tryDropItems(tile == null ? null : tile.build, Core.input.mouseWorld(screenX, screenY).x, Core.input.mouseWorld(screenX, screenY).y);
+            Vec2 pos = mouseWorld(screenX, screenY);
+            Building build = world.buildWorld(pos.x, pos.y);
+            tryDropItems(build, pos.x, pos.y);
         }
 
         //select some units
@@ -606,14 +606,16 @@ public class MobileInput extends InputHandler implements GestureListener{
 
         //handle long tap when player isn't building
         if(mode == none){
-            Vec2 pos = Core.input.mouseWorld(x, y);
+            Vec2 pos = mouseWorld(x, y);
 
             if(commandMode){
 
                 //long press begins rect selection.
                 commandRect = true;
-                commandRectX = input.mouseWorldX();
-                commandRectY = input.mouseWorldY();
+                commandRectX = mouseWorldX();
+                commandRectY = mouseWorldY();
+                commandRectScreenX = x;
+                commandRectScreenY = y;
 
             }else{
 
@@ -669,7 +671,7 @@ public class MobileInput extends InputHandler implements GestureListener{
     public boolean tap(float x, float y, int count, KeyCode button){
         if(state.isMenu() || lineMode || locked()) return false;
 
-        float worldx = Core.input.mouseWorld(x, y).x, worldy = Core.input.mouseWorld(x, y).y;
+        float worldx = mouseWorld(x, y).x, worldy = mouseWorld(x, y).y;
 
         //get tile on cursor
         Tile cursor = tileAt(x, y);
@@ -785,6 +787,7 @@ public class MobileInput extends InputHandler implements GestureListener{
 
         //validate commanding units
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
+        restorePreservedUnitSelection();
 
         if(!commandMode){
             commandBuildings.clear();
@@ -800,6 +803,7 @@ public class MobileInput extends InputHandler implements GestureListener{
             //move camera around
             float camSpeed = 6f;
             Vec2 delta = Tmp.v1.setZero().add(Core.input.axis(Binding.moveX), Core.input.axis(Binding.moveY)).nor().scl(Time.delta * camSpeed);
+            rotateCameraMove(delta);
             Core.camera.position.add(delta);
             if(!delta.isZero()){
                 spectating = null;
@@ -877,7 +881,7 @@ public class MobileInput extends InputHandler implements GestureListener{
                 autoPan();
             }
 
-            int lx = tileX(Core.input.mouseX()), ly = tileY(Core.input.mouseY());
+            int lx = tileX(Core.input.mouseX(), Core.input.mouseY()), ly = tileY(Core.input.mouseX(), Core.input.mouseY());
 
             if((lastLineX != lx || lastLineY != ly) && isPlacing()){
                 lastLineX = lx;
@@ -926,6 +930,7 @@ public class MobileInput extends InputHandler implements GestureListener{
 
         vector.set(panX, panY).scl((Core.camera.width) / Core.graphics.getWidth());
         vector.limit(maxPanSpeed);
+        rotateCameraMove(vector);
 
         //pan view
         Core.camera.position.x += vector.x;
@@ -967,8 +972,9 @@ public class MobileInput extends InputHandler implements GestureListener{
             }
         }else{
             //pan player
-            Core.camera.position.x -= deltaX;
-            Core.camera.position.y -= deltaY;
+            Tmp.v1.set(-deltaX, -deltaY);
+            rotateCameraMove(Tmp.v1);
+            Core.camera.position.add(Tmp.v1);
             spectating = null;
             spectatingPlayer = -1;
         }
@@ -984,6 +990,17 @@ public class MobileInput extends InputHandler implements GestureListener{
         camera.position.y = Mathf.clamp(camera.position.y + centerOffsetY, half, maxY) - centerOffsetY;
 
         return false;
+    }
+
+    private void rotateCameraMove(Vec2 vec){
+        float rot = renderer.getViewRotation();
+        if(Mathf.zero(rot)) return;
+        float rad = -rot * Mathf.degRad;
+        float cos = Mathf.cos(rad);
+        float sin = Mathf.sin(rad);
+        float x = vec.x * cos - vec.y * sin;
+        float y = vec.x * sin + vec.y * cos;
+        vec.set(x, y);
     }
 
     @Override
@@ -1085,7 +1102,7 @@ public class MobileInput extends InputHandler implements GestureListener{
             //autofire targeting
             if(manualShooting){
                 player.shooting = !boosted;
-                unit.aim(player.mouseX = Core.input.mouseWorldX(), player.mouseY = Core.input.mouseWorldY());
+                unit.aim(player.mouseX = mouseWorldX(), player.mouseY = mouseWorldY());
             }else if(target == null){
                 player.shooting = false;
                 if(Core.settings.getBool("autotarget") && !(player.unit() instanceof BlockUnitUnit u && u.tile() instanceof ControlBlock c && !c.shouldAutoTarget())){
@@ -1106,7 +1123,7 @@ public class MobileInput extends InputHandler implements GestureListener{
 
                 //when not shooting, aim at mouse cursor
                 //this may be a bad idea, aiming for a point far in front could work better, test it out
-                unit.aim(Core.input.mouseWorldX(), Core.input.mouseWorldY());
+                unit.aim(mouseWorldX(), mouseWorldY());
             }else{
                 Vec2 intercept = Tmp.v1.set(target);
 

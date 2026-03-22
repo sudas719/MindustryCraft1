@@ -448,7 +448,23 @@ public class Tile implements Position, QuadTreeObject, Displayable{
     }
 
     public boolean solid(){
-        return block.solid || floor.solid || (build != null && build.checkSolid());
+        if(floor.solid) return true;
+        if(build != null) return buildSolid();
+        return block.solid;
+    }
+
+    public boolean buildSolid(){
+        if(build == null) return false;
+        if(!(block.solid || build.checkSolid())) return false;
+
+        float radius = build.hitSize() / 2f;
+        float half = tilesize / 2f;
+        float cx = build.x, cy = build.y;
+        float tx = worldx(), ty = worldy();
+        float closestX = Mathf.clamp(cx, tx - half, tx + half);
+        float closestY = Mathf.clamp(cy, ty - half, ty + half);
+        float dx = cx - closestX, dy = cy - closestY;
+        return dx * dx + dy * dy <= radius * radius;
     }
 
     public boolean breakable(){

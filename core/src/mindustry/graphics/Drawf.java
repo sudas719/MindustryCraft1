@@ -18,6 +18,19 @@ import static mindustry.Vars.*;
 public class Drawf{
     private static final Vec2[] vecs = new Vec2[]{new Vec2(), new Vec2(), new Vec2(), new Vec2()};
     private static final FloatSeq points = new FloatSeq();
+    private static int buildingShadowSuppressions;
+
+    public static void beginBuildingShadowSuppression(){
+        buildingShadowSuppressions++;
+    }
+
+    public static void endBuildingShadowSuppression(){
+        buildingShadowSuppressions = Math.max(0, buildingShadowSuppressions - 1);
+    }
+
+    public static boolean buildingShadowsSuppressed(){
+        return buildingShadowSuppressions > 0;
+    }
 
     /** Bleeds a mod pixmap if linear filtering is enabled. */
     public static void checkBleed(Pixmap pixmap){
@@ -317,30 +330,62 @@ public class Drawf{
     }
 
     public static void squareShadow(float x, float y, float rad, float alpha){
-        Draw.color(0, 0, 0, 0.4f * alpha);
-        Draw.rect("square-shadow", x, y, rad * Draw.xscl, rad * Draw.yscl);
-        Draw.color();
+        hardShadow(x, y, rad, alpha);
     }
 
     public static void shadow(float x, float y, float rad, float alpha){
+        if(buildingShadowsSuppressed()) return;
         Draw.color(0, 0, 0, 0.4f * alpha);
         Draw.rect("circle-shadow", x, y, rad * Draw.xscl, rad * Draw.yscl);
         Draw.color();
     }
 
+    private static float hardShadowOffset(float width, float height){
+        return Math.max(1.5f, Math.max(width, height) * 0.08f);
+    }
+
+    public static void hardShadow(float x, float y, float size, float alpha){
+        hardShadow(x, y, size, size, 0f, alpha);
+    }
+
+    public static void hardShadow(float x, float y, float width, float height, float rotation, float alpha){
+        if(buildingShadowsSuppressed()) return;
+        float offset = hardShadowOffset(width, height);
+        Draw.color(0f, 0f, 0f, 0.4f * alpha);
+        Draw.rect(Core.atlas.white(), x + offset, y - offset, width * Draw.xscl, height * Draw.yscl, rotation);
+        Draw.color();
+    }
+
+    public static void hardShadow(TextureRegion region, float x, float y, float rotation){
+        if(buildingShadowsSuppressed()) return;
+        float width = region.width * region.scl();
+        float height = region.height * region.scl();
+        float offset = hardShadowOffset(width, height);
+        Draw.color(0f, 0f, 0f, 0.4f);
+        Draw.rect(region, x + offset, y - offset, rotation);
+        Draw.color();
+    }
+
+    public static void hardShadow(TextureRegion region, float x, float y){
+        hardShadow(region, x, y, 0f);
+    }
+
     public static void shadow(TextureRegion region, float x, float y, float rotation){
+        if(buildingShadowsSuppressed()) return;
         Draw.color(Pal.shadow);
         Draw.rect(region, x, y, rotation);
         Draw.color();
     }
 
     public static void shadow(TextureRegion region, float x, float y){
+        if(buildingShadowsSuppressed()) return;
         Draw.color(Pal.shadow);
         Draw.rect(region, x, y);
         Draw.color();
     }
 
     public static void shadow(TextureRegion region, float x, float y, float width, float height, float rotation){
+        if(buildingShadowsSuppressed()) return;
         Draw.color(Pal.shadow);
         Draw.rect(region, x, y, width, height, rotation);
         Draw.color();

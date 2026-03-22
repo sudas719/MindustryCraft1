@@ -936,13 +936,14 @@ public class UnitType extends UnlockableContent implements Senseable{
     }
 
     void initPathType(){
+        boolean largeGround = !naval && !flying && !hovering && !allowLegStep && hitSize > tilesize;
         if(flowfieldPathType == -1){
             flowfieldPathType =
             naval ? Pathfinder.costNaval :
             allowLegStep ? Pathfinder.costLegs :
             flying ? Pathfinder.costNone :
             hovering ? Pathfinder.costHover :
-            Pathfinder.costGround;
+            largeGround ? Pathfinder.costGroundLarge : Pathfinder.costGround;
         }
 
         if(pathCost == null){
@@ -950,7 +951,7 @@ public class UnitType extends UnlockableContent implements Senseable{
             naval ? ControlPathfinder.costNaval :
             allowLegStep ? ControlPathfinder.costLegs :
             hovering ? ControlPathfinder.costHover :
-            ControlPathfinder.costGround;
+            largeGround ? ControlPathfinder.costGroundLarge : ControlPathfinder.costGround;
         }
 
         pathCostId = ControlPathfinder.costTypes.indexOf(pathCost);
@@ -1782,11 +1783,8 @@ public class UnitType extends UnlockableContent implements Senseable{
         if(mech != null){
             drawMech(mech);
 
-            //side
-            legOffset.trns(mech.baseRotation(), 0f, Mathf.lerp(Mathf.sin(mech.walkExtend(true), 2f/Mathf.PI, 1) * mechSideSway, 0f, unit.elevation));
-
-            //front
-            legOffset.add(Tmp.v1.trns(mech.baseRotation() + 90, 0f, Mathf.lerp(Mathf.sin(mech.walkExtend(true), 1f/Mathf.PI, 1) * mechFrontSway, 0f, unit.elevation)));
+            //side sway removed for ground walking units
+            legOffset.setZero();
 
             unit.trns(legOffset.x, legOffset.y);
         }
@@ -2138,8 +2136,20 @@ public class UnitType extends UnlockableContent implements Senseable{
     public void drawEngines(Unit unit){
         if((useEngineElevation ? unit.elevation : 1f) <= 0.0001f) return;
 
+        float yOffset = 0f;
+        if(unit.isFlying() && !UnitTypes.isViking(unit)){
+            yOffset = 2f;
+        }
+
         for(var engine : engines){
-            engine.draw(unit);
+            if(yOffset != 0f){
+                float prevY = engine.y;
+                engine.y += yOffset;
+                engine.draw(unit);
+                engine.y = prevY;
+            }else{
+                engine.draw(unit);
+            }
         }
 
         Draw.color();

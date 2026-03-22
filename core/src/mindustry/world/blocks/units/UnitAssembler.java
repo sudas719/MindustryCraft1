@@ -37,6 +37,8 @@ import static mindustry.Vars.*;
 public class UnitAssembler extends PayloadBlock{
     public @Load("@-side1") TextureRegion sideRegion1;
     public @Load("@-side2") TextureRegion sideRegion2;
+    private static final float[] spawnAngleOffsets = {0f, 20f, -20f, 40f, -40f, 60f, -60f, 90f, -90f, 120f, -120f, 150f, -150f, 180f};
+    private static final float[] spawnDistanceOffsets = {0f, tilesize * 0.5f, tilesize, tilesize * 1.5f};
 
     public int areaSize = 11;
     public UnitType droneType = UnitTypes.assemblyDrone;
@@ -324,7 +326,26 @@ public class UnitAssembler extends PayloadBlock{
         public Vec2 getUnitSpawn(){
             float len = tilesize * (areaSize + size)/2f;
             float unitX = x + Geometry.d4x(rotation) * len, unitY = y + Geometry.d4y(rotation) * len;
-            return Tmp.v4.set(unitX, unitY);
+            return findClearSpawn(unit(), Tmp.v4.set(unitX, unitY));
+        }
+
+        private Vec2 findClearSpawn(UnitType output, Vec2 base){
+            if(!isSpawnBlocked(base, output, false)) return base;
+
+            float dx = base.x - x, dy = base.y - y;
+            float baseAngle = dx * dx + dy * dy < 0.001f ? rotation * 90f : Angles.angle(dx, dy);
+            float baseLen = Mathf.len(dx, dy);
+
+            for(float distExtra : spawnDistanceOffsets){
+                float dist = baseLen + distExtra;
+                for(float angleOffset : spawnAngleOffsets){
+                    Vec2 candidate = Tmp.v5.trns(baseAngle + angleOffset, dist).add(x, y);
+                    if(!isSpawnBlocked(candidate, output, false)){
+                        return Tmp.v4.set(candidate);
+                    }
+                }
+            }
+            return base;
         }
 
         public boolean moduleFits(Block other, float ox, float oy, int rotation){
@@ -663,11 +684,29 @@ public class UnitAssembler extends PayloadBlock{
         }
 
         public boolean checkSolid(Vec2 v, boolean same){
-            var output = unit();
+            return isSpawnBlocked(v, unit(), same);
+        }
+
+        private boolean isSpawnBlocked(Vec2 v, UnitType output, boolean same){
             float hsize = output.hitSize * 1.4f;
-            return ((!output.flying && collisions.overlapsTile(Tmp.r1.setCentered(v.x, v.y, output.hitSize), EntityCollisions::solid)) ||
-                Units.anyEntities(v.x - hsize/2f, v.y - hsize/2f, hsize, hsize, u -> (!same || u.type != output) && !u.spawnedByCore &&
-                    ((u.type.allowLegStep && output.allowLegStep) || (output.flying && u.isFlying()) || (!output.flying && u.isGrounded()))));
+            if(!output.flying && collisions.overlapsTile(Tmp.r1.setCentered(v.x, v.y, output.hitSize), EntityCollisions::solid)){
+                return true;
+            }
+
+            float radius = output.hitSize / 2f;
+            boolean[] blocked = {false};
+            Units.nearbyBuildings(v.x, v.y, radius + tilesize, build -> {
+                if(blocked[0] || build == null || !build.isValid() || build == this) return;
+                float br = build.hitSize() / 2f;
+                if(Mathf.dst2(v.x, v.y, build.x, build.y) < (radius + br) * (radius + br)){
+                    blocked[0] = true;
+                }
+            });
+            if(blocked[0]) return true;
+
+            return Units.anyEntities(v.x - hsize/2f, v.y - hsize/2f, hsize, hsize, u ->
+                (!same || u.type != output) && u.isValid() &&
+                ((u.type.allowLegStep && output.allowLegStep) || (output.flying && u.isFlying()) || (!output.flying && u.isGrounded())));
         }
 
         /** @return true if this block is ready to produce units, e.g. requirements met */

@@ -253,6 +253,13 @@ public class HarvestAI extends AIController{
             return;
         }
 
+        Tile dataTile = vent.dataTile(harvestTarget);
+        if(dataTile == null || !vent.checkAdjacent(dataTile)){
+            clearMiningState();
+            state = HarvestState.SEEKING;
+            return;
+        }
+
         if(!isNova(unit)){
             clearMiningState();
             if(harvestTarget == forcedTarget){
@@ -278,8 +285,8 @@ public class HarvestAI extends AIController{
                 inCondenser = false;
                 unit.harvestHidden = false;
 
-                int amount = vent.getNovaCollect(harvestTarget);
-                int consumed = vent.isInfinite(harvestTarget) ? amount : vent.consumeGas(harvestTarget, amount);
+                int amount = vent.getNovaCollect(dataTile);
+                int consumed = vent.isInfinite(dataTile) ? amount : vent.consumeGas(dataTile, amount);
                 if(consumed > 0){
                     if(unit.hasItem()){
                         unit.clearItem();

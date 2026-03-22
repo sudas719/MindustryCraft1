@@ -242,19 +242,20 @@ public class LandingPad extends Block{
                 float rw = podRegion.width * scale, rh = podRegion.height * scale;
 
                 Draw.alpha(alpha);
-                Drawf.shadow(cx, cy, size * tilesize, fin);
+                Drawf.hardShadow(cx, cy, size * tilesize, fin);
                 Draw.rect(podRegion, cx, cy, rw, rh, rotation);
 
                 Tmp.v1.trns(225f, Interp.pow3In.apply(fout) * 250f);
 
-                Draw.z(Layer.flyingUnit + 1);
-                Draw.color(0, 0, 0, 0.22f * alpha);
-
-                Draw.rect(podRegion, cx + Tmp.v1.x, cy + Tmp.v1.y, rw, rh, rotation);
+                if(!Drawf.buildingShadowsSuppressed()){
+                    Draw.z(Layer.flyingUnit + 1);
+                    Draw.color(0, 0, 0, 0.22f * alpha);
+                    Draw.rect(podRegion, cx + Tmp.v1.x, cy + Tmp.v1.y, rw, rh, rotation);
+                }
 
             }else if(cooldown > 0f){
 
-                Drawf.shadow(x, y, size * tilesize, cooldown);
+                Drawf.hardShadow(x, y, size * tilesize, cooldown);
                 Draw.alpha(cooldown);
                 Draw.mixcol(Pal.accent, 1f - cooldown);
                 Draw.rect(podRegion, x, y);

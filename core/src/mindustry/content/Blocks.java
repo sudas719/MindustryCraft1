@@ -189,7 +189,10 @@ public class Blocks{
 
     //campaign
     launchPad, advancedLaunchPad, landingPad,
-    interplanetaryAccelerator
+    interplanetaryAccelerator,
+
+    //editor-only overlays
+    noBuildOverlay
 
     ;
 
@@ -214,7 +217,7 @@ public class Blocks{
         for(int i = 1; i <= Vars.maxBlockSize; i++){
             new ConstructBlock(i);
         }
-        ConstructBlock.get(3).fogRadius = 4;
+        ConstructBlock.get(3).fogRadius = 11;
 
         deepwater = new Floor("deep-water"){{
             speedMultiplier = 0.2f;
@@ -1070,6 +1073,52 @@ public class Blocks{
 
             consumeItem(Items.coal, 3);
             consumeLiquid(Liquids.water, 0.1f);
+
+            buildType = () -> new GenericCrafterBuild(){
+                private boolean researchActive(){
+                    return ResearchQueueService.engineeringActiveResearchBlock(team) == block;
+                }
+
+                @Override
+                public boolean shouldConsume(){
+                    return enabled && !researchActive();
+                }
+
+                @Override
+                public void updateConsumption(){
+                    if(researchActive()){
+                        if(enabled){
+                            potentialEfficiency = efficiency = optionalEfficiency = 1f;
+                        }else{
+                            potentialEfficiency = efficiency = optionalEfficiency = 0f;
+                        }
+                        shouldConsumePower = false;
+                        return;
+                    }
+                    super.updateConsumption();
+                }
+
+                @Override
+                public void craft(){
+                    if(researchActive()){
+                        progress %= 1f;
+                        return;
+                    }
+                    super.craft();
+                }
+
+                @Override
+                public BlockStatus status(){
+                    if(!enabled) return BlockStatus.logicDisable;
+                    if(researchActive()) return BlockStatus.active;
+                    return super.status();
+                }
+
+                @Override
+                public boolean shouldAmbientSound(){
+                    return researchActive() || super.shouldAmbientSound();
+                }
+            };
         }};
 
         siliconSmelter = new GenericCrafter("silicon-smelter"){{
@@ -1106,6 +1155,53 @@ public class Blocks{
             ambientSoundVolume = 0.07f;
 
             consumeItems(with(Items.coal, 4, Items.sand, 6, Items.pyratite, 1));
+
+            buildType = () -> new AttributeCrafterBuild(){
+                private boolean researchActive(){
+                    return ResearchQueueService.engineeringActiveResearchBlock(team) == block
+                        || ResearchQueueService.armoryActiveResearchBlock(team) == block;
+                }
+
+                @Override
+                public boolean shouldConsume(){
+                    return enabled && !researchActive();
+                }
+
+                @Override
+                public void updateConsumption(){
+                    if(researchActive()){
+                        if(enabled){
+                            potentialEfficiency = efficiency = optionalEfficiency = 1f;
+                        }else{
+                            potentialEfficiency = efficiency = optionalEfficiency = 0f;
+                        }
+                        shouldConsumePower = false;
+                        return;
+                    }
+                    super.updateConsumption();
+                }
+
+                @Override
+                public void craft(){
+                    if(researchActive()){
+                        progress %= 1f;
+                        return;
+                    }
+                    super.craft();
+                }
+
+                @Override
+                public BlockStatus status(){
+                    if(!enabled) return BlockStatus.logicDisable;
+                    if(researchActive()) return BlockStatus.active;
+                    return super.status();
+                }
+
+                @Override
+                public boolean shouldAmbientSound(){
+                    return researchActive() || super.shouldAmbientSound();
+                }
+            };
         }};
 
         kiln = new GenericCrafter("kiln"){{
@@ -1625,6 +1721,60 @@ public class Blocks{
 
             consumeItem(Items.silicon, 3);
             consumeLiquid(Liquids.slag, 160f / 60f);
+
+            buildType = () -> new HeatCrafterBuild(){
+                private boolean researchActive(){
+                    return ResearchQueueService.armoryActiveResearchBlock(team) == block
+                        || ResearchQueueService.fusionCoreActiveResearch(team) != null;
+                }
+
+                @Override
+                public boolean shouldConsume(){
+                    if(researchActive()) return false;
+                    return super.shouldConsume();
+                }
+
+                @Override
+                public void updateConsumption(){
+                    if(researchActive()){
+                        if(enabled){
+                            potentialEfficiency = efficiency = optionalEfficiency = 1f;
+                        }else{
+                            potentialEfficiency = efficiency = optionalEfficiency = 0f;
+                        }
+                        shouldConsumePower = false;
+                        return;
+                    }
+                    super.updateConsumption();
+                }
+
+                @Override
+                public void craft(){
+                    if(researchActive()){
+                        progress %= 1f;
+                        return;
+                    }
+                    super.craft();
+                }
+
+                @Override
+                public BlockStatus status(){
+                    if(!enabled) return BlockStatus.logicDisable;
+                    if(researchActive()) return BlockStatus.active;
+                    return super.status();
+                }
+
+                @Override
+                public boolean shouldAmbientSound(){
+                    return researchActive() || super.shouldAmbientSound();
+                }
+
+                @Override
+                public float warmupTarget(){
+                    if(researchActive()) return 1f;
+                    return super.warmupTarget();
+                }
+            };
         }
 
         @Override
@@ -3164,7 +3314,7 @@ public class Blocks{
             tier = 5;
             size = 3;
             range = 6;
-            fogRadius = 4;
+            fogRadius = 11;
             laserWidth = 0.7f;
             itemCapacity = 20;
 
@@ -7490,6 +7640,8 @@ public class Blocks{
                 }
             }
         };
+
+        noBuildOverlay = new EditorBuildBlockerOverlay("no-build-overlay", "build-obstacles");
 
         //endregion
     }

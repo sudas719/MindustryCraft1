@@ -114,6 +114,7 @@ public enum EditorTool{
                 }else if(mode == 1){
                     //erase cliff layer only
                     editor.clearCliffMarker(tile);
+                    editor.clearHeightSlope(tile);
                 }
             });
         }

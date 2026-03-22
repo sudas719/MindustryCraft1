@@ -8,6 +8,7 @@ import arc.graphics.gl.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
+import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.game.EventType.*;
 import mindustry.game.*;
@@ -71,6 +72,12 @@ public final class FogRenderer{
             }
 
             for(var unit : team.data().units){
+                if(UnitTypes.isBattlecruiser(unit)){
+                    UnitTypes.BattlecruiserData data = UnitTypes.getBattlecruiserData(unit);
+                    if((data.pendingWarp || data.warpCharging || data.warping) && data.warpVisionTime >= UnitTypes.battlecruiserWarpVisionDelay()){
+                        continue;
+                    }
+                }
                 revealDynamic(unit.x, unit.y, unit.type.fogRadius, unit.isFlying(), HeightLayerData.edgeLayer(unit.x, unit.y, unit.hitSize / 2f));
             }
 

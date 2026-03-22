@@ -32,6 +32,7 @@ import mindustry.world.blocks.*;
 import mindustry.world.blocks.environment.*;
 import mindustry.world.blocks.power.*;
 import mindustry.world.consumers.*;
+import mindustry.world.draw.*;
 import mindustry.world.meta.*;
 
 import java.lang.reflect.*;
@@ -428,6 +429,7 @@ public class Block extends UnlockableContent implements Senseable{
 
     protected static final Seq<Tile> tempTiles = new Seq<>();
     protected static final Seq<Building> tempBuilds = new Seq<>();
+    
 
     /** Dump timer ID.*/
     protected final int timerDump = timers++;
@@ -1312,7 +1314,7 @@ public class Block extends UnlockableContent implements Senseable{
         }
 
         if(fogRadius <= 0 && size == 3){
-            fogRadius = 9;
+            fogRadius = 11;
         }
         if(fogRadius > 0){
             flags = flags.with(BlockFlag.hasFogRadius);
@@ -1625,4 +1627,6 @@ public class Block extends UnlockableContent implements Senseable{
         if(sensor == LAccess.name) return name;
         return noSensed;
     }
+
+    
 }

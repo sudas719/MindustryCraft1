@@ -337,8 +337,11 @@ public class DesktopInput extends InputHandler{
     }
 
     private void restoreSpectatorViewScale(){
-        if(spectatorHighView && spectatorBaseScale > 0f){
-            renderer.setScale(spectatorBaseScale);
+        if(spectatorHighView){
+            renderer.clearSpectatorMaxVisibleTiles();
+            if(spectatorBaseScale > 0f){
+                renderer.setScale(spectatorBaseScale);
+            }
         }
         spectatorHighView = false;
         spectatorBaseScale = -1f;
@@ -459,8 +462,8 @@ public class DesktopInput extends InputHandler{
         }
 
         Lines.stroke(1f);
-        int cursorX = tileX(Core.input.mouseX());
-        int cursorY = tileY(Core.input.mouseY());
+        int cursorX = tileX(Core.input.mouseX(), Core.input.mouseY());
+        int cursorY = tileY(Core.input.mouseX(), Core.input.mouseY());
 
         //draw break selection
         if(mode == breaking){
@@ -477,8 +480,8 @@ public class DesktopInput extends InputHandler{
         }
 
         if(ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.LIBERATOR_ZONE){
-            float wx = clampCommandX(Core.input.mouseWorldX());
-            float wy = clampCommandY(Core.input.mouseWorldY());
+            float wx = clampCommandX(mouseWorldX());
+            float wy = clampCommandY(mouseWorldY());
             Draw.z(Layer.effect);
             Lines.stroke(1.5f, Pal.remove);
             Lines.circle(wx, wy, UnitTypes.liberatorZoneRadius());
@@ -492,10 +495,10 @@ public class DesktopInput extends InputHandler{
     @Override
     public void drawBottom(){
         float cursorAlpha = 0.5f;
-        int cursorX = tileX(Core.input.mouseX());
-        int cursorY = tileY(Core.input.mouseY());
+        int cursorX = tileX(Core.input.mouseX(), Core.input.mouseY());
+        int cursorY = tileY(Core.input.mouseX(), Core.input.mouseY());
         if(isPlacing() && block == Blocks.ventCondenser){
-            Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+            Tile snap = findNearestVentCenter(mouseWorldX(), mouseWorldY(), 30);
             if(snap != null){
                 cursorX = snap.x;
                 cursorY = snap.y;
@@ -551,8 +554,8 @@ public class DesktopInput extends InputHandler{
                     Block landBlock = payload.build.block;
                     int rot = landBlock.planRotation(payload.build.rotation);
                     float offset = landBlock.offset;
-                    int placeX = World.toTile(Core.input.mouseWorldX() - offset);
-                    int placeY = World.toTile(Core.input.mouseWorldY() - offset);
+                    int placeX = World.toTile(mouseWorldX() - offset);
+                    int placeY = World.toTile(mouseWorldY() - offset);
                     boolean valid = Build.validPlace(landBlock, player.team(), placeX, placeY, rot, false);
                     if(landBlock.rotate && landBlock.drawArrow){
                         drawArrow(landBlock, placeX, placeY, rot, valid);
@@ -583,7 +586,7 @@ public class DesktopInput extends InputHandler{
                 int placeX = cursorX;
                 int placeY = cursorY;
                 if(block == Blocks.ventCondenser){
-                    Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+                    Tile snap = findNearestVentCenter(mouseWorldX(), mouseWorldY(), 30);
                     if(snap != null){
                         placeX = snap.x;
                         placeY = snap.y;
@@ -673,10 +676,10 @@ public class DesktopInput extends InputHandler{
         if(middleMousePanning && !Core.input.keyDown(KeyCode.mouseMiddle)){
             middleMousePanning = false;
             if(middleMouseCaptured){
-                Core.input.setCursorCaptured(false);
+                setCursorCatched(false);
                 middleMouseCaptured = false;
             }
-            Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY);
+            setCursorPosition(middleMouseStartX, middleMouseStartY);
             Core.graphics.restoreCursor();
         }
 
@@ -690,14 +693,14 @@ public class DesktopInput extends InputHandler{
                 middleMouseLastY = middleMouseStartY;
 
                 //lock/hide cursor + use relative deltas when supported (prevents edge clamping)
-                middleMouseCaptured = Core.input.setCursorCaptured(true);
+                middleMouseCaptured = setCursorCatched(true);
             }else if(!midDown && middleMousePanning){
                 middleMousePanning = false;
                 if(middleMouseCaptured){
-                    Core.input.setCursorCaptured(false);
+                    setCursorCatched(false);
                     middleMouseCaptured = false;
                 }
-                Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY);
+                setCursorPosition(middleMouseStartX, middleMouseStartY);
                 Core.graphics.restoreCursor();
             }
 
@@ -709,7 +712,7 @@ public class DesktopInput extends InputHandler{
 
                 //ensure cursor stays hidden/locked even if some other UI code changes it
                 if(middleMouseCaptured){
-                    Core.input.setCursorCaptured(true);
+                    setCursorCatched(true);
                 }
 
                 int mx = (int)Core.input.mouseX();
@@ -734,7 +737,7 @@ public class DesktopInput extends InputHandler{
 
                 if(!middleMouseCaptured){
                     //keep cursor position unchanged if possible
-                    if(Core.input.setCursorPosition(middleMouseStartX, middleMouseStartY)){
+                    if(setCursorPosition(middleMouseStartX, middleMouseStartY)){
                         middleMouseLastX = middleMouseStartX;
                         middleMouseLastY = middleMouseStartY;
                     }else{
@@ -795,11 +798,13 @@ public class DesktopInput extends InputHandler{
                     panCam = true;
                 }
 
-                Core.camera.position.add(Tmp.v1.setZero().add(Core.input.axis(Binding.moveX), Core.input.axis(Binding.moveY)).nor().scl(camSpeed));
+                rotateCameraMove(Tmp.v1.setZero().add(Core.input.axis(Binding.moveX), Core.input.axis(Binding.moveY)).nor().scl(camSpeed));
+                Core.camera.position.add(Tmp.v1);
             }
 
             if(arrowCam && !scene.hasField() && !scene.hasDialog() && !ui.chatfrag.shown()){
-                Core.camera.position.add(Tmp.v1.set(arrowCamX, arrowCamY).nor().scl(camSpeed));
+                rotateCameraMove(Tmp.v1.set(arrowCamX, arrowCamY).nor().scl(camSpeed));
+                Core.camera.position.add(Tmp.v1);
             }else if((!player.dead() || spectating != null || spectatingPlayer() != null) && !panning){
                 //TODO do not pan
                 Team corePanTeam = state.won ? state.rules.waveTeam : player.team();
@@ -811,8 +816,10 @@ public class DesktopInput extends InputHandler{
             }
 
             if(panCam && !middlePan){
-                Core.camera.position.x += Mathf.clamp((Core.input.mouseX() - Core.graphics.getWidth() / 2f) * panScale, -1, 1) * camSpeed;
-                Core.camera.position.y += Mathf.clamp((Core.input.mouseY() - renderer.getGameScreenCenterYPx()) * panScale, -1, 1) * camSpeed;
+                float panX = Mathf.clamp((Core.input.mouseX() - Core.graphics.getWidth() / 2f) * panScale, -1, 1) * camSpeed;
+                float panY = Mathf.clamp((Core.input.mouseY() - renderer.getGameScreenCenterYPx()) * panScale, -1, 1) * camSpeed;
+                rotateCameraMove(Tmp.v1.set(panX, panY));
+                Core.camera.position.add(Tmp.v1);
             }
 
             //edge scrolling
@@ -843,7 +850,8 @@ public class DesktopInput extends InputHandler{
 
                 //apply camera movement
                 if(edgeScrollX != 0f || edgeScrollY != 0f){
-                    Core.camera.position.add(edgeScrollX, edgeScrollY);
+                    rotateCameraMove(Tmp.v1.set(edgeScrollX, edgeScrollY));
+                    Core.camera.position.add(Tmp.v1);
                     edgeScrolling = true;
                 }else{
                     edgeScrolling = false;
@@ -866,6 +874,7 @@ public class DesktopInput extends InputHandler{
 
         //validate commanding units
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
+        restorePreservedUnitSelection();
 
         if(commandMode && !scene.hasField() && !scene.hasDialog()){
             if(input.keyTap(Binding.selectAllUnits)){
@@ -950,7 +959,7 @@ public class DesktopInput extends InputHandler{
                         selectedBuildingPos = commandBuildings.mapInt(b -> b.pos());
                         selectedBuildingIds = commandBuildings.mapInt(b -> b.id);
                         if(selectedUnitIds.isEmpty() && selectedBuildingPos.isEmpty()){
-                            Building hoverBuild = buildAt(input.mouseWorldX(), input.mouseWorldY());
+                            Building hoverBuild = buildAt(mouseWorldX(), mouseWorldY());
                             if(hoverBuild != null && hoverBuild.team == player.team()){
                                 selectedBuildingPos.add(hoverBuild.pos());
                                 selectedBuildingIds.add(hoverBuild.id);
@@ -1175,7 +1184,11 @@ public class DesktopInput extends InputHandler{
             if(!ui.chatfrag.shown() && !ui.consolefrag.shown() && Core.input.keyTap(KeyCode.z) && isLocalSpectatorMode()){
                 if(!spectatorHighView){
                     spectatorBaseScale = renderer.getScale();
-                    renderer.setScale(spectatorBaseScale / 1.5f);
+                    float targetTiles = 70f;
+                    renderer.setSpectatorMaxVisibleTiles(targetTiles);
+                    float screenWidth = Core.graphics.getWidth();
+                    float targetScale = screenWidth <= 0 ? spectatorBaseScale / 1.5f : screenWidth / (targetTiles * tilesize);
+                    renderer.setScale(targetScale);
                     spectatorHighView = true;
                 }else{
                     restoreSpectatorViewScale();
@@ -1206,7 +1219,7 @@ public class DesktopInput extends InputHandler{
         }
 
         if(Core.input.keyTap(Binding.select) && !Core.scene.hasMouse() && !abilityTargetingActive() && !suppressSelectionTap()){
-            Tile selected = world.tileWorld(input.mouseWorldX(), input.mouseWorldY());
+            Tile selected = world.tileWorld(mouseWorldX(), mouseWorldY());
             if(selected != null){
                 Call.tileTap(player, selected);
             }
@@ -1259,8 +1272,8 @@ public class DesktopInput extends InputHandler{
     @Override
     public void useSchematic(Schematic schem, boolean checkHidden){
         block = null;
-        schematicX = tileX(getMouseX());
-        schematicY = tileY(getMouseY());
+        schematicX = tileX(getMouseX(), getMouseY());
+        schematicY = tileY(getMouseX(), getMouseY());
 
         selectPlans.clear();
         selectPlans.addAll(schematics.toPlans(schem, schematicX, schematicY, checkHidden));
@@ -1301,8 +1314,10 @@ public class DesktopInput extends InputHandler{
 
             if(commandMode){
                 commandRect = true;
-                commandRectX = input.mouseWorldX();
-                commandRectY = input.mouseWorldY();
+                commandRectX = mouseWorldX();
+                commandRectY = mouseWorldY();
+                commandRectScreenX = getMouseX();
+                commandRectScreenY = getMouseY();
             }else if(selected != null){
                 tileTapped(selected.build);
             }
@@ -1314,11 +1329,11 @@ public class DesktopInput extends InputHandler{
         if(scene.hasField()) return;
 
         Tile selected = tileAt(Core.input.mouseX(), Core.input.mouseY());
-        int cursorX = tileX(Core.input.mouseX());
-        int cursorY = tileY(Core.input.mouseY());
-        int rawCursorX = World.toTile(Core.input.mouseWorld().x), rawCursorY = World.toTile(Core.input.mouseWorld().y);
+        int cursorX = tileX(Core.input.mouseX(), Core.input.mouseY());
+        int cursorY = tileY(Core.input.mouseX(), Core.input.mouseY());
+        int rawCursorX = World.toTile(mouseWorld().x), rawCursorY = World.toTile(mouseWorld().y);
         if(isPlacing() && block == Blocks.ventCondenser){
-            Tile snap = findNearestVentCenter(Core.input.mouseWorldX(), Core.input.mouseWorldY(), 30);
+            Tile snap = findNearestVentCenter(mouseWorldX(), mouseWorldY(), 30);
             if(snap != null){
                 cursorX = snap.x;
                 cursorY = snap.y;
@@ -1390,8 +1405,8 @@ public class DesktopInput extends InputHandler{
         }
 
         if(splan != null){
-            int x = Math.round((Core.input.mouseWorld().x + buildPlanMouseOffsetX) / tilesize);
-            int y = Math.round((Core.input.mouseWorld().y + buildPlanMouseOffsetY) / tilesize);
+            int x = Math.round((mouseWorld().x + buildPlanMouseOffsetX) / tilesize);
+            int y = Math.round((mouseWorld().y + buildPlanMouseOffsetY) / tilesize);
             if(splan.x != x || splan.y != y){
                 splan.x = x;
                 splan.y = y;
@@ -1455,22 +1470,24 @@ public class DesktopInput extends InputHandler{
                 }else if(plan != null && !plan.breaking && mode == none && !plan.initialized && plan.progress <= 0f){
                     splan = plan;
                     movedPlan = false;
-                    buildPlanMouseOffsetX = splan.x * tilesize - Core.input.mouseWorld().x;
-                    buildPlanMouseOffsetY = splan.y * tilesize - Core.input.mouseWorld().y;
+                    buildPlanMouseOffsetX = splan.x * tilesize - mouseWorld().x;
+                    buildPlanMouseOffsetY = splan.y * tilesize - mouseWorld().y;
                 }else if(plan != null && plan.breaking){
                     deleting = true;
                 }else if(commandMode && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.NONE){
                     //Only allow box selection if NOT in an active RTS command mode
                     commandRect = true;
-                    commandRectX = input.mouseWorldX();
-                    commandRectY = input.mouseWorldY();
+                    commandRectX = mouseWorldX();
+                    commandRectY = mouseWorldY();
+                    commandRectScreenX = getMouseX();
+                    commandRectScreenY = getMouseY();
                 }else if(!checkConfigTap() && selected != null && !tryRepairDerelict(selected)){
                     if(trySelectResource(selected)){
                         //resource selection consumes the tap
                     }else{
                         selectedResource = null;
                         //only begin shooting if there's no cursor event
-                        if(!tryTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
+                        if(!tryTapPlayer(mouseWorld().x, mouseWorld().y) && !tileTapped(selected.build) && !player.unit().activelyBuilding() && !droppingItem
                             && !(tryStopMine(selected) || (!settings.getBool("doubletapmine") || selected == prevSelected && Time.timeSinceMillis(selectMillis) < 500) && tryBeginMine(selected)) && !Core.scene.hasKeyboard()){
                             player.shooting = shouldShoot;
                         }
@@ -1491,8 +1508,8 @@ public class DesktopInput extends InputHandler{
             //is recalculated because setting the mode to breaking removes potential multiblock cursor offset
             deleting = false;
             mode = breaking;
-            selectX = tileX(Core.input.mouseX());
-            selectY = tileY(Core.input.mouseY());
+            selectX = tileX(Core.input.mouseX(), Core.input.mouseY());
+            selectY = tileY(Core.input.mouseX(), Core.input.mouseY());
             schemX = rawCursorX;
             schemY = rawCursorY;
         }
@@ -1542,7 +1559,7 @@ public class DesktopInput extends InputHandler{
             selectX = -1;
             selectY = -1;
 
-            tryDropItems(selected == null ? null : selected.build, Core.input.mouseWorld().x, Core.input.mouseWorld().y);
+            tryDropItems(selected == null ? null : selected.build, mouseWorld().x, mouseWorld().y);
 
             if(splan != null){
                 if(getPlan(splan.x, splan.y, splan.block.size, splan) != null){
@@ -1627,7 +1644,7 @@ public class DesktopInput extends InputHandler{
                 cursorType = SystemCursor.hand;
             }
 
-            if(canTapPlayer(Core.input.mouseWorld().x, Core.input.mouseWorld().y)){
+            if(canTapPlayer(mouseWorld().x, mouseWorld().y)){
                 cursorType = ui.unloadCursor;
             }
 
@@ -1732,7 +1749,7 @@ public class DesktopInput extends InputHandler{
 
         screenY = clampScreenY(screenY);
         var mode = ui.hudfrag.abilityPanel.activeCommand;
-        Vec2 world = Core.camera.unproject(screenX, screenY);
+        Vec2 world = mouseWorld(screenX, screenY);
         if(!isValidCommandWorld(world.x, world.y)) return;
         float worldX = clampCommandX(world.x);
         float worldY = clampCommandY(world.y);
@@ -1935,28 +1952,22 @@ public class DesktopInput extends InputHandler{
     private boolean executeNovaRepairCommand(float worldX, float worldY, boolean queue){
         if(selectedUnits.isEmpty()) return false;
 
-        Tile tile = world.tileWorld(worldX, worldY);
-        Building build = tile != null ? tile.build : world.buildWorld(worldX, worldY);
+        Building build = world.buildWorld(worldX, worldY);
         if(build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild construct && construct.team == player.team()){
             Block cur = construct.current;
             if(cur == null || cur == Blocks.air) return false;
 
-            IntSeq scvIds = new IntSeq();
             int tx = construct.tile.x, ty = construct.tile.y;
-            for(Unit unit : selectedUnits){
-                if(unit == null || !unit.isValid() || unit.type != UnitTypes.nova || !unit.canBuild()) continue;
-                BuildPlan plan = new BuildPlan(tx, ty, construct.rotation, cur, cur.saveConfig ? construct.lastConfig : null);
-                plan.requireClose = true;
-                unit.addBuild(plan);
-                unit.updateBuilding(true);
-                scvIds.add(unit.id);
-            }
-
-            if(scvIds.isEmpty()) return false;
+            Unit chosen = pickScvBuildUnit(queue, true);
+            if(chosen == null) return false;
+            BuildPlan plan = new BuildPlan(tx, ty, construct.rotation, cur, cur.saveConfig ? construct.lastConfig : null);
+            plan.requireClose = true;
+            chosen.addBuild(plan);
+            chosen.updateBuilding(true);
 
             float targetX = tx * tilesize + cur.offset;
             float targetY = ty * tilesize + cur.offset;
-            Call.commandUnits(player, scvIds.toArray(), null, null, new Vec2(targetX, targetY), queue, true, false);
+            Call.commandUnits(player, new int[]{chosen.id}, null, null, new Vec2(targetX, targetY), queue, true, false);
             return true;
         }
 
@@ -2377,7 +2388,7 @@ public class DesktopInput extends InputHandler{
     }
 
     private boolean executeGhostTacticalNukeCommand(float worldX, float worldY){
-        Unit chosen = selectSingleUnit(u -> UnitTypes.isGhost(u) && UnitTypes.ghostCanUseTacticalNuke(u, worldX, worldY), worldX, worldY);
+        Unit chosen = selectSingleUnit(u -> UnitTypes.isGhost(u) && UnitTypes.ghostCanUseTacticalNuke(u), worldX, worldY);
         if(chosen == null) return false;
         Call.commandGhostTacticalNuke(player, new int[]{chosen.id}, new Vec2(worldX, worldY));
         return true;
@@ -2495,13 +2506,26 @@ public class DesktopInput extends InputHandler{
         }
 
         Unit chosen = null;
-        float bestDst = Float.MAX_VALUE;
+        boolean hasScvBuilder = false;
         for(Unit unit : selectedUnits){
             if(unit == null || !unit.isValid() || !unit.canBuild()) continue;
-            float dst = unit.dst2(worldX, worldY);
-            if(dst < bestDst){
-                bestDst = dst;
-                chosen = unit;
+            if(unit.type == UnitTypes.nova){
+                hasScvBuilder = true;
+                break;
+            }
+        }
+
+        if(hasScvBuilder){
+            chosen = pickScvBuildUnit(shiftHeld, false);
+        }else{
+            float bestDst = Float.MAX_VALUE;
+            for(Unit unit : selectedUnits){
+                if(unit == null || !unit.isValid() || !unit.canBuild()) continue;
+                float dst = unit.dst2(worldX, worldY);
+                if(dst < bestDst){
+                    bestDst = dst;
+                    chosen = unit;
+                }
             }
         }
 
@@ -2509,7 +2533,7 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
-        boolean queueCommand = shiftHeld || chosen.isBuilding();
+        boolean queueCommand = shiftHeld;
         BuildPlan plan = new BuildPlan(tx, ty, placeRotation, block, block.saveConfig ? block.lastConfig : null);
         plan.requireClose = true;
         chosen.addBuild(plan);
@@ -2706,6 +2730,17 @@ public class DesktopInput extends InputHandler{
         return clampScreenY(Core.input.mouseY());
     }
 
+    private void rotateCameraMove(Vec2 vec){
+        float rot = renderer.getViewRotation();
+        if(Mathf.zero(rot)) return;
+        float rad = -rot * Mathf.degRad;
+        float cos = Mathf.cos(rad);
+        float sin = Mathf.sin(rad);
+        float x = vec.x * cos - vec.y * sin;
+        float y = vec.x * sin + vec.y * cos;
+        vec.set(x, y);
+    }
+
     private float clampScreenY(float screenY){
         float inset = renderer.getUiBottomInsetPx();
         if(inset > 0f && screenY < inset){
@@ -2765,11 +2800,12 @@ public class DesktopInput extends InputHandler{
         }else{
             movement.set(xa, ya).nor().scl(speed);
             if(Core.input.keyDown(Binding.mouseMove)){
-                movement.add(input.mouseWorld().sub(player).scl(1f / 25f * speed)).limit(speed);
+                movement.add(mouseWorld().sub(player).scl(1f / 25f * speed)).limit(speed);
             }
         }
 
-        float mouseAngle = Angles.mouseAngle(unit.x, unit.y);
+        Vec2 mw = mouseWorld();
+        float mouseAngle = Angles.angle(unit.x, unit.y, mw.x, mw.y);
         boolean aimCursor = omni && player.shooting && unit.type.hasWeapons() && unit.type.faceTarget && !boosted;
 
         if(aimCursor){
@@ -2780,7 +2816,7 @@ public class DesktopInput extends InputHandler{
 
         unit.movePref(movement);
 
-        unit.aim(Core.input.mouseWorld());
+        unit.aim(mw);
         unit.controlWeapons(true, player.shooting && !boosted);
 
         player.boosting = Core.input.keyDown(Binding.boost);

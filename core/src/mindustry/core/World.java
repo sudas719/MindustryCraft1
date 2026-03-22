@@ -154,7 +154,9 @@ public class World{
     }
 
     public @Nullable Building buildWorld(float x, float y){
-        return build(Math.round(x / tilesize), Math.round(y / tilesize));
+        Building build = build(Math.round(x / tilesize), Math.round(y / tilesize));
+        if(build == null) return null;
+        return build.within(x, y, build.hitSize() / 2f) ? build : null;
     }
 
     public @Nullable Building buildWorld(Position pos){

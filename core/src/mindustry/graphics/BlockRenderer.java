@@ -29,6 +29,8 @@ public class BlockRenderer{
     public static final int crackRegions = 8, maxCrackSize = 7;
     public static boolean drawQuadtreeDebug = false;
     public static final Color shadowColor = new Color(0, 0, 0, 0.71f), blendShadowColor = Color.white.cpy().lerp(Color.black, shadowColor.a);
+    private static final float buildingShadowAlpha = 0.4f;
+    private static final float buildingShadowOffset = tilesize * 0.5f;
 
     private static final int initialRequests = 32 * 32;
 
@@ -114,6 +116,31 @@ public class BlockRenderer{
         });
     }
 
+    private boolean usesShadowBuffer(Tile tile){
+        return tile != null && tile.block().isStatic();
+    }
+
+    private void drawProjectedBuildingShadow(Building build){
+        float size = build.block.size * tilesize;
+        float half = size / 2f;
+        float x = build.x, y = build.y;
+        float offset = buildingShadowOffset;
+
+        Draw.color(0f, 0f, 0f, buildingShadowAlpha);
+
+        //Fixed light comes from the upper-right, so buildings project a crisp shadow to the lower-left.
+        Fill.polyBegin();
+        Fill.polyPoint(x - half - offset, y - half - offset);
+        Fill.polyPoint(x + half - offset, y - half - offset);
+        Fill.polyPoint(x + half, y - half);
+        Fill.polyPoint(x + half, y + half);
+        Fill.polyPoint(x - half, y + half);
+        Fill.polyPoint(x - half - offset, y + half - offset);
+        Fill.polyEnd();
+
+        Draw.color();
+    }
+
     public void reload(){
         blockTree = new BlockQuadtree(new Rect(0, 0, world.unitWidth(), world.unitHeight()));
         blockLightTree = new BlockLightQuadtree(new Rect(0, 0, world.unitWidth(), world.unitHeight()));
@@ -147,7 +174,7 @@ public class BlockRenderer{
                 tile.build.wasVisible = true;
             }
 
-            if(tile.block().displayShadow(tile) && (tile.build == null || tile.build.wasVisible)){
+            if(usesShadowBuffer(tile) && tile.block().displayShadow(tile) && (tile.build == null || tile.build.wasVisible)){
                 Fill.rect(tile.x + 0.5f, tile.y + 0.5f, 1, 1);
             }
         }
@@ -168,7 +195,7 @@ public class BlockRenderer{
         Draw.color(blendShadowColor);
 
         for(Tile tile : world.tiles){
-            if(tile.block().displayShadow(tile) && (tile.build == null || tile.build.wasVisible) && !(ignoreBuildings && !tile.block().isStatic()) && !(ignoreTerrain && tile.block().isStatic())){
+            if(usesShadowBuffer(tile) && tile.block().displayShadow(tile) && (tile.build == null || tile.build.wasVisible) && !(ignoreBuildings && !tile.block().isStatic()) && !(ignoreTerrain && tile.block().isStatic())){
                 Fill.rect(tile.x + 0.5f, tile.y + 0.5f, 1, 1);
             }
         }
@@ -353,7 +380,7 @@ public class BlockRenderer{
             for(Tile tile : shadowEvents){
                 if(tile == null) continue;
                 //draw white/shadow color depending on blend
-                Draw.color((!tile.block().displayShadow(tile) || (state.rules.fog && tile.build != null && !tile.build.wasVisible) || (ignoreBuildings && !tile.block().isStatic()) || (ignoreTerrain && tile.block().isStatic())) ? Color.white : blendShadowColor);
+                Draw.color((!usesShadowBuffer(tile) || !tile.block().displayShadow(tile) || (state.rules.fog && tile.build != null && !tile.build.wasVisible) || (ignoreBuildings && !tile.block().isStatic()) || (ignoreTerrain && tile.block().isStatic())) ? Color.white : blendShadowColor);
                 Fill.rect(tile.x + 0.5f, tile.y + 0.5f, 1, 1);
             }
 
@@ -468,61 +495,72 @@ public class BlockRenderer{
         Team pteam = player.team();
 
         drawDestroyed();
+        Drawf.beginBuildingShadowSuppression();
 
         //draw most tile stuff
-        for(int i = 0; i < tileview.size; i++){
-            Tile tile = tileview.items[i];
-            Block block = tile.block();
-            Building build = tile.build;
+        try{
+            for(int i = 0; i < tileview.size; i++){
+                Tile tile = tileview.items[i];
+                Block block = tile.block();
+                Building build = tile.build;
 
-            Draw.z(Layer.block);
-
-            boolean visible = (build == null || !build.inFogTo(pteam));
-
-            //comment wasVisible part for hiding?
-            if(block != Blocks.air && (visible || build.wasVisible)){
-                block.drawBase(tile);
-                Draw.reset();
                 Draw.z(Layer.block);
 
-                if(block.customShadow){
-                    Draw.z(Layer.block - 1);
-                    block.drawShadow(tile);
-                    Draw.z(Layer.block);
-                }
+                boolean visible = (build == null || !build.inFogTo(pteam));
 
-                if(build != null){
-                    if(visible){
-                        build.visibleFlags |= (1L << pteam.id);
-                        if(!build.wasVisible){
-                            build.wasVisible = true;
-                            updateShadow(build);
-                            renderer.minimap.update(tile);
-                        }
-                    }
-
-                    if(build.damaged()){
-                        Draw.z(Layer.blockCracks);
-                        build.drawCracks();
+                //comment wasVisible part for hiding?
+                if(block != Blocks.air && (visible || build.wasVisible)){
+                    if(build != null){
+                        Draw.z(Layer.block - 1f);
+                        drawProjectedBuildingShadow(build);
                         Draw.z(Layer.block);
                     }
 
-                    if(build.team != pteam){
-                        if(build.block.drawTeamOverlay){
-                            build.drawTeam();
+                    block.drawBase(tile);
+                    Draw.reset();
+                    Draw.z(Layer.block);
+
+                    if(block.customShadow && (build == null || block.isStatic())){
+                        Draw.z(Layer.block - 1);
+                        block.drawShadow(tile);
+                        Draw.z(Layer.block);
+                    }
+
+                    if(build != null){
+                        if(visible){
+                            build.visibleFlags |= (1L << pteam.id);
+                            if(!build.wasVisible){
+                                build.wasVisible = true;
+                                updateShadow(build);
+                                renderer.minimap.update(tile);
+                            }
+                        }
+
+                        if(build.damaged()){
+                            Draw.z(Layer.blockCracks);
+                            build.drawCracks();
                             Draw.z(Layer.block);
                         }
-                    }else if(renderer.drawStatus && block.hasConsumers){
-                        build.drawStatus();
+
+                        if(build.team != pteam){
+                            if(build.block.drawTeamOverlay){
+                                build.drawTeam();
+                                Draw.z(Layer.block);
+                            }
+                        }else if(renderer.drawStatus && block.hasConsumers){
+                            build.drawStatus();
+                        }
                     }
+                    Draw.reset();
+                }else if(!visible){
+                    //TODO here is the question: should buildings you lost sight of remain rendered? if so, how should this information be stored?
+                    //uncomment lines below for buggy persistence
+                    //if(build.wasVisible) updateShadow(build);
+                    //build.wasVisible = false;
                 }
-                Draw.reset();
-            }else if(!visible){
-                //TODO here is the question: should buildings you lost sight of remain rendered? if so, how should this information be stored?
-                //uncomment lines below for buggy persistence
-                //if(build.wasVisible) updateShadow(build);
-                //build.wasVisible = false;
             }
+        }finally{
+            Drawf.endBuildingShadowSuppression();
         }
 
         if(renderer.lights.enabled()){
@@ -566,7 +604,7 @@ public class BlockRenderer{
     }
 
     public void updateShadow(Building build){
-        if(build.tile == null) return;
+        if(build.tile == null || !usesShadowBuffer(build.tile)) return;
         int size = build.block.size, of = build.block.sizeOffset, tx = build.tile.x, ty = build.tile.y;
 
         for(int x = 0; x < size; x++){

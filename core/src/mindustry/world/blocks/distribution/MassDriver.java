@@ -227,7 +227,7 @@ public class MassDriver extends Block{
 
             Draw.z(Layer.turret);
 
-            Drawf.shadow(region,
+            Drawf.hardShadow(region,
             x + Angles.trnsx(rotation + 180f, reloadCounter * knockback) - (size / 2),
             y + Angles.trnsy(rotation + 180f, reloadCounter * knockback) - (size / 2), rotation - 90);
             Draw.rect(region,

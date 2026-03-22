@@ -48,6 +48,7 @@ public class Pathfinder implements Runnable{
     costNeoplasm = 3,
     costNone = 4,
     costHover = 5,
+    costGroundLarge = 6,
 
     maxCosts = 8;
 
@@ -89,7 +90,15 @@ public class Pathfinder implements Runnable{
     (team, tile) ->
     (((PathTile.team(tile) == team && !PathTile.teamPassable(tile)) || PathTile.team(tile) == 0) && PathTile.solid(tile)) ? impassable : 1 +
     PathTile.health(tile) * 5 +
-    (PathTile.nearSolid(tile) ? 2 : 0)
+    (PathTile.nearSolid(tile) ? 2 : 0),
+
+    //ground large (requires 1-tile clearance from solids)
+    (team, tile) ->
+    (PathTile.nearSolid(tile) || PathTile.allDeep(tile) || ((PathTile.team(tile) == team && !PathTile.teamPassable(tile)) || PathTile.team(tile) == 0) && PathTile.solid(tile)) ? impassable : 1 +
+    PathTile.health(tile) * 5 +
+    (PathTile.nearLiquid(tile) ? 6 : 0) +
+    (PathTile.deep(tile) ? 6000 : 0) +
+    (PathTile.damages(tile) ? 30 : 0)
     );
 
     /** tile data, see PathTileStruct - kept as a separate array for threading reasons */
@@ -282,14 +291,12 @@ public class Pathfinder implements Runnable{
 
     private boolean pathSolid(Tile tile){
         if(tile == null) return true;
-        if(tile.floor().solid) return true;
-        //ignore placed buildings for pathing; collision is handled by circle physics
-        if(tile.build != null) return false;
-        return tile.block().solid;
+        return tile.solid();
     }
 
     private boolean usesCliffBlocking(Flowfield path){
         return path.cost == costTypes.get(costGround)
+        || path.cost == costTypes.get(costGroundLarge)
         || path.cost == costTypes.get(costLegs)
         || path.cost == costTypes.get(costHover)
         || path.cost == costTypes.get(costNeoplasm);
@@ -465,7 +472,7 @@ public class Pathfinder implements Runnable{
             }
         }
 
-        if(current == null || tl == impassable || (path.cost == costTypes.items[costGround] && current.dangerous() && !tile.dangerous())) return tile;
+        if(current == null || tl == impassable || ((path.cost == costTypes.items[costGround] || path.cost == costTypes.items[costGroundLarge]) && current.dangerous() && !tile.dangerous())) return tile;
 
         return current;
     }

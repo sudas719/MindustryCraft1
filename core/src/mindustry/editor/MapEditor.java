@@ -393,6 +393,17 @@ public class MapEditor{
         tile.floorData = updated;
     }
 
+    public void clearHeightSlope(Tile tile){
+        if(tile == null) return;
+
+        byte oldFloorData = tile.floorData;
+        byte updated = HeightLayerData.withSlope(oldFloorData, false);
+
+        if(updated == oldFloorData) return;
+        addTileOp(TileOp.get(tile.x, tile.y, DrawOperation.opData, TileOpData.get(tile.data, tile.floorData, tile.overlayData)));
+        tile.floorData = updated;
+    }
+
     public void applyEnvironmentLightMarker(Tile tile, EnvironmentLightMarker marker){
         if(tile == null || marker == null || !EnvironmentLightData.canPlaceOn(tile)) return;
 

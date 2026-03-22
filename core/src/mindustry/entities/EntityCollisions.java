@@ -5,9 +5,11 @@ import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
+import mindustry.content.*;
 import mindustry.entities.units.BuildPlan;
 import mindustry.game.Teams.TeamData;
 import mindustry.gen.*;
+import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock;
 
@@ -21,6 +23,11 @@ public class EntityCollisions{
     //tile collisions
     private Vec2 vector = new Vec2(), l1 = new Vec2();
     private Rect r1 = new Rect(), r2 = new Rect(), r3 = new Rect(), tmp = new Rect();
+    private Unit unitResolve;
+    private float unitResolveRadius;
+    private boolean unitResolveChanged;
+    private final Cons<Unit> unitResolveCons = this::resolveUnitCircle;
+    private static float maxUnitHitSize = -1f;
 
     //entity collisions
     private Seq<Hitboxc> arrOut = new Seq<>(Hitboxc.class);
@@ -85,7 +92,7 @@ public class EntityCollisions{
             for(int dy = -r; dy <= r; dy++){
                 int wx = dx + tilex, wy = dy + tiley;
                 Tile tile = world.tile(wx, wy);
-                boolean buildSolid = tile != null && tile.build != null && (tile.block().solid || tile.build.checkSolid());
+                boolean buildSolid = tile != null && tile.buildSolid();
 
                 if(!buildSolid && solidCheck.solid(wx, wy)){
                     tmp.setSize(tilesize).setCenter(wx * tilesize, wy * tilesize);
@@ -104,6 +111,9 @@ public class EntityCollisions{
         }
 
         resolveBuildingCircles(entity);
+        if(resolveUnitCircles(entity)){
+            resolveBuildingCircles(entity);
+        }
         entity.trns(r1.x - r2.x, r1.y - r2.y);
     }
 
@@ -283,6 +293,61 @@ public class EntityCollisions{
         }
 
         r1.setCentered(vector.x, vector.y, r1.width, r1.height);
+    }
+
+    private boolean resolveUnitCircles(Hitboxc entity){
+        if(!(entity instanceof Unit unit)) return false;
+        if(UnitTypes.usesFlyingRules(unit)) return false;
+        if(!unit.type.physics) return false;
+        if(unit.collisionLayer() == -1) return false;
+
+        entity.hitbox(r3);
+        unitResolve = unit;
+        unitResolveRadius = r3.width / 2f;
+        unitResolveChanged = false;
+
+        vector.set(r1.x + r1.width / 2f, r1.y + r1.height / 2f);
+        float range = unitResolveRadius + maxUnitHitSize() / 2f;
+        tmp.setCentered(vector.x, vector.y, range * 2f, range * 2f);
+
+        Groups.unit.intersect(tmp.x, tmp.y, tmp.width, tmp.height, unitResolveCons);
+
+        if(unitResolveChanged){
+            r1.setCentered(vector.x, vector.y, r1.width, r1.height);
+        }
+        return unitResolveChanged;
+    }
+
+    private void resolveUnitCircle(Unit other){
+        if(other == null || other == unitResolve || !other.isValid()) return;
+        if(other.type == null || UnitTypes.usesFlyingRules(other) || !other.type.physics) return;
+        if(other.collisionLayer() == -1) return;
+
+        float otherRadius = other.hitSize / 2f;
+        float dx = vector.x - other.x, dy = vector.y - other.y;
+        float rs = unitResolveRadius + otherRadius;
+        float dst2 = dx * dx + dy * dy;
+        if(dst2 < rs * rs){
+            if(dst2 < 0.0001f){
+                l1.set(rs, 0f);
+            }else{
+                float dst = Mathf.sqrt(dst2);
+                l1.set(dx, dy).scl((rs - dst) / dst);
+            }
+            vector.add(l1);
+            unitResolveChanged = true;
+        }
+    }
+
+    private static float maxUnitHitSize(){
+        if(maxUnitHitSize > 0f) return maxUnitHitSize;
+        if(content == null) return maxUnitHitSize = tilesize;
+        float max = tilesize;
+        for(UnitType type : content.units()){
+            max = Math.max(max, type.hitSize);
+        }
+        maxUnitHitSize = max;
+        return maxUnitHitSize;
     }
 
     @SuppressWarnings("unchecked")

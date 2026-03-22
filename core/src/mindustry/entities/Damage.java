@@ -8,6 +8,7 @@ import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.util.pooling.*;
+import mindustry.ai.types.CommandAI;
 import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.game.EventType.*;
@@ -38,6 +39,34 @@ public class Damage{
     private static float maxDst = 0f;
     private static Building tmpBuilding;
     private static Unit tmpUnit;
+
+    private static @Nullable Teamc forcedFriendlyTarget(@Nullable Bullet source){
+        if(source == null || !(source.owner instanceof Unit unit)) return null;
+        if(unit.controller() instanceof CommandAI ai){
+            Teamc forced = ai.attackTarget;
+            if(forced != null && forced.team() == source.team) return forced;
+        }
+        if(unit.controller() instanceof Player player){
+            float mx = player.mouseX, my = player.mouseY;
+            Building build = world.buildWorld(mx, my);
+            if(build != null && build.team == source.team && Units.canTargetBuilding(source.type.collidesAir, source.type.collidesGround, build)){
+                return build;
+            }
+
+            float range = Math.max(8f, unit.hitSize);
+            Unit target = Units.closest(source.team, mx, my, range, u -> u != unit && u.isValid()
+                && u.checkTarget(source.type.collidesAir, source.type.collidesGround)
+                && u.within(mx, my, u.hitSize / 2f));
+            if(target != null){
+                return target;
+            }
+        }
+        return null;
+    }
+
+    private static boolean allowFriendlyDamage(@Nullable Bullet source){
+        return forcedFriendlyTarget(source) != null;
+    }
 
     public static void applySuppression(Team team, float x, float y, float range, float reload, float maxDelay, float applyParticleChance, @Nullable Position source){
         applySuppression(team, x, y, range, reload, maxDelay, applyParticleChance, source, Pal.sapBullet);
@@ -174,7 +203,7 @@ public class Damage{
         boolean found = World.raycast(b.tileX(), b.tileY(), World.toTile(b.x + vec.x), World.toTile(b.y + vec.y),
         (x, y) -> {
             furthest = world.tile(x, y);
-            if(furthest == null || furthest.team() == b.team) return false;
+            if(furthest == null || (!allowFriendlyDamage(b) && furthest.team() == b.team)) return false;
             Building build = furthest.build;
             return build != null && build.absorbLasers()
                 && intersectsCircle(b.x, b.y, b.x + vec.x, b.y + vec.y, build.x, build.y, build.hitSize() / 2f);
@@ -194,13 +223,14 @@ public class Damage{
         maxDst = Float.POSITIVE_INFINITY;
 
         distances.clear();
+        boolean allowFriendly = allowFriendlyDamage(b);
 
         if(b.type.collidesGround && b.type.collidesTiles){
             World.raycast(b.tileX(), b.tileY(), World.toTile(b.x + vec.x), World.toTile(b.y + vec.y), (x, y) -> {
                 //add distance to list so it can be processed
                 var build = world.build(x, y);
 
-                if(build != null && build.team != b.team && build.collide(b) && b.checkUnderBuild(build, x * tilesize, y * tilesize)
+                if(build != null && (allowFriendly || build.team != b.team) && build.collide(b) && b.checkUnderBuild(build, x * tilesize, y * tilesize)
                     && intersectsCircle(b.x, b.y, b.x + vec.x, b.y + vec.y, build.x, build.y, build.hitSize() / 2f)){
                     distances.add(b.dst(build));
 
@@ -214,13 +244,23 @@ public class Damage{
             });
         }
 
-        Units.nearbyEnemies(b.team, rect, u -> {
-            u.hitbox(hitrect);
+        if(allowFriendly){
+            Units.nearby(rect, u -> {
+                u.hitbox(hitrect);
 
-            if(u.checkTarget(b.type.collidesAir, b.type.collidesGround) && u.hittable() && Intersector.intersectSegmentRectangle(b.x, b.y, b.x + vec.x, b.y + vec.y, hitrect)){
-                distances.add(u.dst(b));
-            }
-        });
+                if(u.checkTarget(b.type.collidesAir, b.type.collidesGround) && u.hittable() && Intersector.intersectSegmentRectangle(b.x, b.y, b.x + vec.x, b.y + vec.y, hitrect)){
+                    distances.add(u.dst(b));
+                }
+            });
+        }else{
+            Units.nearbyEnemies(b.team, rect, u -> {
+                u.hitbox(hitrect);
+
+                if(u.checkTarget(b.type.collidesAir, b.type.collidesGround) && u.hittable() && Intersector.intersectSegmentRectangle(b.x, b.y, b.x + vec.x, b.y + vec.y, hitrect)){
+                    distances.add(u.dst(b));
+                }
+            });
+        }
 
         distances.sort();
 
@@ -246,7 +286,6 @@ public class Damage{
 
     /**
      * Damages entities in a line.
-     * Only enemies of the specified team are damaged.
      */
     public static void collideLine(Bullet hitter, Team team, float x, float y, float angle, float length, boolean large){
         collideLine(hitter, team, x, y, angle, length, large, true);
@@ -254,7 +293,6 @@ public class Damage{
 
     /**
      * Damages entities in a line.
-     * Only enemies of the specified team are damaged.
      */
     public static void collideLine(Bullet hitter, Team team, float x, float y, float angle, float length, boolean large, boolean laser){
         collideLine(hitter, team, x, y, angle, length, large, laser, -1);
@@ -262,11 +300,11 @@ public class Damage{
 
     /**
      * Damages entities in a line.
-     * Only enemies of the specified team are damaged.
      */
     public static void collideLine(Bullet hitter, Team team, float x, float y, float angle, float length, boolean large, boolean laser, int pierceCap){
         length = findLength(hitter, length, laser, pierceCap);
         hitter.fdata = length;
+        boolean allowFriendly = allowFriendlyDamage(hitter);
 
         collidedBlocks.clear();
         vec.trnsExact(angle, length);
@@ -276,10 +314,11 @@ public class Damage{
             seg2.set(seg1).add(vec);
             World.raycastEachWorld(x, y, seg2.x, seg2.y, (cx, cy) -> {
                 Building tile = world.build(cx, cy);
+                boolean canHitBuild = tile != null && (allowFriendly || tile.team != team);
                 boolean collide = tile != null
                     && intersectsCircle(seg1.x, seg1.y, seg2.x, seg2.y, tile.x, tile.y, tile.hitSize() / 2f)
                     && tile.collide(hitter) && hitter.checkUnderBuild(tile, cx * tilesize, cy * tilesize)
-                    && ((tile.team != team && tile.collide(hitter)) || hitter.type.testCollision(hitter, tile)) && collidedBlocks.add(tile.pos());
+                    && ((canHitBuild && tile.collide(hitter)) || hitter.type.testCollision(hitter, tile)) && collidedBlocks.add(tile.pos());
                 if(collide){
                     collided.add(collidePool.obtain().set(cx * tilesize, cy * tilesize, tile));
 
@@ -304,17 +343,31 @@ public class Damage{
         rect.setPosition(x, y).setSize(vec.x, vec.y).normalize().grow(expand * 2f);
         float x2 = vec.x + x, y2 = vec.y + y;
 
-        Units.nearbyEnemies(team, rect, u -> {
-            if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
-                u.hitbox(hitrect);
+        if(allowFriendly){
+            Units.nearby(rect, u -> {
+                if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
+                    u.hitbox(hitrect);
 
-                Vec2 vec = Geometry.raycastRect(x, y, x2, y2, hitrect.grow(expand * 2));
+                    Vec2 vec = Geometry.raycastRect(x, y, x2, y2, hitrect.grow(expand * 2));
 
-                if(vec != null){
-                    collided.add(collidePool.obtain().set(vec.x, vec.y, u));
+                    if(vec != null){
+                        collided.add(collidePool.obtain().set(vec.x, vec.y, u));
+                    }
                 }
-            }
-        });
+            });
+        }else{
+            Units.nearbyEnemies(team, rect, u -> {
+                if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
+                    u.hitbox(hitrect);
+
+                    Vec2 vec = Geometry.raycastRect(x, y, x2, y2, hitrect.grow(expand * 2));
+
+                    if(vec != null){
+                        collided.add(collidePool.obtain().set(vec.x, vec.y, u));
+                    }
+                }
+            });
+        }
 
         int[] collideCount = {0};
         collided.sort(c -> hitter.dst2(c.x, c.y));
@@ -327,7 +380,7 @@ public class Damage{
                 }else if(c.target instanceof Building tile){
                     float health = tile.health;
 
-                    if(tile.team != team && tile.collide(hitter)){
+                    if((allowFriendly || tile.team != team) && tile.collide(hitter)){
                         tile.collision(hitter);
                         hitter.type.hit(hitter, c.x, c.y);
                         collideCount[0]++;
@@ -350,6 +403,7 @@ public class Damage{
      * Only enemies of the specified team are damaged.
      */
     public static void collidePoint(Bullet hitter, Team team, Effect effect, float x, float y){
+        boolean allowFriendly = allowFriendlyDamage(hitter);
 
         if(hitter.type.collidesGround){
             Building build = world.build(World.toTile(x), World.toTile(y));
@@ -357,7 +411,7 @@ public class Damage{
             if(build != null && hitter.damage > 0 && build.within(x, y, build.hitSize() / 2f)){
                 float health = build.health;
 
-                if(build.team != team && build.collide(hitter)){
+                if((allowFriendly || build.team != team) && build.collide(hitter)){
                     build.collision(hitter);
                     hitter.type.hit(hitter, x, y);
                 }
@@ -369,12 +423,21 @@ public class Damage{
             }
         }
 
-        Units.nearbyEnemies(team, rect.setCentered(x, y, 1f), u -> {
-            if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
-                u.collision(hitter, x, y);
-                hitter.collision(u, x, y);
-            }
-        });
+        if(allowFriendly){
+            Units.nearby(rect.setCentered(x, y, 1f), u -> {
+                if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
+                    u.collision(hitter, x, y);
+                    hitter.collision(u, x, y);
+                }
+            });
+        }else{
+            Units.nearbyEnemies(team, rect.setCentered(x, y, 1f), u -> {
+                if(u.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) && u.hittable()){
+                    u.collision(hitter, x, y);
+                    hitter.collision(u, x, y);
+                }
+            });
+        }
     }
 
     /**
@@ -384,13 +447,14 @@ public class Damage{
     public static Healthc linecast(Bullet hitter, float x, float y, float angle, float length){
         vec.trns(angle, length);
         float x2 = x + vec.x, y2 = y + vec.y;
+        boolean allowFriendly = allowFriendlyDamage(hitter);
 
         tmpBuilding = null;
 
         if(hitter.type.collidesGround){
             World.raycastEachWorld(x, y, x2, y2, (cx, cy) -> {
                 Building tile = world.build(cx, cy);
-                if(tile != null && tile.team != hitter.team && intersectsCircle(x, y, x2, y2, tile.x, tile.y, tile.hitSize() / 2f)){
+                if(tile != null && (allowFriendly || tile.team != hitter.team) && intersectsCircle(x, y, x2, y2, tile.x, tile.y, tile.hitSize() / 2f)){
                     tmpBuilding = tile;
                     return true;
                 }
@@ -419,22 +483,41 @@ public class Damage{
 
         tmpUnit = null;
 
-        Units.nearbyEnemies(hitter.team, rect, e -> {
-            if((tmpUnit != null && e.dst2(x, y) > tmpUnit.dst2(x, y)) || !e.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) || !e.targetable(hitter.team)) return;
+        if(allowFriendly){
+            Units.nearby(rect, e -> {
+                if((tmpUnit != null && e.dst2(x, y) > tmpUnit.dst2(x, y)) || !e.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround)) return;
 
-            e.hitbox(hitrect);
-            Rect other = hitrect;
-            other.y -= expand;
-            other.x -= expand;
-            other.width += expand * 2;
-            other.height += expand * 2;
+                e.hitbox(hitrect);
+                Rect other = hitrect;
+                other.y -= expand;
+                other.x -= expand;
+                other.width += expand * 2;
+                other.height += expand * 2;
 
-            Vec2 vec = Geometry.raycastRect(x, y, x2, y2, other);
+                Vec2 vec = Geometry.raycastRect(x, y, x2, y2, other);
 
-            if(vec != null){
-                tmpUnit = e;
-            }
-        });
+                if(vec != null){
+                    tmpUnit = e;
+                }
+            });
+        }else{
+            Units.nearbyEnemies(hitter.team, rect, e -> {
+                if((tmpUnit != null && e.dst2(x, y) > tmpUnit.dst2(x, y)) || !e.checkTarget(hitter.type.collidesAir, hitter.type.collidesGround) || !e.targetable(hitter.team)) return;
+
+                e.hitbox(hitrect);
+                Rect other = hitrect;
+                other.y -= expand;
+                other.x -= expand;
+                other.width += expand * 2;
+                other.height += expand * 2;
+
+                Vec2 vec = Geometry.raycastRect(x, y, x2, y2, other);
+
+                if(vec != null){
+                    tmpUnit = e;
+                }
+            });
+        }
 
         if(tmpBuilding != null && tmpUnit != null){
             if(Mathf.dst2(x, y, tmpBuilding.getX(), tmpBuilding.getY()) <= Mathf.dst2(x, y, tmpUnit.getX(), tmpUnit.getY())){
@@ -530,7 +613,7 @@ public class Damage{
     /** Damages all entities and blocks in a radius that are enemies of the team. */
     public static void damage(Team team, float x, float y, float radius, float damage, boolean complete, boolean air, boolean ground, boolean scaled, @Nullable Bullet source){
         Cons<Unit> cons = unit -> {
-            if(unit.team == team  || !unit.checkTarget(air, ground) || !unit.hittable() || !unit.within(x, y, radius + (scaled ? unit.hitSize / 2f : 0f))){
+            if(!unit.checkTarget(air, ground) || !unit.hittable() || !unit.within(x, y, radius + (scaled ? unit.hitSize / 2f : 0f))){
                 return;
             }
 
@@ -556,8 +639,9 @@ public class Damage{
             }
         };
 
+        boolean allowFriendly = allowFriendlyDamage(source);
         rect.setSize(radius * 2).setCenter(x, y);
-        if(team != null){
+        if(team != null && !allowFriendly){
             Units.nearbyEnemies(team, rect, cons);
         }else{
             Units.nearby(rect, cons);
@@ -584,7 +668,7 @@ public class Damage{
             //spawned inside a multiblock. this means that damage needs to be dealt directly.
             //why? because otherwise the building would absorb everything in one cell, which means much less damage than a nearby explosion.
             //this needs to be compensated
-            if(in != null && in.team != team && in.block.size > 1 && in.health > damage){
+            if(in != null && in.block.size > 1 && in.health > damage){
                 //deal the damage of an entire side, to be equivalent with maximum 'standard' damage
                 float d = damage * Math.min((in.block.size), baseRadius * 0.4f);
                 if(source != null){
@@ -617,7 +701,7 @@ public class Damage{
 
                 while(startX != endX || startY != endY){
                     var build = world.build(startX, startY);
-                    if(build != null && build.team != team){
+                    if(build != null){
                         //damage dealt at circle edge
                         float edgeScale = 0.6f;
                         float mult = (1f-(Mathf.dst2(startX, startY, x, y) / rad2) + edgeScale) / (1f + edgeScale);
@@ -664,7 +748,7 @@ public class Damage{
         for(int dx = -trad; dx <= trad; dx++){
             for(int dy = -trad; dy <= trad; dy++){
                 Tile tile = world.tile(Math.round(x / tilesize) + dx, Math.round(y / tilesize) + dy);
-                if(tile != null && tile.build != null && (team == null || team != tile.team()) && dx*dx + dy*dy <= trad*trad){
+                if(tile != null && tile.build != null && dx*dx + dy*dy <= trad*trad){
                     tile.build.damage(team, damage);
                 }
             }

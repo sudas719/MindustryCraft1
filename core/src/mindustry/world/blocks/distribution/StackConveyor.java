@@ -185,7 +185,7 @@ public class StackConveyor extends Block implements Autotiler{
 
             //item
             float size = itemSize * Mathf.lerp(Math.min((float)items.total() / itemCapacity, 1), 1f, 0.4f);
-            Drawf.shadow(Tmp.v1.x, Tmp.v1.y, size * 1.2f);
+            Drawf.hardShadow(Tmp.v1.x, Tmp.v1.y, size * 1.2f, 1f);
             Draw.rect(lastItem.fullIcon, Tmp.v1.x, Tmp.v1.y, size, size, 0);
         }
 

@@ -4,6 +4,7 @@ import arc.math.*;
 import arc.math.geom.*;
 import arc.util.*;
 import mindustry.*;
+import mindustry.ai.*;
 import mindustry.async.*;
 import mindustry.content.*;
 import mindustry.entities.*;
@@ -143,11 +144,11 @@ public class AIController implements UnitController{
     }
 
     public void pathfind(int pathTarget, boolean stopAtTargetTile, boolean avoidance){
-        int costType = unit.type.flowfieldPathType;
+        int costType = UnitTypes.vikingIsMechMode(unit) ? Pathfinder.costGround : unit.type.flowfieldPathType;
 
         Tile tile = unit.tileOn();
         if(tile == null) return;
-        Tile targetTile = pathfinder.getField(unit.team, costType, pathTarget).getNextTile(tile, avoidance && unit.collisionLayer() == PhysicsProcess.layerGround ? unit.id : 0);
+        Tile targetTile = pathfinder.getField(unit.team, costType, pathTarget).getNextTile(tile, 0);
 
         if((tile == targetTile && stopAtTargetTile) || !unit.canPass(targetTile.x, targetTile.y)) return;
 

@@ -145,12 +145,7 @@ public class UnitCargoLoader extends Block{
         @Override
         public void draw(){
             Draw.rect(block.region, x, y);
-            if(unit == null){
-                Draw.draw(Layer.blockOver, () -> {
-                    //TODO make sure it looks proper
-                    Drawf.construct(this, unitType.fullIcon, 0f, buildProgress, warmup, totalProgress);
-                });
-            }else{
+            if(unit != null){
                 Draw.z(Layer.bullet - 0.01f);
                 Draw.color(polyColor);
                 Lines.stroke(polyStroke * readyness);

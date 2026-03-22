@@ -64,19 +64,33 @@ public class ControlPathfinder implements Runnable{
     (!PathTile.liquid(tile) ? 6000 : 1) +
     //impassable synthetic enemy block
     ((PathTile.team(tile) != team && PathTile.team(tile) != 0) && PathTile.solid(tile) ? wallImpassableCap : 0) +
-    (PathTile.nearGround(tile) || PathTile.nearSolid(tile) ? 6 : 0);
+    (PathTile.nearGround(tile) || PathTile.nearSolid(tile) ? 6 : 0),
+
+    //ground large (requires 1-tile clearance from solids)
+    costGroundLarge = (team, tile) ->
+    PathTile.nearSolid(tile) ? impassable :
+    //impassable same-team or neutral block
+    PathTile.solid(tile) && ((PathTile.team(tile) == team && !PathTile.teamPassable(tile)) || PathTile.team(tile) == 0) ? impassable :
+    //impassable synthetic enemy block
+    ((PathTile.team(tile) != team && PathTile.team(tile) != 0) && PathTile.solid(tile) ? wallImpassableCap : 0) +
+    1 +
+    (PathTile.nearLiquid(tile) ? 8 : 0) +
+    (PathTile.deep(tile) ? 6000 : 0) +
+    (PathTile.damages(tile) ? 50 : 0);
 
     public static final int
     costIdGround = 0,
     costIdHover = 1,
     costIdLegs = 2,
-    costIdNaval = 3;
+    costIdNaval = 3,
+    costIdGroundLarge = 4;
 
     public static final Seq<PathCost> costTypes = Seq.with(
     costGround,
     costHover,
     costLegs,
-    costNaval
+    costNaval,
+    costGroundLarge
     );
 
     private static final long maxUpdate = Time.millisToNanos(12);
@@ -169,6 +183,8 @@ public class ControlPathfinder implements Runnable{
         volatile boolean invalidated = false;
         //old field assigned before everything was recomputed
         @Nullable volatile FieldCache oldCache;
+        volatile int fallbackPos = -1;
+        volatile boolean usingFallback = false;
 
         boolean lastRaycastResult = false;
         int lastRaycastTile, lastWorldUpdate;
@@ -182,6 +198,9 @@ public class ControlPathfinder implements Runnable{
             this.destination = destination;
         }
     }
+
+    private final IntQueue fallbackFrontier = new IntQueue();
+    private final IntSet fallbackVisited = new IntSet();
 
     static class FieldCache{
         final PathCost cost;
@@ -1013,6 +1032,11 @@ public class ControlPathfinder implements Runnable{
     }
 
     private void initializePathRequest(PathRequest request, int team, int costId, int unitX, int unitY, int goalX, int goalY){
+        request.usingFallback = false;
+        request.fallbackPos = -1;
+        request.oldCache = null;
+        request.notFound = false;
+
         PathCost pcost = idToCost(costId);
 
         int goalPos = (goalX + goalY * wwidth);
@@ -1030,10 +1054,33 @@ public class ControlPathfinder implements Runnable{
 
         //no result found, bail out.
         if(nodePath == null){
-            request.notFound = true;
-            //stop following the old path, it's not relevant now, it's just not possible to reach the destination anymore
-            request.oldCache = null;
-            return;
+            int fallback = findClosestReachableTile(team, pcost, unitX, unitY, goalX, goalY);
+            if(fallback != -1){
+                int fallbackX = fallback % wwidth, fallbackY = fallback / wwidth;
+                request.usingFallback = true;
+                request.fallbackPos = fallback;
+
+                int fallbackNode = findClosestNode(team, costId, fallbackX, fallbackY);
+                if(fallbackNode == Integer.MAX_VALUE){
+                    request.notFound = true;
+                    return;
+                }
+
+                nodePath = clusterAstar(request, costId, node, fallbackNode);
+                if(nodePath == null){
+                    request.notFound = true;
+                    return;
+                }
+
+                goalPos = fallback;
+                goalX = fallbackX;
+                goalY = fallbackY;
+            }else{
+                request.notFound = true;
+                //stop following the old path, it's not relevant now, it's just not possible to reach the destination anymore
+                request.oldCache = null;
+                return;
+            }
         }
 
         FieldCache cache = fields.get(FieldIndex.get(goalPos, costId, team));
@@ -1076,6 +1123,49 @@ public class ControlPathfinder implements Runnable{
                 }
             }
         }
+
+        if(request.usingFallback){
+            request.oldCache = cache;
+        }
+    }
+
+    private int findClosestReachableTile(int team, PathCost cost, int startX, int startY, int goalX, int goalY){
+        if(startX < 0 || startY < 0 || startX >= wwidth || startY >= wheight) return -1;
+        int startPos = startX + startY * wwidth;
+        if(!passable(team, cost, startPos)) return -1;
+
+        fallbackFrontier.clear();
+        fallbackVisited.clear();
+
+        fallbackFrontier.addLast(startPos);
+        fallbackVisited.add(startPos);
+
+        int best = startPos;
+        int dx0 = startX - goalX, dy0 = startY - goalY;
+        float bestDst = dx0 * dx0 + dy0 * dy0;
+
+        while(fallbackFrontier.size > 0){
+            int pos = fallbackFrontier.removeFirst();
+            int x = pos % wwidth, y = pos / wwidth;
+            int dx = x - goalX, dy = y - goalY;
+            float dst = dx * dx + dy * dy;
+            if(dst < bestDst){
+                bestDst = dst;
+                best = pos;
+            }
+
+            for(int i = 0; i < 4; i++){
+                int nx = x + Geometry.d4[i].x, ny = y + Geometry.d4[i].y;
+                if(nx < 0 || ny < 0 || nx >= wwidth || ny >= wheight) continue;
+                int npos = nx + ny * wwidth;
+                if(fallbackVisited.contains(npos)) continue;
+                if(!passable(team, cost, npos)) continue;
+                fallbackVisited.add(npos);
+                fallbackFrontier.addLast(npos);
+            }
+        }
+
+        return best;
     }
 
     private PathCost idToCost(int costId){
@@ -1109,7 +1199,6 @@ public class ControlPathfinder implements Runnable{
         actualDestX = World.toTile(destination.x),
         actualDestY = World.toTile(destination.y),
         actualDestPos = actualDestX + actualDestY * wwidth,
-        initialCost = tileOn == null ? 0 : cost.getCost(team, pathfinder.tiles[tileOn.array()]),
         destPos = destX + destY * wwidth;
 
         PathRequest request = unitRequests.get(unit);
@@ -1125,7 +1214,7 @@ public class ControlPathfinder implements Runnable{
         if(lastRaycastTile != packedPos){
             //near the destination, standard raycasting tends to break down, so use the more permissive 'near' variant that doesn't take into account edges of walls
             raycastResult = unit.within(destination, tilesize * 2.5f) ?
-                !raycastRect(initialCost, unit.x, unit.y, destination.x, destination.y, team, cost, tileX, tileY, actualDestX, actualDestY, tileRectSize) :
+                !raycastRect(unit.x, unit.y, destination.x, destination.y, team, cost, tileX, tileY, actualDestX, actualDestY, tileRectSize) :
                 !raycast(team, cost, tileX, tileY, actualDestX, actualDestY);
 
             if(request != null){
@@ -1156,7 +1245,11 @@ public class ControlPathfinder implements Runnable{
                 fieldCache = fields.get(fieldKey);
             }catch(ArrayIndexOutOfBoundsException ignored){ //TODO fix this, rare crash due to remove() elsewhere
             }
-            if(fieldCache == null) fieldCache = request.oldCache;
+            if(request.usingFallback && request.oldCache != null){
+                fieldCache = request.oldCache;
+            }else if(fieldCache == null){
+                fieldCache = request.oldCache;
+            }
 
             if(fieldCache != null && tileOn != null){
                 FieldCache old = request.oldCache;
@@ -1214,7 +1307,7 @@ public class ControlPathfinder implements Runnable{
                         if(!(current == null || (unit.type.canDrown && current.dangerous() && !tileOn.dangerous()))){
 
                             //when anyNearSolid is false, no solid tiles have been encountered anywhere so far, so raycasting is a waste of time
-                            if(anyNearSolid && !(tileOn.dangerous() && costId == costIdGround) && raycastRect(initialCost, unit.x, unit.y, current.x * tilesize, current.y * tilesize, team, cost, initialTileOn.x, initialTileOn.y, current.x, current.y, tileRectSize)){
+                            if(anyNearSolid && !(tileOn.dangerous() && (costId == costIdGround || costId == costIdGroundLarge)) && raycastRect(unit.x, unit.y, current.x * tilesize, current.y * tilesize, team, cost, initialTileOn.x, initialTileOn.y, current.x, current.y, tileRectSize)){
 
                                 //TODO this may be a mistake
                                 if(tileOn == initialTileOn){
@@ -1376,15 +1469,26 @@ public class ControlPathfinder implements Runnable{
         return 0;
     }
 
-    private static boolean overlap(int initialCost, int team, PathCost type, int x, int y, float startX, float startY, float endX, float endY, float rectSize){
+    private static boolean overlap(int team, PathCost type, int x, int y, float startX, float startY, float endX, float endY, float rectSize){
         if(x < 0 || y < 0 || x >= wwidth || y >= wheight) return false;
-        if(!nearPassable(initialCost, team, type, x + y * wwidth)){
+
+        Tile tile = world.tile(x, y);
+        if(tile == null) return false;
+
+        Building build = tile.build;
+        if(build != null && (tile.block().solid || build.checkSolid())){
+            float unitRadius = Math.max(0f, (rectSize - tilesize) / 2f);
+            float radius = build.hitSize() / 2f + unitRadius;
+            return Intersector.intersectSegmentCircle(Tmp.v1.set(startX, startY), Tmp.v2.set(endX, endY), Tmp.v3.set(build.x, build.y), radius * radius);
+        }
+
+        if(!passable(team, type, x + y * wwidth)){
             return Intersector.intersectSegmentRectangleFast(startX, startY, endX, endY, x * tilesize - rectSize/2f, y * tilesize - rectSize/2f, rectSize, rectSize);
         }
         return false;
     }
 
-    private static boolean raycastRect(int initialCost, float startX, float startY, float endX, float endY, int team, PathCost type, int x1, int y1, int x2, int y2, float rectSize){
+    private static boolean raycastRect(float startX, float startY, float endX, float endY, int team, PathCost type, int x1, int y1, int x2, int y2, float rectSize){
         int ww = wwidth, wh = wheight;
         int x = x1, dx = Math.abs(x2 - x), sx = x < x2 ? 1 : -1;
         int y = y1, dy = Math.abs(y2 - y), sy = y < y2 ? 1 : -1;
@@ -1392,11 +1496,11 @@ public class ControlPathfinder implements Runnable{
 
         while(x >= 0 && y >= 0 && x < ww && y < wh){
             if(
-            !nearPassable(initialCost, team, type, x + y * wwidth) ||
-            overlap(initialCost,team, type, x + 1, y, startX, startY, endX, endY, rectSize) ||
-            overlap(initialCost,team, type, x - 1, y, startX, startY, endX, endY, rectSize) ||
-            overlap(initialCost,team, type, x, y + 1, startX, startY, endX, endY, rectSize) ||
-            overlap(initialCost,team, type, x, y - 1, startX, startY, endX, endY, rectSize)
+            overlap(team, type, x, y, startX, startY, endX, endY, rectSize) ||
+            overlap(team, type, x + 1, y, startX, startY, endX, endY, rectSize) ||
+            overlap(team, type, x - 1, y, startX, startY, endX, endY, rectSize) ||
+            overlap(team, type, x, y + 1, startX, startY, endX, endY, rectSize) ||
+            overlap(team, type, x, y - 1, startX, startY, endX, endY, rectSize)
             ) return true;
 
             if(x == x2 && y == y2) return false;
@@ -1424,12 +1528,7 @@ public class ControlPathfinder implements Runnable{
 
     private static boolean passable(int team, PathCost cost, int pos){
         int amount = cost.getCost(team, pathfinder.tiles[pos]);
-        return amount != impassable && amount < solidCap;
-    }
-
-    private static boolean nearPassable(int initialCost, int team, PathCost cost, int pos){
-        int amount = cost.getCost(team, pathfinder.tiles[pos]);
-        return amount != impassable && amount < Math.min(Math.max(50, initialCost + 1), solidCap);
+        return amount != impassable && amount < solidCap && !(cost == costNaval && amount >= 6000);
     }
 
     private static boolean solid(int team, PathCost type, int x, int y){

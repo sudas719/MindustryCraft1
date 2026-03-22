@@ -128,7 +128,7 @@ public class LaunchPad extends Block{
                 Draw.reset();
             }
 
-            Drawf.shadow(x, y, size * tilesize);
+            Drawf.hardShadow(x, y, size * tilesize, 1f);
             Draw.rect(podRegion, x, y);
 
             Draw.reset();
@@ -263,9 +263,11 @@ public class LaunchPad extends Block{
 
             Tmp.v1.trns(225f, fin(Interp.pow3In) * 250f);
 
-            Draw.z(Layer.flyingUnit + 1);
-            Draw.color(0, 0, 0, 0.22f * alpha);
-            Draw.rect(region, cx + Tmp.v1.x, cy + Tmp.v1.y, rw, rh, rotation);
+            if(!Drawf.buildingShadowsSuppressed()){
+                Draw.z(Layer.flyingUnit + 1);
+                Draw.color(0, 0, 0, 0.22f * alpha);
+                Draw.rect(region, cx + Tmp.v1.x, cy + Tmp.v1.y, rw, rh, rotation);
+            }
 
             Draw.reset();
         }

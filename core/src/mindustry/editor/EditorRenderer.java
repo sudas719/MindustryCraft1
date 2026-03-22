@@ -29,6 +29,7 @@ public class EditorRenderer implements Disposable{
     private Shader shader;
     private TextureRegion firstLayerRegion, secondLayerRegion, thirdLayerRegion, fourthLayerRegion, slopeLayerRegion;
     private TextureRegion environmentLightRegion;
+    private TextureRegion noBuildOverlayRegion;
 
     public void resize(int width, int height){
         dispose();
@@ -146,6 +147,15 @@ public class EditorRenderer implements Disposable{
             Draw.color();
             Draw.proj(Tmp.m2);
         }
+        if(editor.showCliff || editor.showHeight){
+            Draw.proj(Core.camera.mat);
+            Draw.color();
+            Draw.blend();
+            Draw.shader();
+            drawNoBuildOverlay();
+            Draw.color();
+            Draw.proj(Tmp.m2);
+        }
         Draw.proj(Core.camera.mat);
         Draw.color();
         Draw.blend();
@@ -260,6 +270,19 @@ public class EditorRenderer implements Disposable{
         Draw.color();
     }
 
+    private void drawNoBuildOverlay(){
+        if(Blocks.noBuildOverlay == null) return;
+        ensureNoBuildOverlayRegion();
+        if(noBuildOverlayRegion == null || !noBuildOverlayRegion.found()) return;
+
+        for(Tile tile : world.tiles){
+            if(tile == null) continue;
+            if(tile.overlay() == Blocks.noBuildOverlay){
+                Draw.rect(noBuildOverlayRegion, tile.worldx(), tile.worldy(), tilesize, tilesize);
+            }
+        }
+    }
+
     private void ensureHeightRegions(){
         if(firstLayerRegion == null || !firstLayerRegion.found()){
             firstLayerRegion = findHeightRegion("firstLayer", "layer-firstLayer", "layer/firstLayer", "first-layer");
@@ -275,6 +298,17 @@ public class EditorRenderer implements Disposable{
         }
         if(slopeLayerRegion == null || !slopeLayerRegion.found()){
             slopeLayerRegion = findHeightRegion("Slope", "slope", "layer-Slope", "layer-slope", "layer/Slope");
+        }
+    }
+
+    private void ensureNoBuildOverlayRegion(){
+        if(noBuildOverlayRegion == null || !noBuildOverlayRegion.found()){
+            if(Blocks.noBuildOverlay != null){
+                noBuildOverlayRegion = Blocks.noBuildOverlay.uiIcon;
+                if(noBuildOverlayRegion == null || !noBuildOverlayRegion.found()){
+                    noBuildOverlayRegion = Blocks.noBuildOverlay.region;
+                }
+            }
         }
     }
 

@@ -3,10 +3,12 @@ package mindustry.core;
 import arc.*;
 import arc.assets.loaders.TextureLoader.*;
 import arc.files.*;
+import arc.func.*;
 import arc.graphics.*;
 import arc.graphics.Texture.*;
 import arc.graphics.g2d.*;
 import arc.graphics.gl.*;
+import arc.input.*;
 import arc.math.*;
 import arc.math.geom.*;
 import arc.scene.*;
@@ -47,6 +49,10 @@ public class Renderer implements ApplicationListener{
     public float minZoom = 1.5f, maxZoom = 6f;
     /** gameplay max visible span, in tiles (landscape width ~= 40 tiles) */
     private static final float gameplayMaxVisibleTiles = 40f;
+    /** spectator max visible span override, in tiles; <0 disables */
+    private float spectatorMaxVisibleTiles = -1f;
+    /** gameplay min visible span, in tiles (max zoom-in width ~= 20 tiles) */
+    private static final float gameplayMinVisibleTiles = 20f;
     /** base gameplay zoom range; intentionally wider than cutscene range */
     private static final float minZoomInGameBase = 0.35f, maxZoomInGameBase = 12f;
 
@@ -77,6 +83,37 @@ public class Renderer implements ApplicationListener{
     private boolean launching;
     private Vec2 camShakeOffset = new Vec2();
     private int glErrors;
+    private float viewRotation;
+    private float viewRotationFrom;
+    private float viewRotationTo;
+    private float viewRotationTime;
+    private float viewRotationDuration;
+    private boolean viewRotationKeyDown;
+    private static final float viewRotationTarget = -45f;
+    private static final float viewRotationSpeed = 90f;
+    private float viewRotationCos = 1f;
+    private float viewRotationSin = 0f;
+    private final FrameBuffer viewRotationBuffer = new FrameBuffer();
+    private boolean viewRotationRendering;
+    private final Mat viewRotationInv = new Mat();
+    private int viewRotationBufferW;
+    private int viewRotationBufferH;
+    private final Func<Vec2, Vec2> viewRotationTransform = screen -> {
+        float cx = graphics.getWidth() / 2f;
+        float cy = graphics.getHeight() / 2f;
+        float bx = viewRotationBufferW > 0 ? viewRotationBufferW / 2f : cx;
+        float by = viewRotationBufferH > 0 ? viewRotationBufferH / 2f : cy;
+        float dx = screen.x - cx;
+        float dy = screen.y - cy;
+        float cos = viewRotationCos;
+        float sin = viewRotationSin;
+        float rx = dx * cos + dy * sin;
+        float ry = -dx * sin + dy * cos;
+        screen.x = bx + rx;
+        screen.y = by + ry;
+        return screen;
+    };
+    private final Object viewRotationTransformProxy = ArcCompat.wrapScreenToWorld(viewRotationTransform);
 
     public Renderer(){
         camera = new Camera();
@@ -216,6 +253,26 @@ public class Renderer implements ApplicationListener{
             graphics.clear(Color.black);
         }else{
             minimap.update();
+            updateViewRotation();
+            if(Mathf.zero(viewRotation)){
+                ArcCompat.applyScreenToWorld(null, 0f, 0f, null);
+                viewRotationBufferW = 0;
+                viewRotationBufferH = 0;
+            }else{
+                float rad = Math.abs(viewRotation) * Mathf.degRad;
+                float cos = Math.abs(Mathf.cos(rad));
+                float sin = Math.abs(Mathf.sin(rad));
+                int bw = Mathf.ceil(graphics.getWidth() * cos + graphics.getHeight() * sin);
+                int bh = Mathf.ceil(graphics.getWidth() * sin + graphics.getHeight() * cos);
+                if(bw < 2) bw = 2;
+                if(bh < 2) bh = 2;
+                viewRotationBufferW = bw;
+                viewRotationBufferH = bh;
+                float vw = bw / camerascale;
+                float vh = bh / camerascale;
+                viewRotationInv.setOrtho(camera.position.x - vw / 2f, camera.position.y - vh / 2f, vw, vh).inv();
+                ArcCompat.applyScreenToWorld(viewRotationTransformProxy, bw, bh, viewRotationInv);
+            }
 
             if(shakeTime > 0){
                 float intensity = shakeIntensity * (settings.getInt("screenshake", 4) / 4f) * 0.75f;
@@ -229,11 +286,17 @@ public class Renderer implements ApplicationListener{
                 shakeIntensity = 0f;
             }
 
-            if(renderer.pixelate){
-                pixelator.drawPixelate();
+            if(Mathf.zero(viewRotation)){
+                if(renderer.pixelate){
+                    pixelator.drawPixelate();
+                }else{
+                    draw();
+                }
             }else{
-                draw();
+                drawRotated();
             }
+
+            control.input.drawScreenSelectionRect();
 
             camera.position.sub(camShakeOffset);
         }
@@ -264,6 +327,45 @@ public class Renderer implements ApplicationListener{
         minimap.updateAll();
     }
 
+    private void updateViewRotation(){
+        if(headless || state.isMenu()){
+            viewRotation = 0f;
+            viewRotationFrom = 0f;
+            viewRotationTo = 0f;
+            viewRotationTime = 0f;
+            viewRotationDuration = 0f;
+            viewRotationKeyDown = false;
+            viewRotationCos = 1f;
+            viewRotationSin = 0f;
+            return;
+        }
+
+        boolean allow = !ui.chatfrag.shown() && !scene.hasDialog() && !scene.hasField();
+        boolean keyDown = allow && (input.keyDown(KeyCode.del) || input.keyDown(KeyCode.forwardDel) || input.keyDown(KeyCode.backspace));
+
+        if(keyDown != viewRotationKeyDown){
+            viewRotationKeyDown = keyDown;
+            viewRotationFrom = viewRotation;
+            viewRotationTo = keyDown ? viewRotationTarget : 0f;
+            viewRotationTime = 0f;
+            float dist = Math.abs(viewRotationTo - viewRotationFrom);
+            viewRotationDuration = Math.max(0.05f, dist / viewRotationSpeed);
+        }
+
+        if(viewRotationTime < viewRotationDuration){
+            viewRotationTime += Time.delta / Time.toSeconds;
+            float t = Mathf.clamp(viewRotationTime / viewRotationDuration);
+            float eased = Interp.smooth.apply(t);
+            viewRotation = Mathf.lerp(viewRotationFrom, viewRotationTo, eased);
+        }else{
+            viewRotation = viewRotationTo;
+        }
+
+        float rad = viewRotation * Mathf.degRad;
+        viewRotationCos = Mathf.cos(rad);
+        viewRotationSin = Mathf.sin(rad);
+    }
+
     /** @return whether a launch/land cutscene is playing. */
     public boolean isCutscene(){
         return landTime > 0;
@@ -275,6 +377,7 @@ public class Renderer implements ApplicationListener{
 
     @Override
     public void dispose(){
+        viewRotationBuffer.dispose();
         Events.fire(new DisposeEvent());
     }
 
@@ -312,10 +415,49 @@ public class Renderer implements ApplicationListener{
         }
     }
 
+    private void drawRotated(){
+        int w = graphics.getWidth();
+        int h = graphics.getHeight();
+        if(w <= 1 || h <= 1){
+            return;
+        }
+
+        float rad = Math.abs(viewRotation) * Mathf.degRad;
+        float cosAbs = Math.abs(Mathf.cos(rad));
+        float sinAbs = Math.abs(Mathf.sin(rad));
+        int bw = Mathf.ceil(w * cosAbs + h * sinAbs);
+        int bh = Mathf.ceil(w * sinAbs + h * cosAbs);
+        if(bw < 2) bw = 2;
+        if(bh < 2) bh = 2;
+
+        viewRotationBuffer.resize(bw, bh);
+        float prevCamW = camera.width;
+        float prevCamH = camera.height;
+        camera.width = bw / camerascale;
+        camera.height = bh / camerascale;
+        viewRotationRendering = true;
+        viewRotationBuffer.begin(Color.clear);
+        boolean prevPixelate = pixelate;
+        pixelate = false;
+        draw();
+        pixelate = prevPixelate;
+        viewRotationBuffer.end();
+        viewRotationRendering = false;
+        camera.width = prevCamW;
+        camera.height = prevCamH;
+
+        graphics.clear(clearColor);
+        Draw.reset();
+        Draw.proj(0f, 0f, w, h);
+        Draw.rect(Draw.wrap(viewRotationBuffer.getTexture()), w / 2f, h / 2f, bw, -bh, viewRotation);
+        Draw.reset();
+    }
+
     public void draw(){
         Events.fire(Trigger.preDraw);
         MapPreviewLoader.checkPreviews();
 
+        ArcCompat.setCameraRotation(camera, 0f);
         camera.update();
 
         if(Float.isNaN(camera.position.x) || Float.isNaN(camera.position.y)){
@@ -335,7 +477,7 @@ public class Renderer implements ApplicationListener{
         float clipInsetPx = 0f;
         if(state.isGame()){
             clipInsetPx = getUiBottomInsetPx();
-            if(clipInsetPx > 0f){
+            if(clipInsetPx > 0f && !viewRotationRendering){
                 clipWorld = pushWorldClip(clipInsetPx);
             }
         }
@@ -465,7 +607,6 @@ public class Renderer implements ApplicationListener{
         if(clipWorld){
             popWorldClip();
         }
-
         Draw.reset();
         Draw.flush();
         Draw.sort(false);
@@ -564,16 +705,98 @@ public class Renderer implements ApplicationListener{
 
     public float minScale(){
         if(control.input.logicCutscene) return Scl.scl(minZoom);
-        return Math.max(Scl.scl(minZoomInGame), fixedGameplayMinScale());
+        float minZoomScl = Scl.scl(minZoomInGame);
+        float baseMin = Math.max(minZoomScl, fixedGameplayMinScale());
+        if(spectatorMaxVisibleTiles > 0f){
+            baseMin = Math.max(minZoomScl, Math.min(baseMin, fixedSpectatorMinScale()));
+        }
+        return baseMin;
     }
 
     public float maxScale(){
         if(control.input.logicCutscene) return Mathf.round(Scl.scl(maxZoom));
-        return Mathf.round(Scl.scl(maxZoomInGame));
+        return Mathf.round(fixedGameplayMaxScale());
     }
 
     public float getScale(){
         return targetscale;
+    }
+
+    public float getViewRotation(){
+        return viewRotation;
+    }
+
+    public Vec2 screenToWorld(float screenX, float screenY, Vec2 out){
+        if(Mathf.zero(viewRotation)){
+            return camera.unproject(out.set(screenX, screenY));
+        }
+
+        int w = graphics.getWidth();
+        int h = graphics.getHeight();
+        if(w <= 0 || h <= 0){
+            return camera.unproject(out.set(screenX, screenY));
+        }
+
+        int bw = viewRotationBufferW;
+        int bh = viewRotationBufferH;
+        if(bw <= 0 || bh <= 0){
+            float rad = Math.abs(viewRotation) * Mathf.degRad;
+            float cos = Math.abs(Mathf.cos(rad));
+            float sin = Math.abs(Mathf.sin(rad));
+            bw = Mathf.ceil(w * cos + h * sin);
+            bh = Mathf.ceil(w * sin + h * cos);
+            if(bw < 2) bw = 2;
+            if(bh < 2) bh = 2;
+        }
+
+        float cx = w / 2f;
+        float cy = h / 2f;
+        float bx = bw / 2f;
+        float by = bh / 2f;
+        float dx = screenX - cx;
+        float dy = screenY - cy;
+        float cos = viewRotationCos;
+        float sin = viewRotationSin;
+        float rx = dx * cos + dy * sin;
+        float ry = -dx * sin + dy * cos;
+        float px = bx + rx;
+        float py = by + ry;
+
+        float worldX = (px - bx) / camerascale + camera.position.x;
+        float worldY = (py - by) / camerascale + camera.position.y;
+        return out.set(worldX, worldY);
+    }
+
+    public Vec2 worldToScreen(float worldX, float worldY, Vec2 out){
+        if(Mathf.zero(viewRotation)){
+            return camera.project(out.set(worldX, worldY));
+        }
+
+        int w = graphics.getWidth();
+        int h = graphics.getHeight();
+        if(w <= 0 || h <= 0){
+            return camera.project(out.set(worldX, worldY));
+        }
+
+        float rad = Math.abs(viewRotation) * Mathf.degRad;
+        float cosAbs = Math.abs(Mathf.cos(rad));
+        float sinAbs = Math.abs(Mathf.sin(rad));
+        int bw = Mathf.ceil(w * cosAbs + h * sinAbs);
+        int bh = Mathf.ceil(w * sinAbs + h * cosAbs);
+        if(bw < 2) bw = 2;
+        if(bh < 2) bh = 2;
+
+        float cx = w / 2f;
+        float cy = h / 2f;
+        float bx = bw / 2f;
+        float by = bh / 2f;
+        float dx = (worldX - camera.position.x) * camerascale;
+        float dy = (worldY - camera.position.y) * camerascale;
+        float cos = viewRotationCos;
+        float sin = viewRotationSin;
+        float rx = dx * cos - dy * sin;
+        float ry = dx * sin + dy * cos;
+        return out.set(cx + rx, cy + ry);
     }
 
     public float getUiBottomInsetPx(){
@@ -614,8 +837,30 @@ public class Renderer implements ApplicationListener{
         return maxWorldSpan <= 0f ? 1f : maxScreenSpan / maxWorldSpan;
     }
 
+    private float fixedSpectatorMinScale(){
+        float screenSpan = graphics.getWidth();
+        float worldSpan = spectatorMaxVisibleTiles * tilesize;
+        return worldSpan <= 0f ? 1f : screenSpan / worldSpan;
+    }
+
+    private float fixedGameplayMaxScale(){
+        float screenSpan = graphics.getWidth();
+        float worldSpan = gameplayMinVisibleTiles * tilesize;
+        return worldSpan <= 0f ? 1f : screenSpan / worldSpan;
+    }
+
     public void setScale(float scl){
         targetscale = scl;
+        clampScale();
+    }
+
+    public void setSpectatorMaxVisibleTiles(float tiles){
+        spectatorMaxVisibleTiles = tiles;
+        clampScale();
+    }
+
+    public void clearSpectatorMaxVisibleTiles(){
+        spectatorMaxVisibleTiles = -1f;
         clampScale();
     }
 

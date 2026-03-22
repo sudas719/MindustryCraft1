@@ -130,7 +130,7 @@ public abstract class BlockProducer extends PayloadBlock{
 
             var recipe = recipe();
             if(recipe != null){
-                Drawf.shadow(x, y, recipe.size * tilesize * 2f, progress / recipe.buildTime);
+                Drawf.hardShadow(x, y, recipe.size * tilesize * 2f, progress / recipe.buildTime);
                 Draw.draw(Layer.blockBuilding, () -> {
                     Draw.color(Pal.accent);
 

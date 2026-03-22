@@ -149,8 +149,12 @@ public class NetServer implements ApplicationListener{
     private String resourceSiteApiRoot = Core.settings.getString("wayzer-resource-api-root", "https://api.mindustry.top");
     private boolean matchPreviewActive = false;
     private boolean skipNextPreview = false;
+    private boolean previewRulesApplied = false;
+    private float previewUnitDamageMultiplier = 1f;
+    private float previewBlockDamageMultiplier = 1f;
     private final IntIntMap teamHandicapPercent = new IntIntMap();
     private final IntSet handicappedUnits = new IntSet();
+    private final IntSet handicappedBuildings = new IntSet();
     private final int[] handicapOptions = {100, 90, 80, 70, 60, 50};
     private int startCountdownToken = 0;
     private boolean startCountdownActive = false;
@@ -220,6 +224,7 @@ public class NetServer implements ApplicationListener{
             if(!net.server() || state.map == null || !state.isGame()) return;
 
             handicappedUnits.clear();
+            handicappedBuildings.clear();
             resetTeamHandicaps();
 
             if(skipNextPreview){
@@ -236,6 +241,16 @@ public class NetServer implements ApplicationListener{
         Events.on(UnitChangeEvent.class, event -> {
             if(event.unit != null){
                 applyTeamHandicap(event.unit);
+            }
+        });
+        Events.on(BlockBuildEndEvent.class, event -> {
+            if(event.breaking) return;
+            if(event.tile == null || event.tile.build == null) return;
+            applyTeamHandicap(event.tile.build);
+        });
+        Events.on(BlockDestroyEvent.class, event -> {
+            if(event.tile != null){
+                handicappedBuildings.remove(event.tile.pos());
             }
         });
 
@@ -3362,9 +3377,27 @@ public class NetServer implements ApplicationListener{
         if(!state.isPaused()){
             state.set(State.paused);
         }
+        applyPreviewRules();
+        Call.setRules(state.rules);
 
         Call.sendMessage("[yellow]Map preview started. Damage is disabled and buildings are paused.");
         Call.sendMessage("[lightgray]Use [accent]/handicap[] to set team HP (100%-50%), then [accent]/vote start[] (or admin [accent]/start[]) to begin.");
+    }
+
+    private void applyPreviewRules(){
+        if(previewRulesApplied) return;
+        previewRulesApplied = true;
+        previewUnitDamageMultiplier = state.rules.unitDamageMultiplier;
+        previewBlockDamageMultiplier = state.rules.blockDamageMultiplier;
+        state.rules.unitDamageMultiplier = 0f;
+        state.rules.blockDamageMultiplier = 0f;
+    }
+
+    private void restorePreviewRules(){
+        if(!previewRulesApplied) return;
+        state.rules.unitDamageMultiplier = previewUnitDamageMultiplier;
+        state.rules.blockDamageMultiplier = previewBlockDamageMultiplier;
+        previewRulesApplied = false;
     }
 
     private void resetTeamHandicaps(){
@@ -3575,10 +3608,50 @@ public class NetServer implements ApplicationListener{
             return;
         }
 
+        if(startCountdownActive){
+            Call.sendMessage("[scarlet]A start countdown is already running.");
+            return;
+        }
+
+        startPreviewCountdown(resolveStartCountdownSeconds());
+    }
+
+    private void startPreviewCountdown(int seconds){
+        int countdown = Mathf.clamp(seconds, 1, maxStartCountdownSeconds);
+        int token = ++startCountdownToken;
+        startCountdownActive = true;
+        if(!state.isPaused()){
+            state.set(State.paused);
+        }
+        Call.sendMessage("[accent]Match starts in [yellow]" + countdown + "[accent] seconds...");
+
+        for(int i = countdown; i >= 1; i--){
+            int value = i;
+            Time.runTask((countdown - i) * 60f, () -> {
+                if(token != startCountdownToken || !state.isGame() || !matchPreviewActive) return;
+                Call.announce("[accent]" + value);
+            });
+        }
+
+        Time.runTask(countdown * 60f, () -> {
+            if(token != startCountdownToken || !state.isGame() || !matchPreviewActive) return;
+            startCountdownActive = false;
+            reloadMatchFromPreview();
+        });
+    }
+
+    private void reloadMatchFromPreview(){
+        ObjectIntMap<String> savedPlayerTeams = new ObjectIntMap<>();
+        for(Player player : Groups.player){
+            savedPlayerTeams.put(player.uuid(), player.team().id);
+        }
+
         IntIntMap savedHandicap = copyTeamHandicap();
         skipNextPreview = true;
         matchPreviewActive = false;
         handicappedUnits.clear();
+        handicappedBuildings.clear();
+        restorePreviewRules();
 
         Core.app.post(() -> {
             try{
@@ -3586,13 +3659,20 @@ public class NetServer implements ApplicationListener{
                 world.loadMap(map, map.applyRules(state.rules.mode()));
                 logic.play();
 
+                for(Player player : Groups.player){
+                    int teamId = savedPlayerTeams.get(player.uuid(), -1);
+                    if(teamId != -1){
+                        player.team(Team.get(teamId));
+                    }
+                }
+
                 teamHandicapPercent.clear();
                 for(IntIntMap.Entry entry : savedHandicap){
                     teamHandicapPercent.put(entry.key, entry.value);
                 }
 
                 applyAllTeamHandicaps();
-                startMatchCountdown(resolveStartCountdownSeconds());
+                startMatchCountdown(3);
             }catch(Throwable t){
                 Log.err("Failed to start match from preview.", t);
                 enterMapPreview();
@@ -3649,6 +3729,9 @@ public class NetServer implements ApplicationListener{
         for(Unit unit : Groups.unit){
             applyTeamHandicap(unit);
         }
+        for(Building build : Groups.build){
+            applyTeamHandicap(build);
+        }
     }
 
     private void applyTeamHandicap(@Nullable Unit unit){
@@ -3670,6 +3753,28 @@ public class NetServer implements ApplicationListener{
         unit.maxHealth(targetMax);
         unit.health(Math.min(targetMax, targetHealth));
         handicappedUnits.add(unit.id);
+    }
+
+    private void applyTeamHandicap(@Nullable Building build){
+        if(build == null || !build.isValid()) return;
+
+        int percent = getTeamHandicapPercent(build.team);
+        if(percent >= 100){
+            handicappedBuildings.remove(build.pos());
+            return;
+        }
+
+        int key = build.pos();
+        if(handicappedBuildings.contains(key)) return;
+
+        float baseMax = build.maxHealth();
+        float targetMax = Math.max(1f, Mathf.floor(baseMax * percent / 100f));
+        float baseHealth = Math.min(build.health(), baseMax);
+        float targetHealth = Math.max(1f, Mathf.floor(baseHealth * percent / 100f));
+
+        build.maxHealth(targetMax);
+        build.health(Math.min(targetMax, targetHealth));
+        handicappedBuildings.add(key);
     }
 
     public String checkColor(String str){

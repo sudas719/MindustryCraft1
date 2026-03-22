@@ -36,6 +36,8 @@ import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.*;
 
+import java.util.Locale;
+
 import static mindustry.Vars.*;
 
 public class UnitAbilityPanel extends Table{
@@ -47,6 +49,7 @@ public class UnitAbilityPanel extends Table{
     public static final Color abilityBorderColor = Color.valueOf("2f5f2f");
     private static final float ABILITY_BUTTON_PAD = 2f;
     private static final float PANEL_MARGIN = 0f;
+    private static final float HOVER_INFO_GAP = 6f;
 
     //RTS command mode state
     public enum CommandMode{
@@ -112,6 +115,7 @@ public class UnitAbilityPanel extends Table{
     private Table commandModePanel;
     private float forcedMinWidth = -1f;
     private float forcedMinHeight = -1f;
+    private int lastRebuildHash = Integer.MIN_VALUE;
     private final IntIntMap autoCastFlags = new IntIntMap();
     private float nextAutoCastUpdate = 0f;
 
@@ -159,7 +163,7 @@ public class UnitAbilityPanel extends Table{
         String action = "";
         int crystalCost;
         int gasCost;
-        int timeSeconds;
+        float timeSeconds = -1f;
         int population = -1;
         @Nullable Floatp progress;
         @Nullable Boolp progressVisible;
@@ -171,9 +175,10 @@ public class UnitAbilityPanel extends Table{
         String key = "";
         String name = "";
         String description = "";
+        @Nullable String costLineOverride;
         int crystalCost = -1;
         int gasCost = -1;
-        int timeSeconds = -1;
+        float timeSeconds = -1f;
         int population = -1;
         String action = "";
         @Nullable UnitType unit;
@@ -307,7 +312,7 @@ public class UnitAbilityPanel extends Table{
                 activeCommand = CommandMode.NONE;
             }
 
-            rebuild();
+            rebuildIfNeeded();
         });
     }
 
@@ -327,10 +332,82 @@ public class UnitAbilityPanel extends Table{
         return !abilityBuildings().isEmpty();
     }
 
+    private int rebuildHash(){
+        int hash = 1;
+        hash = hash * 31 + activeCommand.ordinal();
+        hash = hash * 31 + novaPanel.ordinal();
+        hash = hash * 31 + corePanel.ordinal();
+        hash = hash * 31 + (placingBlock == null ? -1 : placingBlock.id);
+
+        Seq<Unit> units = abilityUnits();
+        hash = hash * 31 + units.size;
+        for(int i = 0; i < units.size; i++){
+            Unit unit = units.get(i);
+            hash = hash * 31 + unit.id;
+            hash = hash * 31 + (unit.type == null ? -1 : unit.type.id);
+            hash = hash * 31 + unitPanelStateHash(unit);
+        }
+
+        Seq<Building> builds = abilityBuildings();
+        hash = hash * 31 + builds.size;
+        for(int i = 0; i < builds.size; i++){
+            Building build = builds.get(i);
+            hash = hash * 31 + build.id;
+            hash = hash * 31 + (build.block == null ? -1 : build.block.id);
+            hash = hash * 31 + build.rotation;
+        }
+
+        return hash;
+    }
+
+    private int unitPanelStateHash(@Nullable Unit unit){
+        if(unit == null || !unit.isValid()) return 0;
+
+        int hash = 1;
+
+        if(UnitTypes.isWidow(unit)){
+            hash = hash * 31 + (UnitTypes.widowIsBuried(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.widowIsBurrowing(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.widowIsUnburrowing(unit) ? 1 : 0);
+        }
+
+        if(UnitTypes.isViking(unit)){
+            hash = hash * 31 + (UnitTypes.vikingIsMechMode(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.vikingIsTransforming(unit) ? 1 : 0);
+        }
+
+        if(UnitTypes.isMace(unit) || UnitTypes.isLocus(unit)){
+            hash = hash * 31 + (UnitTypes.maceLocusTransforming(unit) ? 1 : 0);
+        }
+
+        if(UnitTypes.isLiberator(unit)){
+            hash = hash * 31 + (UnitTypes.liberatorIsDefending(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.liberatorIsDeploying(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.liberatorIsUndeploying(unit) ? 1 : 0);
+        }
+
+        if(UnitTypes.isSiegeTank(unit)){
+            hash = hash * 31 + (UnitTypes.preceptIsSieged(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.preceptIsSieging(unit) ? 1 : 0);
+            hash = hash * 31 + (UnitTypes.preceptIsUnsieging(unit) ? 1 : 0);
+        }
+
+        return hash;
+    }
+
+    private void rebuildIfNeeded(){
+        int next = rebuildHash();
+        if(next != lastRebuildHash){
+            lastRebuildHash = next;
+            rebuild();
+        }
+    }
+
     private void rebuild(){
         clearChildren();
         clearPanelSize();
         hoverAbilityInfo = null;
+        hoverBuildInfo = null;
 
         if(!hasAbilityUnits() && !hasAbilityBuildings()){
             buildEmptyPanel();
@@ -530,9 +607,11 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
+        AbilityInfo stimpackInfo = makeAbilityInfo("t", "Stimpack", "Consumes health to temporarily boost Marine and Marauder mobility and attack output.");
+        stimpackInfo.costLineOverride = selectedBarracksStimpackCostLine();
         addBattlecruiserCooldownButton(grid, "t", Icon.upOpen, this::anyBarracksStimpackSelectedCanUse,
         this::issueBarracksStimpackCommand,
-        this::selectedBarracksStimpackCooldown, UnitTypes::barracksStimpackCooldownDuration);
+        this::selectedBarracksStimpackCooldown, UnitTypes::barracksStimpackCooldownDuration, stimpackInfo);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -573,7 +652,7 @@ public class UnitAbilityPanel extends Table{
 
         if(anyWidowCanBurrow()){
             Button burrowButton = addIconButton(grid, "e", Icon.downOpen, this::anyWidowCanBurrow, () -> issueWidowBurrowCommand(true));
-            BuildInfo burrowInfo = makeWidowActionInfo("e", "Widow Burrow", Color.cyan, this::selectedWidowBurrowProgress, this::anyWidowBurrowing);
+            BuildInfo burrowInfo = makeWidowActionInfo("e", "Widow Burrow", Color.cyan, this::selectedWidowBurrowProgress, this::anyWidowBurrowing, UnitTypes.widowBurrowDuration() / 60f);
             burrowButton.update(() -> {
                 if(burrowButton.isOver()){
                     hoverBuildInfo = burrowInfo;
@@ -587,7 +666,7 @@ public class UnitAbilityPanel extends Table{
 
         if(anyWidowCanUnburrow()){
             Button unburrowButton = addIconButton(grid, "d", Icon.upOpen, this::anyWidowCanUnburrow, () -> issueWidowBurrowCommand(false));
-            BuildInfo reloadInfo = makeWidowActionInfo("d", "Widow Reload", Color.gray, this::selectedWidowReloadProgress, this::anyWidowReloading);
+            BuildInfo reloadInfo = makeWidowActionInfo("d", "Widow Reload", Color.gray, this::selectedWidowReloadProgress, this::anyWidowReloading, UnitTypes.widowReloadDuration() / 60f);
             unburrowButton.update(() -> {
                 if(unburrowButton.isOver()){
                     hoverBuildInfo = reloadInfo;
@@ -627,7 +706,7 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         AbilityInfo kd8Info = makeAbilityInfo("d", "KD8 Bomb", "Throw a timed bomb that detonates after 1.5s. Deals 5 pierce damage and knocks back light targets.");
-        kd8Info.timeSeconds = Math.round(UnitTypes.reaperKd8ArmTimeDuration() / 60f);
+        kd8Info.timeSeconds = UnitTypes.reaperKd8ArmTimeDuration() / 60f;
         addCooldownIconButton(grid, "d", Icon.warning, this::anyReaperCanUseKd8, () -> enterCommandMode(CommandMode.REAPER_KD8),
         this::selectedReaperKd8Cooldown, UnitTypes::reaperKd8CooldownDuration, kd8Info);
         addEmpty(grid);
@@ -690,13 +769,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyScepterCanSwitchToImpact()){
-            addIconButton(grid, "e", Icon.upOpen, this::anyScepterCanSwitchToImpact, () -> issueScepterAirModeCommand(true));
+            AbilityInfo impactInfo = makeAbilityInfo("e", "High Impact Payload", "Thor switches to high-impact anti-air payload for stronger single-target air damage.");
+            impactInfo.timeSeconds = UnitTypes.scepterSwitchDuration(player.team()) / 60f;
+            addIconButton(grid, "e", Icon.upOpen, this::anyScepterCanSwitchToImpact, () -> issueScepterAirModeCommand(true), impactInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyScepterCanSwitchToBurst()){
-            addIconButton(grid, "d", Icon.downOpen, this::anyScepterCanSwitchToBurst, () -> issueScepterAirModeCommand(false));
+            AbilityInfo burstInfo = makeAbilityInfo("d", "Explosive Payload", "Thor switches to explosive anti-air payload, better against light air units.");
+            burstInfo.timeSeconds = UnitTypes.scepterSwitchDuration(player.team()) / 60f;
+            addIconButton(grid, "d", Icon.downOpen, this::anyScepterCanSwitchToBurst, () -> issueScepterAirModeCommand(false), burstInfo);
         }else{
             addEmpty(grid);
         }
@@ -731,17 +814,21 @@ public class UnitAbilityPanel extends Table{
 
         addAutoCastIconButton(grid, "e", Icon.add, () -> true,
         () -> enterCommandMode(CommandMode.MEDIVAC_HEAL),
-        this::selectedMedivacHealAutoCastEnabled, this::toggleSelectedMedivacHealAutoCast);
-        addIconButton(grid, "b", Icon.upOpen, () -> true, this::issueMedivacAfterburnerCommand);
+        this::selectedMedivacHealAutoCastEnabled, this::toggleSelectedMedivacHealAutoCast,
+        makeAbilityInfo("e", "Heal", "Continuously restores health to biological allied units. Right-click toggles autocast."));
+        addIconButton(grid, "b", Icon.upOpen, () -> true, this::issueMedivacAfterburnerCommand,
+        makeAbilityInfo("b", "Afterburners", "Grants a short burst of movement speed for pursuit, retreat, or repositioning."));
 
         if(anyMedivacCanLoadMore()){
-            addIconButton(grid, "l", Icon.upload, this::anyMedivacCanLoadMore, () -> enterCommandMode(CommandMode.MEDIVAC_LOAD));
+            addIconButton(grid, "l", Icon.upload, this::anyMedivacCanLoadMore, () -> enterCommandMode(CommandMode.MEDIVAC_LOAD),
+            makeAbilityInfo("l", "Load", "Loads nearby friendly ground units into the transport bay."));
         }else{
             addEmpty(grid);
         }
 
         if(anyMedivacHasPayload()){
-            addIconButton(grid, "d", Icon.download, this::anyMedivacHasPayload, () -> enterCommandMode(CommandMode.MEDIVAC_UNLOAD));
+            addIconButton(grid, "d", Icon.download, this::anyMedivacHasPayload, () -> enterCommandMode(CommandMode.MEDIVAC_UNLOAD),
+            makeAbilityInfo("d", "Unload", "Unloads units currently carried in the transport bay."));
         }else{
             addEmpty(grid);
         }
@@ -768,16 +855,22 @@ public class UnitAbilityPanel extends Table{
         }
         grid.row();
 
-        addCountedIconButton(grid, "n", Icon.warning, this::anyGhostCanUseTacticalNuke, () -> enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE), this::selectedGhostWarheadCount);
+        AbilityInfo nukeInfo = makeAbilityInfo("n", "Tactical Nuke", "Calls down a nuclear strike on the target area. Requires a prepared warhead.");
+        nukeInfo.timeSeconds = 14f;
+        addCountedIconButton(grid, "n", Icon.warning, this::anyGhostCanUseTacticalNuke, () -> enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE), this::selectedGhostWarheadCount, nukeInfo);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
         grid.row();
 
-        addIconButton(grid, "r", Icon.warning, this::anyGhostCanUseStableAim, () -> enterCommandMode(CommandMode.GHOST_STABLE_AIM));
-        addIconButton(grid, "e", Icon.warning, this::anyGhostCanUseEmp, () -> enterCommandMode(CommandMode.GHOST_EMP));
-        addIconButton(grid, "c", Icon.eyeSmall, this::anyGhostCanToggleCloak, this::issueGhostCloakCommand);
+        AbilityInfo stableAimInfo = makeAbilityInfo("r", "Stable Aim", "Aims, then fires a high-damage snipe with extra effect against psionic targets.");
+        stableAimInfo.timeSeconds = 1.43f;
+        addIconButton(grid, "r", Icon.warning, this::anyGhostCanUseStableAim, () -> enterCommandMode(CommandMode.GHOST_STABLE_AIM), stableAimInfo);
+        addIconButton(grid, "e", Icon.warning, this::anyGhostCanUseEmp, () -> enterCommandMode(CommandMode.GHOST_EMP),
+        makeAbilityInfo("e", "EMP Round", "Fires an EMP round that removes shields, burns psionic energy, and reveals cloaked targets."));
+        addIconButton(grid, "c", Icon.eyeSmall, this::anyGhostCanToggleCloak, this::issueGhostCloakCommand,
+        makeAbilityInfo("c", "Cloak", "Enters cloak and continuously drains energy."));
         addEmpty(grid);
         addEmpty(grid);
 
@@ -807,14 +900,14 @@ public class UnitAbilityPanel extends Table{
 
         if(anyVikingCanSwitchToFighter()){
             AbilityInfo fighterInfo = makeAbilityInfo("e", "Fighter Mode", "Transform to Fighter Mode.");
-            fighterInfo.timeSeconds = Math.round(UnitTypes.vikingTransformDuration(player.team()) / 60f);
+            fighterInfo.timeSeconds = UnitTypes.vikingTransformDuration(player.team()) / 60f;
             addIconButton(grid, "e", Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false), fighterInfo);
         }else{
             addEmpty(grid);
         }
         if(anyVikingCanSwitchToMech()){
             AbilityInfo mechInfo = makeAbilityInfo("d", "Mech Mode", "Transform to Mech Mode.");
-            mechInfo.timeSeconds = Math.round(UnitTypes.vikingTransformDuration(player.team()) / 60f);
+            mechInfo.timeSeconds = UnitTypes.vikingTransformDuration(player.team()) / 60f;
             addIconButton(grid, "d", Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true), mechInfo);
         }else{
             addEmpty(grid);
@@ -849,7 +942,7 @@ public class UnitAbilityPanel extends Table{
 
         if(anyMaceSelected()){
             AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
-            locusInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+            locusInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
             addIconButton(
                 grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
                 () -> issueMaceLocusModeCommand(true),
@@ -861,7 +954,7 @@ public class UnitAbilityPanel extends Table{
 
         if(anyLocusSelected()){
             AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
-            maceInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+            maceInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
             addIconButton(
                 grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
                 () -> issueMaceLocusModeCommand(false),
@@ -900,7 +993,7 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
-        locusInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+        locusInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
         addIconButton(
             grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
             () -> issueMaceLocusModeCommand(true),
@@ -937,7 +1030,7 @@ public class UnitAbilityPanel extends Table{
 
         addEmpty(grid);
         AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
-        maceInfo.timeSeconds = Math.round(UnitTypes.maceLocusTransformDuration(player.team()) / 60f);
+        maceInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
         addIconButton(
             grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
             () -> issueMaceLocusModeCommand(false),
@@ -971,9 +1064,12 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, () -> enterCommandMode(CommandMode.RAVEN_TURRET));
-        addIconButton(grid, "r", Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR));
-        addIconButton(grid, "c", Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX));
+        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, () -> enterCommandMode(CommandMode.RAVEN_TURRET),
+        makeAbilityInfo("t", "Auto Turret", "Deploys a temporary auto turret at the target point."));
+        addIconButton(grid, "r", Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR),
+        makeAbilityInfo("r", "Anti-Armor Missile", "Launches an anti-armor missile that makes units in the area take extra damage."));
+        addIconButton(grid, "c", Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX),
+        makeAbilityInfo("c", "Interference Matrix", "Disables an enemy mechanical unit for a short duration."));
         addEmpty(grid);
         addEmpty(grid);
 
@@ -1001,7 +1097,8 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "c", Icon.eyeSmall, this::anyBansheeCanToggleCloak, this::issueBansheeCloakCommand);
+        addIconButton(grid, "c", Icon.eyeSmall, this::anyBansheeCanToggleCloak, this::issueBansheeCloakCommand,
+        makeAbilityInfo("c", "Cloak", "Enters cloak and continuously drains energy."));
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -1031,12 +1128,16 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
+        AbilityInfo yamatoInfo = makeAbilityInfo("y", "Yamato Cannon", "Charges up and deals massive damage to a single target.");
+        yamatoInfo.timeSeconds = 2f;
         addBattlecruiserCooldownButton(grid, "y", Icon.warning, this::anyBattlecruiserCanUseYamato,
         () -> enterCommandMode(CommandMode.BATTLECRUISER_YAMATO),
-        this::selectedBattlecruiserYamatoCooldown, UnitTypes::battlecruiserYamatoCooldownDuration);
+        this::selectedBattlecruiserYamatoCooldown, UnitTypes::battlecruiserYamatoCooldownDuration, yamatoInfo);
+        AbilityInfo warpInfo = makeAbilityInfo("t", "Tactical Jump", "Charges briefly, then warps to the selected location.");
+        warpInfo.timeSeconds = 1f;
         addBattlecruiserCooldownButton(grid, "t", Icon.effect, this::anyBattlecruiserCanUseWarp,
         () -> enterCommandMode(CommandMode.BATTLECRUISER_WARP),
-        this::selectedBattlecruiserWarpCooldown, UnitTypes::battlecruiserWarpCooldownDuration);
+        this::selectedBattlecruiserWarpCooldown, UnitTypes::battlecruiserWarpCooldownDuration, warpInfo);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -1098,13 +1199,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyLiberatorCanEnterDefense()){
-            addIconButton(grid, "e", Icon.downOpen, this::anyLiberatorCanEnterDefense, () -> enterCommandMode(CommandMode.LIBERATOR_ZONE));
+            AbilityInfo defenseInfo = makeAbilityInfo("e", "Defense Mode", "Deploys into defense mode and can only attack ground targets inside the defense circle.");
+            defenseInfo.timeSeconds = UnitTypes.smartServosLevel(player.team()) > 0 ? 2f : 4f;
+            addIconButton(grid, "e", Icon.downOpen, this::anyLiberatorCanEnterDefense, () -> enterCommandMode(CommandMode.LIBERATOR_ZONE), defenseInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyLiberatorCanExitDefense()){
-            addIconButton(grid, "d", Icon.upOpen, this::anyLiberatorCanExitDefense, this::issueLiberatorFighterCommand);
+            AbilityInfo fighterInfo = makeAbilityInfo("d", "Fighter Mode", "Switches into a mobile fighter configuration.");
+            fighterInfo.timeSeconds = UnitTypes.smartServosLevel(player.team()) > 0 ? 2f : 1.5f;
+            addIconButton(grid, "d", Icon.upOpen, this::anyLiberatorCanExitDefense, this::issueLiberatorFighterCommand, fighterInfo);
         }else{
             addEmpty(grid);
         }
@@ -1148,13 +1253,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyPreceptCanSiege()){
-            addIconButton(grid, "e", Icon.downOpen, this::anyPreceptCanSiege, () -> issuePreceptSiegeCommand(true));
+            AbilityInfo siegeInfo = makeAbilityInfo("e", "Siege Mode", "Deploys into siege mode for long-range anti-ground splash fire, but the tank cannot move.");
+            siegeInfo.timeSeconds = UnitTypes.preceptTransitionDuration() / 60f;
+            addIconButton(grid, "e", Icon.downOpen, this::anyPreceptCanSiege, () -> issuePreceptSiegeCommand(true), siegeInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyPreceptCanTankMode()){
-            addIconButton(grid, "d", Icon.upOpen, this::anyPreceptCanTankMode, () -> issuePreceptSiegeCommand(false));
+            AbilityInfo tankInfo = makeAbilityInfo("d", "Tank Mode", "Packs up and returns to the mobile tank configuration.");
+            tankInfo.timeSeconds = UnitTypes.preceptTransitionDuration() / 60f;
+            addIconButton(grid, "d", Icon.upOpen, this::anyPreceptCanTankMode, () -> issuePreceptSiegeCommand(false), tankInfo);
         }else{
             addEmpty(grid);
         }
@@ -2531,59 +2640,7 @@ public class UnitAbilityPanel extends Table{
         AbilityInfo info = currentHoverInfo();
         if(info == null) return;
 
-        StringBuilder text = new StringBuilder();
-        if(info.hintOnly){
-            text.append("Left-click select target\nRight-click return");
-        }else{
-            String titleName = info.name == null ? "Action" : info.name;
-            String action = info.action == null ? "" : info.action;
-            String title = action.isEmpty() ? titleName : (action + " " + titleName);
-            if(info.key != null && !info.key.isEmpty()){
-                title += " (" + info.key + ")";
-            }
-            text.append(title);
-
-            boolean hasCost = info.crystalCost >= 0 || info.gasCost > 0 || info.population > 0;
-            if(hasCost){
-                text.append("\nCost: ");
-                boolean wrote = false;
-                if(info.crystalCost >= 0){
-                    text.append(Math.max(info.crystalCost, 0)).append(" crystal");
-                    wrote = true;
-                }
-                if(info.gasCost > 0){
-                    if(wrote) text.append(" / ");
-                    text.append(info.gasCost).append(" gas");
-                    wrote = true;
-                }
-                if(info.population > 0){
-                    if(wrote) text.append(" / ");
-                    text.append("Pop ").append(info.population);
-                    wrote = true;
-                }
-                if(!wrote){
-                    text.append("-");
-                }
-            }
-
-            if(info.description != null && !info.description.isEmpty()){
-                text.append("\n").append(info.description);
-            }
-
-            String targetText = unitTargetText(info);
-            if(info.timeSeconds >= 0 || targetText != null){
-                text.append("\n");
-                boolean wrote = false;
-                if(info.timeSeconds >= 0){
-                    text.append("Time ").append(info.timeSeconds).append("s");
-                    wrote = true;
-                }
-                if(targetText != null){
-                    if(wrote) text.append(" / ");
-                    text.append(targetText);
-                }
-            }
-        }
+        String text = buildHoverText(info);
 
         Font font = Fonts.outline;
         boolean prevInts = font.usesIntegerPositions();
@@ -2595,8 +2652,12 @@ public class UnitAbilityPanel extends Table{
 
         float boxW = width;
         float boxH = hoverInfoLayout.height + pad * 2f;
-        float px = x;
-        float py = y + height - boxH;
+        float px = Mathf.clamp(x, 4f, Core.scene.getWidth() - boxW - 4f);
+        float py = y + height + HOVER_INFO_GAP;
+
+        if(py + boxH > Core.scene.getHeight() - 4f){
+            py = Math.max(4f, y - boxH - HOVER_INFO_GAP);
+        }
 
         Draw.color(0.07f, 0.08f, 0.10f, 0.95f);
         Fill.rect(px + boxW / 2f, py + boxH / 2f, boxW, boxH);
@@ -2611,15 +2672,406 @@ public class UnitAbilityPanel extends Table{
         Draw.reset();
     }
 
+    private String buildHoverText(AbilityInfo info){
+        if(info.hintOnly){
+            return targetHintText();
+        }
+
+        StringBuilder text = new StringBuilder();
+        appendHoverLine(text, hoverTitle(info));
+        appendHoverLine(text, hoverCostLine(info));
+        appendHoverLine(text, hoverDescription(info));
+        appendHoverLine(text, hoverDetailLine(info));
+        return text.toString();
+    }
+
+    private void appendHoverLine(StringBuilder out, @Nullable String line){
+        if(line == null || line.isEmpty()) return;
+        if(out.length() > 0) out.append('\n');
+        out.append(line);
+    }
+
+    private String targetHintText(){
+        return tr("左键选择目标\n右键返回", "Left-click select target\nRight-click return");
+    }
+
+    private String hoverTitle(AbilityInfo info){
+        String name = info.name == null || info.name.isEmpty() ? tr("技能", "Ability") : localizeDisplayName(info.name);
+        if(info.key == null || info.key.isEmpty()) return name;
+        return name + " (" + formatHotkey(info.key) + ")";
+    }
+
+    private String hoverCostLine(AbilityInfo info){
+        if(info.costLineOverride != null && !info.costLineOverride.isEmpty()){
+            return info.costLineOverride;
+        }
+
+        StringBuilder line = new StringBuilder();
+
+        if(info.crystalCost > 0){
+            appendInfoPart(line, Items.graphite.emoji() + " " + info.crystalCost);
+        }
+        if(info.gasCost > 0){
+            appendInfoPart(line, Items.highEnergyGas.emoji() + " " + info.gasCost);
+        }
+        if(info.population > 0){
+            appendInfoPart(line, tr("人口", "Pop") + " " + info.population);
+        }
+        if(showsProductionTime(info.action) && info.timeSeconds > 0){
+            appendInfoPart(line, productionTimeLabel(info.action) + " " + formatSeconds(info.timeSeconds));
+        }
+
+        if(line.length() == 0){
+            return tr("无晶体/瓦斯消耗", "No crystal/gas cost");
+        }
+
+        return line.toString();
+    }
+
+    private void appendInfoPart(StringBuilder out, String part){
+        if(part == null || part.isEmpty()) return;
+        if(out.length() > 0) out.append("   ");
+        out.append(part);
+    }
+
+    private String hoverDescription(AbilityInfo info){
+        String rawName = info.name == null ? "" : info.name;
+
+        if("Train".equals(info.action) && info.unit != null){
+            return unitDescription(info.unit);
+        }
+        if("Build".equals(info.action) && info.block != null){
+            return blockDescription(info.block);
+        }
+        if("Research".equals(info.action)){
+            String research = researchDescription(rawName);
+            if(research != null) return research;
+        }
+
+        String named = namedDescription(rawName);
+        if(named != null) return named;
+
+        if(info.description != null && !info.description.isEmpty()){
+            return localizeFallbackDescription(info.description);
+        }
+        if(info.unit != null){
+            return unitDescription(info.unit);
+        }
+        if(info.block != null){
+            return blockDescription(info.block);
+        }
+
+        return tr("左键点击等同于快捷键。", "Left-click acts as the hotkey.");
+    }
+
+    private @Nullable String hoverDetailLine(AbilityInfo info){
+        if(showsProductionTime(info.action)){
+            return unitTargetText(info);
+        }
+        if(info.timeSeconds > 0f){
+            return abilityTimeLabel(info) + " " + formatSeconds(info.timeSeconds);
+        }
+        return null;
+    }
+
     private @Nullable String unitTargetText(AbilityInfo info){
         if(info == null || info.unit == null) return null;
         if(info.action == null || !info.action.equals("Train")) return null;
-        boolean air = info.unit.targetAir;
-        boolean ground = info.unit.targetGround;
-        if(air && ground) return "Targets: ground/air";
-        if(ground) return "Targets: ground";
-        if(air) return "Targets: air";
-        return "Targets: none";
+        boolean air = unitDefaultTargetsAir(info.unit);
+        boolean ground = unitDefaultTargetsGround(info.unit);
+        if(air && ground) return tr("攻击目标: 对空对地", "Targets: air / ground");
+        if(air) return tr("攻击目标: 对空", "Targets: air");
+        if(ground) return tr("攻击目标: 对地", "Targets: ground");
+        return tr("攻击目标: 无", "Targets: none");
+    }
+
+    private boolean unitDefaultTargetsAir(UnitType unit){
+        if(unit == null) return false;
+        if(unit == UnitTypes.flare) return true;
+        if(unit == UnitTypes.liberator) return true;
+        return unit.targetAir;
+    }
+
+    private boolean unitDefaultTargetsGround(UnitType unit){
+        if(unit == null) return false;
+        if(unit == UnitTypes.flare) return false;
+        if(unit == UnitTypes.liberator) return false;
+        return unit.targetGround;
+    }
+
+    private boolean showsProductionTime(@Nullable String action){
+        return "Train".equals(action) || "Build".equals(action) || "Research".equals(action) || "Deploy".equals(action);
+    }
+
+    private String productionTimeLabel(@Nullable String action){
+        return switch(action == null ? "" : action){
+            case "Train" -> tr("训练", "Train");
+            case "Build" -> tr("建造", "Build");
+            case "Research" -> tr("研究", "Research");
+            case "Deploy" -> tr("部署", "Deploy");
+            default -> tr("时间", "Time");
+        };
+    }
+
+    private String abilityTimeLabel(AbilityInfo info){
+        String rawName = info.name == null ? "" : info.name;
+        if(rawName.contains("Mode") || rawName.contains("Siege") || rawName.contains("Tank")){
+            return tr("变形时间", "Morph Time");
+        }
+        if(rawName.contains("Burrow") || rawName.contains("Reload") || rawName.contains("Defense")){
+            return tr("准备时间", "Setup Time");
+        }
+        return tr("技能时间", "Ability Time");
+    }
+
+    private String formatSeconds(float seconds){
+        float value = Math.max(seconds, 0f);
+        if(Math.abs(value - Math.round(value)) < 0.01f){
+            return Math.round(value) + "s";
+        }
+        return Strings.fixed(value, 1) + "s";
+    }
+
+    private String formatHotkey(String key){
+        if(key == null || key.isEmpty()) return "";
+        if(key.length() == 1) return key.toUpperCase(Locale.ROOT);
+        return key;
+    }
+
+    private boolean isZh(){
+        Locale locale = Core.bundle == null ? Locale.getDefault() : Core.bundle.getLocale();
+        return locale != null && locale.getLanguage() != null && locale.getLanguage().startsWith("zh");
+    }
+
+    private String tr(String zh, String en){
+        return isZh() ? zh : en;
+    }
+
+    private String localizeFallbackDescription(String english){
+        if(english == null || english.isEmpty()) return "";
+        if(english.equals("Left-click acts as hotkey.")){
+            return tr("左键点击等同于快捷键。", "Left-click acts as the hotkey.");
+        }
+        return english;
+    }
+
+    private String localizeDisplayName(String rawName){
+        if(rawName == null || rawName.isEmpty()) return "";
+
+        String levelName;
+        if((levelName = localizeLevelName(rawName, "Infantry Weapons", "步兵武器")) != null) return levelName;
+        if((levelName = localizeLevelName(rawName, "Infantry Armor", "步兵装甲")) != null) return levelName;
+        if((levelName = localizeLevelName(rawName, "Vehicle Weapons", "载具武器")) != null) return levelName;
+        if((levelName = localizeLevelName(rawName, "Vehicle/Ship Plating", "载具/舰船装甲")) != null) return levelName;
+        if((levelName = localizeLevelName(rawName, "Ship Weapons", "舰船武器")) != null) return levelName;
+
+        return switch(rawName){
+            case "SCV" -> "SCV";
+            case "Marine" -> tr("枪兵", "Marine");
+            case "Reaper" -> tr("收割者", "Reaper");
+            case "Marauder" -> tr("劫掠者", "Marauder");
+            case "Ghost" -> tr("鬼兵", "Ghost");
+            case "Hellion" -> tr("恶火", "Hellion");
+            case "Hellbat" -> tr("恶蝠", "Hellbat");
+            case "Widow Mine" -> tr("寡妇雷", "Widow Mine");
+            case "Cyclone" -> tr("飓风", "Cyclone");
+            case "Siege Tank" -> tr("攻城坦克", "Siege Tank");
+            case "Thor" -> tr("雷神", "Thor");
+            case "Viking" -> tr("维京战机", "Viking");
+            case "Medivac" -> tr("医疗运输机", "Medivac");
+            case "Liberator" -> tr("解放者", "Liberator");
+            case "Raven" -> tr("铁鸦", "Raven");
+            case "Banshee" -> tr("女妖", "Banshee");
+            case "Battlecruiser" -> tr("战列巡航舰", "Battlecruiser");
+            case "Command Center" -> tr("指挥中心", "Command Center");
+            case "Orbital Command" -> tr("轨道指挥部", "Orbital Command");
+            case "Planetary Fortress" -> tr("行星要塞", "Planetary Fortress");
+            case "Refinery" -> tr("精炼厂", "Refinery");
+            case "Supply Depot" -> tr("补给站", "Supply Depot");
+            case "Barracks" -> tr("兵营", "Barracks");
+            case "Engineering Bay" -> tr("工程站", "Engineering Bay");
+            case "Bunker" -> tr("地堡", "Bunker");
+            case "Missile Turret" -> tr("导弹塔", "Missile Turret");
+            case "Sensor Tower" -> tr("雷达塔", "Sensor Tower");
+            case "Ghost Academy" -> tr("幽灵学院", "Ghost Academy");
+            case "Factory" -> tr("重工厂", "Factory");
+            case "Armory" -> tr("军械库", "Armory");
+            case "Starport" -> tr("星港", "Starport");
+            case "Fusion Core" -> tr("聚变核心", "Fusion Core");
+            case "Tech Lab" -> tr("科技实验室", "Tech Lab");
+            case "Reactor", "Double Addon" -> tr("反应堆", "Reactor");
+            case "Tech Addon" -> tr("科技实验室", "Tech Lab");
+            case "KD8 Bomb" -> tr("KD8炸弹", "KD8 Bomb");
+            case "Stimpack" -> tr("兴奋剂", "Stimpack");
+            case "Hurricane Lock" -> tr("锁定", "Hurricane Lock");
+            case "Heal" -> tr("治疗", "Heal");
+            case "Afterburners" -> tr("点燃加力燃烧器", "Afterburners");
+            case "Load" -> tr("装载", "Load");
+            case "Unload" -> tr("卸载", "Unload");
+            case "Tactical Nuke" -> tr("战术核打击", "Tactical Nuke");
+            case "Stable Aim" -> tr("稳固瞄准", "Stable Aim");
+            case "EMP Round" -> tr("EMP弹", "EMP Round");
+            case "Cloak" -> tr("隐形", "Cloak");
+            case "Fighter Mode" -> tr("战机模式", "Fighter Mode");
+            case "Mech Mode" -> tr("机甲模式", "Mech Mode");
+            case "Locus Mode" -> tr("恶蝠模式", "Hellbat Mode");
+            case "Mace Mode" -> tr("恶火模式", "Hellion Mode");
+            case "High Impact Payload" -> tr("高冲击弹头", "High Impact Payload");
+            case "Explosive Payload" -> tr("爆裂弹头", "Explosive Payload");
+            case "Auto Turret" -> tr("自动机炮台", "Auto Turret");
+            case "Anti-Armor Missile" -> tr("反装甲导弹", "Anti-Armor Missile");
+            case "Interference Matrix" -> tr("干扰矩阵", "Interference Matrix");
+            case "Yamato Cannon" -> tr("大和炮", "Yamato Cannon");
+            case "Tactical Jump" -> tr("战术跃迁", "Tactical Jump");
+            case "Defense Mode" -> tr("防卫模式", "Defense Mode");
+            case "Siege Mode" -> tr("攻城模式", "Siege Mode");
+            case "Tank Mode" -> tr("坦克模式", "Tank Mode");
+            case "Widow Burrow" -> tr("寡妇雷下潜", "Widow Burrow");
+            case "Widow Reload" -> tr("寡妇雷装填", "Widow Reload");
+            case "Instant Tracking" -> tr("即时追踪", "Instant Tracking");
+            case "Steel Armor" -> tr("钢铁装甲", "Steel Armor");
+            case "Ghost Camouflage" -> tr("幽灵迷彩", "Ghost Camouflage");
+            case "Blast Shield" -> tr("防爆护盾", "Blast Shield");
+            case "Concussive Shells" -> tr("震荡弹", "Concussive Shells");
+            case "Inferno Pre-Igniter" -> tr("地狱预燃器", "Inferno Pre-Igniter");
+            case "Electromagnetic Field Accelerator" -> tr("电磁场加速器", "Electromagnetic Field Accelerator");
+            case "Drilling Claws" -> tr("钻地爪", "Drilling Claws");
+            case "Smart Servos" -> tr("智能伺服", "Smart Servos");
+            case "Cloaking Field" -> tr("隐形力场", "Cloaking Field");
+            case "Afterburner Rotors" -> tr("加力旋翼", "Afterburner Rotors");
+            case "Weapon Refit" -> tr("武器重构", "Weapon Refit");
+            case "Caduceus Reactor" -> tr("卡杜修斯反应堆", "Caduceus Reactor");
+            case "Advanced Ballistics" -> tr("先进弹道学", "Advanced Ballistics");
+            case "Armory Upgrade" -> tr("军械库升级", "Armory Upgrade");
+            case "Engineering Upgrade" -> tr("工程升级", "Engineering Upgrade");
+            case "Barracks Tech" -> tr("兵营科技", "Barracks Tech");
+            case "Heavy Factory Tech" -> tr("重工厂科技", "Heavy Factory Tech");
+            case "Fusion Core Upgrade" -> tr("聚变核心升级", "Fusion Core Upgrade");
+            case "Skill Cooldown" -> tr("技能冷却", "Skill Cooldown");
+            default -> rawName;
+        };
+    }
+
+    private @Nullable String localizeLevelName(String rawName, String enBase, String zhBase){
+        if(rawName.equals(enBase)) return tr(zhBase, enBase);
+        String prefix = enBase + " Lv.";
+        if(!rawName.startsWith(prefix)) return null;
+        String level = rawName.substring(prefix.length());
+        return isZh() ? zhBase + level + "级" : enBase + " Lv." + level;
+    }
+
+    private String unitDescription(UnitType unit){
+        if(unit == UnitTypes.nova) return tr("工兵单位。采集晶体与瓦斯、建造建筑，并为机械单位维修。", "Worker unit. Gathers crystal and gas, constructs structures, and repairs mechanical units.");
+        if(unit == UnitTypes.dagger) return tr("基础步兵。可对空对地攻击；研究兴奋剂后可短时提升机动与输出。", "Basic infantry. Attacks air and ground; Stimpack temporarily boosts mobility and firepower.");
+        if(unit == UnitTypes.reaper) return tr("高机动骚扰步兵。使用KD8炸弹驱散轻型地面单位。", "Fast harassment infantry. Uses KD8 charges to displace light ground targets.");
+        if(unit == UnitTypes.fortress) return tr("重装步兵。对重甲目标有额外伤害，研究震荡弹后可减速敌人。", "Heavy infantry. Deals bonus damage to armored targets and can slow enemies with Concussive Shells.");
+        if(unit == UnitTypes.ghost) return tr("精英特战步兵。可狙击、发射EMP并隐形，还能引导战术核打击。", "Elite special-ops infantry. Uses snipe, EMP, and cloak, and can call down tactical nukes.");
+        if(unit == UnitTypes.mace) return tr("高速喷火载具。擅长清理轻甲地面单位，可变形为恶蝠。", "Fast flame vehicle specialized against light ground units. Can transform into Hellbat mode.");
+        if(unit == UnitTypes.locus) return tr("近战重甲喷火单位。对轻甲地面有压制力，可变形回恶火。", "Armored close-range flame unit that excels versus light ground. Can transform back to Hellion mode.");
+        if(unit == UnitTypes.crawler) return tr("伏击型地雷。埋地后锁定并发射高伤害范围导弹。", "Ambush mine. Burrows, locks on, and fires a high-damage splash missile.");
+        if(unit == UnitTypes.hurricane) return tr("机动导弹载具。可锁定单个目标并在移动中持续发射追踪导弹。", "Mobile missile vehicle. Locks onto a target and keeps firing tracking missiles while moving.");
+        if(unit == UnitTypes.precept) return tr("可切换模式的火炮载具。坦克模式机动，攻城模式提供远程范围火力。", "Artillery vehicle with two modes. Mobile in tank mode, long-range splash fire in siege mode.");
+        if(unit == UnitTypes.scepter) return tr("重型机械单位。具备强力对地火力，并可切换两种对空弹药模式。", "Heavy walker with powerful anti-ground weapons and switchable anti-air payload modes.");
+        if(unit == UnitTypes.flare) return tr("可变形空优战机。战机模式主打对空，机甲模式可对地支援。", "Transforming air-superiority fighter. Fighter mode focuses on air targets, mech mode supports against ground.");
+        if(unit == UnitTypes.mega) return tr("空中医疗运输单位。可治疗生物单位并装载友军地面单位。", "Airborne medical transport. Heals biological allies and can load friendly ground units.");
+        if(unit == UnitTypes.liberator) return tr("双模式炮艇。战机模式主要对空，防卫模式只能打击圈内地面目标。", "Dual-mode gunship. Fighter mode handles air, while defense mode only attacks ground targets inside its zone.");
+        if(unit == UnitTypes.avert) return tr("电子战支援机。可部署自动机炮台、发射反装甲导弹并施放干扰矩阵。", "Electronic warfare support craft. Deploys auto turrets, fires anti-armor missiles, and uses Interference Matrix.");
+        if(unit == UnitTypes.horizon) return tr("隐形对地攻击机。擅长打击地面目标，研究后可持续隐形。", "Cloaked ground-attack aircraft specialized against ground targets.");
+        if(unit == UnitTypes.antumbra) return tr("重型主力舰。拥有全面火力，并可施放大和炮与战术跃迁。", "Capital ship with broad firepower, plus Yamato Cannon and Tactical Jump.");
+        return unit.localizedName;
+    }
+
+    private String blockDescription(Block block){
+        if(block == Blocks.coreNucleus) return tr("主基地。训练SCV、回收资源，并可升级为轨道指挥部或行星要塞。", "Main base. Trains SCVs, stores resources, and can upgrade into Orbital Command or Planetary Fortress.");
+        if(block == Blocks.coreOrbital) return tr("高级主基地。可执行扫描并提供额外补给能力。", "Advanced base that can scan and provide additional supply support.");
+        if(block == Blocks.corePlanetaryFortress) return tr("武装要塞化主基地。具备地面火炮和更高防御。", "Fortified base with a ground cannon and much heavier defenses.");
+        if(block == Blocks.ventCondenser) return tr("建在气泉上的瓦斯采集建筑。", "Gas harvesting structure built on a geyser.");
+        if(block == Blocks.doorLarge) return tr("提供人口上限的补给建筑。", "Supply structure that increases your population cap.");
+        if(block == Blocks.groundFactory) return tr("训练步兵单位，可加装科技实验室或反应堆。", "Produces infantry units and can add a Tech Lab or Reactor.");
+        if(block == Blocks.multiPress) return tr("提供步兵升级和部分建筑科技。", "Unlocks infantry upgrades and key structure technologies.");
+        if(block == Blocks.atmosphericConcentrator) return tr("可装载步兵的防御工事，为内部单位提供掩护输出。", "Defensive bunker that loads infantry and lets them fire safely from inside.");
+        if(block == Blocks.swarmer) return tr("静态对空防御塔，可压制敌方空军。", "Static anti-air turret for controlling hostile aircraft.");
+        if(block == Blocks.radar) return tr("侦测附近来袭敌军，提前提供预警。", "Detects nearby incoming enemy units and provides early warning.");
+        if(block == Blocks.launchPad) return tr("研究幽灵迷彩并制造战术核弹头。", "Researches Ghost camouflage and produces tactical warheads.");
+        if(block == Blocks.tankFabricator) return tr("训练载具单位，可加装科技实验室或反应堆。", "Produces vehicle units and can add a Tech Lab or Reactor.");
+        if(block == Blocks.siliconCrucible) return tr("提供载具与舰船升级，并解锁部分形态切换强化。", "Provides vehicle and ship upgrades and unlocks several transformation improvements.");
+        if(block == Blocks.shipFabricator) return tr("训练空军单位，可加装科技实验室或反应堆。", "Produces air units and can add a Tech Lab or Reactor.");
+        if(block == Blocks.surgeCrucible) return tr("解锁后期星港科技，如解放者、医疗运输机和战巡强化。", "Unlocks late-game starport upgrades for Liberators, Medivacs, and Battlecruisers.");
+        if(block == Blocks.memoryBank) return tr("科技附件。解锁高级单位与研究项目。", "Tech add-on that unlocks advanced units and research.");
+        if(block == Blocks.rotaryPump) return tr("反应堆附件。给予生产建筑双队列产能。", "Reactor add-on that grants a second production queue.");
+        return block.localizedName;
+    }
+
+    private @Nullable String researchDescription(String rawName){
+        if(rawName == null || rawName.isEmpty()) return null;
+        if(rawName.startsWith("Infantry Weapons")) return tr("提升枪兵、劫掠者和鬼兵的武器伤害；鬼兵对轻甲额外伤害也会提高。", "Increases Marine, Marauder, and Ghost weapon damage, including Ghost bonus damage versus light targets.");
+        if(rawName.startsWith("Infantry Armor")) return tr("提升枪兵、劫掠者和鬼兵的护甲。", "Increases armor for Marines, Marauders, and Ghosts.");
+        if(rawName.startsWith("Vehicle Weapons")) return tr("提升恶火、恶蝠、寡妇雷、飓风和攻城坦克的武器伤害。", "Increases weapon damage for Hellions, Hellbats, Widow Mines, Cyclones, and Siege Tanks.");
+        if(rawName.startsWith("Vehicle/Ship Plating")) return tr("提升载具与舰船单位的护甲。", "Increases armor for vehicle and ship units.");
+        if(rawName.startsWith("Ship Weapons")) return tr("提升维京、解放者、铁鸦、女妖和战列巡航舰的武器伤害。", "Increases weapon damage for Vikings, Liberators, Ravens, Banshees, and Battlecruisers.");
+
+        return switch(rawName){
+            case "Instant Tracking" -> tr("使飓风的锁定额外获得1格射程。", "Grants Cyclone lock-on +1 tile of range.");
+            case "Steel Armor" -> tr("使建筑额外获得2点护甲，地堡额外获得2个装载位，并提高基地SCV容量。", "Adds 2 armor to structures, gives bunkers 2 extra slots, and increases base SCV capacity.");
+            case "Ghost Camouflage" -> tr("解锁鬼兵的隐形能力。", "Unlocks Ghost cloak.");
+            case "Blast Shield" -> tr("使枪兵额外获得10点生命值。", "Gives Marines +10 maximum health.");
+            case "Stimpack" -> tr("解锁枪兵与劫掠者的兴奋剂，用生命换取短时间更强战斗力。", "Unlocks Stimpack for Marines and Marauders, trading health for a short combat boost.");
+            case "Concussive Shells" -> tr("使劫掠者攻击短暂减速目标。", "Causes Marauder attacks to briefly slow targets.");
+            case "Inferno Pre-Igniter" -> tr("提升恶火与恶蝠对轻甲单位的额外伤害。", "Increases Hellion and Hellbat bonus damage against light units.");
+            case "Electromagnetic Field Accelerator" -> tr("强化飓风的锁定导弹伤害。", "Upgrades Cyclone lock-on missile damage.");
+            case "Drilling Claws" -> tr("显著缩短寡妇雷埋地与起爆准备时间。", "Greatly reduces Widow Mine burrow and setup time.");
+            case "Smart Servos" -> tr("缩短恶火/恶蝠、维京、攻城坦克和解放者的变形部署时间。", "Reduces transformation and deployment time for Hellions/Hellbats, Vikings, Siege Tanks, and Liberators.");
+            case "Cloaking Field" -> tr("解锁女妖的隐形能力。", "Unlocks Banshee cloak.");
+            case "Afterburner Rotors" -> tr("永久提升女妖的移动速度。", "Permanently increases Banshee movement speed.");
+            case "Interference Matrix" -> tr("解锁铁鸦的干扰矩阵技能。", "Unlocks Raven Interference Matrix.");
+            case "Weapon Refit" -> tr("解锁战列巡航舰的大和炮。", "Unlocks Battlecruiser Yamato Cannon.");
+            case "Caduceus Reactor" -> tr("提升医疗运输机的能量恢复效率。", "Improves Medivac energy regeneration.");
+            case "Advanced Ballistics" -> tr("提升解放者防卫模式的攻击范围。", "Increases Liberator defense mode range.");
+            case "Armory Upgrade" -> tr("显示军械库当前正在进行的升级进度。", "Displays the Armory upgrade currently in progress.");
+            case "Engineering Upgrade" -> tr("显示工程站当前正在进行的升级进度。", "Displays the Engineering Bay upgrade currently in progress.");
+            case "Barracks Tech" -> tr("显示兵营科技实验室当前研究的项目。", "Displays the current Barracks Tech Lab research.");
+            case "Heavy Factory Tech" -> tr("显示重工厂科技实验室当前研究的项目。", "Displays the current Factory Tech Lab research.");
+            case "Fusion Core Upgrade" -> tr("显示聚变核心当前进行中的升级项目。", "Displays the Fusion Core upgrade currently in progress.");
+            default -> null;
+        };
+    }
+
+    private @Nullable String namedDescription(String rawName){
+        if(rawName == null || rawName.isEmpty()) return null;
+
+        return switch(rawName){
+            case "Stimpack" -> tr("消耗生命值，短时间提高枪兵与劫掠者的移动和攻击效率。", "Consumes health to briefly boost Marine and Marauder mobility and attack output.");
+            case "KD8 Bomb" -> tr("投掷延时炸弹。1.5秒后爆炸，造成5点穿透伤害并击退轻型目标。", "Throws a timed explosive. Detonates after 1.5 seconds for 5 pierce damage and knockback against light targets.");
+            case "Hurricane Lock" -> tr("锁定当前目标并在移动中持续发射追踪导弹。右键可切换自动施放。", "Locks the current target and keeps firing tracking missiles while moving. Right-click toggles autocast.");
+            case "Heal" -> tr("为生物友军持续恢复生命。右键可切换自动施放。", "Continuously restores health to biological allied units. Right-click toggles autocast.");
+            case "Afterburners" -> tr("短时间获得爆发移速，用于追击、撤离或转场。", "Grants a short burst of movement speed for pursuit, retreat, or repositioning.");
+            case "Load" -> tr("装载附近友军地面单位进入运输舱。", "Loads nearby friendly ground units into the transport bay.");
+            case "Unload" -> tr("卸载当前运输舱内的单位。", "Unloads units currently carried in the transport bay.");
+            case "Tactical Nuke" -> tr("在目标区域引导一枚核弹。需要先制造弹头。", "Calls down a nuclear strike on the target area. Requires a prepared warhead.");
+            case "Stable Aim" -> tr("瞄准后进行高伤害狙击，对灵能目标有额外效果。", "Aims, then fires a high-damage snipe with extra effect against psionic targets.");
+            case "EMP Round" -> tr("发射EMP弹，削减护盾、烧毁灵能能量并揭示隐形。", "Fires an EMP round that removes shields, burns psionic energy, and reveals cloaked targets.");
+            case "Cloak" -> tr("进入隐形状态并持续消耗能量。", "Enters cloak and continuously drains energy.");
+            case "Fighter Mode" -> tr("切换为机动战机形态。", "Switches into a mobile fighter configuration.");
+            case "Mech Mode" -> tr("切换为机甲地面作战形态。", "Switches into a ground mech combat configuration.");
+            case "Locus Mode" -> tr("变形成恶蝠形态以进行近距离火焰压制。", "Transforms into Hellbat mode for close-range flame combat.");
+            case "Mace Mode" -> tr("变形成恶火形态以恢复高速机动。", "Transforms into Hellion mode to regain high mobility.");
+            case "High Impact Payload" -> tr("雷神切换为高冲击对空弹药，强化单体对空伤害。", "Thor switches to high-impact anti-air payload for stronger single-target air damage.");
+            case "Explosive Payload" -> tr("雷神切换为爆裂对空弹药，更适合压制轻型空军。", "Thor switches to explosive anti-air payload, better against light air units.");
+            case "Auto Turret" -> tr("在目标点部署临时自动机炮台。", "Deploys a temporary auto turret at the target point.");
+            case "Anti-Armor Missile" -> tr("发射反装甲导弹，对区域内目标施加易伤效果。", "Launches an anti-armor missile that makes units in the area take extra damage.");
+            case "Interference Matrix" -> tr("短时间禁用敌方机械单位。", "Disables an enemy mechanical unit for a short duration.");
+            case "Yamato Cannon" -> tr("蓄力后对单一目标造成极高伤害。", "Charges up and deals massive damage to a single target.");
+            case "Tactical Jump" -> tr("短暂蓄力后跃迁到指定位置。", "Charges briefly, then warps to the selected location.");
+            case "Defense Mode" -> tr("展开为防卫模式，只能攻击防卫圈内的地面目标。", "Deploys into defense mode and can only attack ground targets inside the defense circle.");
+            case "Siege Mode" -> tr("展开为攻城模式，获得超远程对地范围火力，但无法移动。", "Deploys into siege mode for long-range anti-ground splash fire, but the tank cannot move.");
+            case "Tank Mode" -> tr("收起炮架并恢复机动坦克形态。", "Packs up and returns to the mobile tank configuration.");
+            case "Widow Burrow" -> tr("埋地进入隐蔽状态，准备伏击敌军。", "Burrows underground to hide and prepare an ambush.");
+            case "Widow Reload" -> tr("重新装填寡妇雷导弹并准备再次伏击。", "Reloads the Widow Mine missile and prepares for another ambush.");
+            case "Tech Addon" -> tr("为生产建筑加装科技实验室，解锁高级单位与研究。", "Adds a Tech Lab to unlock advanced units and research.");
+            case "Double Addon" -> tr("为生产建筑加装反应堆，获得双队列生产能力。", "Adds a Reactor to grant dual production queues.");
+            case "Skill Cooldown" -> tr("该技能仍在冷却中。", "This skill is still on cooldown.");
+            default -> null;
+        };
     }
 
     private Element borderElement(){
@@ -2665,14 +3117,14 @@ public class UnitAbilityPanel extends Table{
     }
 
     private AbilityInfo defaultAbilityInfo(String key){
-        String name = key == null || key.isEmpty() ? "Ability" : ("Ability " + key);
-        return makeAbilityInfo(key, name, "Left-click acts as hotkey.");
+        return makeAbilityInfo(key, "Ability", "Left-click acts as hotkey.");
     }
 
-    private void bindAbilityHover(Button button, @Nullable AbilityInfo info){
+    private void bindAbilityHover(Button button, @Nullable AbilityInfo info, @Nullable Boolp enabled){
         if(button == null || info == null) return;
         button.update(() -> {
-            if(button.isOver()){
+            boolean active = enabled == null || enabled.get();
+            if(active && button.visible && button.isOver()){
                 hoverAbilityInfo = info;
             }else if(hoverAbilityInfo == info){
                 hoverAbilityInfo = null;
@@ -2689,12 +3141,20 @@ public class UnitAbilityPanel extends Table{
     }
 
     private Button addAutoCastIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Boolp autoEnabled, Runnable toggleAuto){
-        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto, null);
+        return addAutoCastIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto, null);
+    }
+
+    private Button addAutoCastIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Boolp autoEnabled, Runnable toggleAuto, @Nullable AbilityInfo info){
+        return addIconButton(grid, key, icon, enabled, action, autoEnabled, toggleAuto, info);
     }
 
     private Button addCountedIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Intp count){
+        return addCountedIconButton(grid, key, icon, enabled, action, count, null);
+    }
+
+    private Button addCountedIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Intp count, @Nullable AbilityInfo info){
         Boolp allowed = enabled == null ? () -> true : enabled;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
@@ -2738,7 +3198,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, defaultAbilityInfo(key));
+        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
 
@@ -2748,7 +3208,7 @@ public class UnitAbilityPanel extends Table{
 
     private Button addIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, @Nullable Boolp autoEnabled, @Nullable Runnable toggleAuto, @Nullable AbilityInfo info){
         Boolp allowed = enabled == null ? () -> true : enabled;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
@@ -2790,13 +3250,17 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info);
+        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
 
     private Button addBattlecruiserCooldownButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Floatp cooldownValue, Floatp cooldownTotal){
+        return addBattlecruiserCooldownButton(grid, key, icon, enabled, action, cooldownValue, cooldownTotal, null);
+    }
+
+    private Button addBattlecruiserCooldownButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Floatp cooldownValue, Floatp cooldownTotal, @Nullable AbilityInfo info){
         Boolp allowed = enabled == null ? () -> true : enabled;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
@@ -2825,13 +3289,13 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, makeAbilityInfo(key, "Skill Cooldown", "Left-click acts as hotkey."));
+        bindAbilityHover(button, info == null ? makeAbilityInfo(key, "Skill Cooldown", "Left-click acts as hotkey.") : info, allowed);
         return button;
     }
 
     private Button addCooldownIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action, Floatp cooldownValue, Floatp cooldownTotal, @Nullable AbilityInfo info){
         Boolp allowed = enabled == null ? () -> true : enabled;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
@@ -2862,7 +3326,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info);
+        bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
 
@@ -2914,7 +3378,7 @@ public class UnitAbilityPanel extends Table{
 
     private Button addHurricaneLockButton(Table grid){
         Boolp enabled = this::anyHurricaneCanLock;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(enabled.get()){
                 issueHurricaneLockCommand();
@@ -2964,13 +3428,13 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, makeAbilityInfo("c", "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."));
+        bindAbilityHover(button, makeAbilityInfo("c", "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."), enabled);
         return button;
     }
 
     private Button addHoverableIconButton(Table grid, String key, Drawable icon, Boolp enabled, Runnable action){
         Boolp allowed = enabled == null ? () -> true : enabled;
-        Button button = new Button(Styles.clearNoneTogglei);
+        Button button = new Button(Styles.clearNonei);
         button.clicked(() -> {
             if(allowed.get()) action.run();
         });
@@ -2998,7 +3462,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, defaultAbilityInfo(key));
+        bindAbilityHover(button, defaultAbilityInfo(key), allowed);
         return button;
     }
 
@@ -3727,7 +4191,7 @@ public class UnitAbilityPanel extends Table{
         return info;
     }
 
-    private BuildInfo makeWidowActionInfo(String key, String name, Color color, Floatp progress, Boolp visible){
+    private BuildInfo makeWidowActionInfo(String key, String name, Color color, Floatp progress, Boolp visible, float timeSeconds){
         BuildInfo info = new BuildInfo();
         info.unit = UnitTypes.crawler;
         info.key = key;
@@ -3735,7 +4199,7 @@ public class UnitAbilityPanel extends Table{
         info.action = "Ability";
         info.crystalCost = 0;
         info.gasCost = 0;
-        info.timeSeconds = 0;
+        info.timeSeconds = timeSeconds;
         info.progress = progress;
         info.progressVisible = visible;
         info.progressColor = color;
@@ -3892,6 +4356,25 @@ public class UnitAbilityPanel extends Table{
             result = Math.max(result, UnitTypes.barracksStimpackCooldown(unit));
         }
         return result;
+    }
+
+    private String selectedBarracksStimpackCostLine(){
+        boolean marine = false;
+        boolean marauder = false;
+        for(Unit unit : abilityUnits()){
+            if(unit == null || !unit.isValid() || !UnitTypes.isBarracksStimpackUnit(unit)) continue;
+            if(unit.type == UnitTypes.fortress){
+                marauder = true;
+            }else{
+                marine = true;
+            }
+        }
+
+        String label = tr("\u751f\u547d\u503c", "HP");
+        if(marine && marauder) return label + " 10 / 20";
+        if(marauder) return label + " 20";
+        if(marine) return label + " 10";
+        return label;
     }
 
     private void issueBarracksStimpackCommand(){
@@ -4507,11 +4990,47 @@ public class UnitAbilityPanel extends Table{
 
     */
     private String sc2Name(Block block){
-        return block == null ? "" : block.localizedName;
+        if(block == null) return "";
+        if(block == Blocks.coreNucleus) return "Command Center";
+        if(block == Blocks.coreOrbital) return "Orbital Command";
+        if(block == Blocks.corePlanetaryFortress) return "Planetary Fortress";
+        if(block == Blocks.ventCondenser) return "Refinery";
+        if(block == Blocks.doorLarge) return "Supply Depot";
+        if(block == Blocks.groundFactory) return "Barracks";
+        if(block == Blocks.multiPress) return "Engineering Bay";
+        if(block == Blocks.atmosphericConcentrator) return "Bunker";
+        if(block == Blocks.swarmer) return "Missile Turret";
+        if(block == Blocks.radar) return "Sensor Tower";
+        if(block == Blocks.launchPad) return "Ghost Academy";
+        if(block == Blocks.tankFabricator) return "Factory";
+        if(block == Blocks.siliconCrucible) return "Armory";
+        if(block == Blocks.shipFabricator) return "Starport";
+        if(block == Blocks.surgeCrucible) return "Fusion Core";
+        if(block == Blocks.memoryBank) return "Tech Lab";
+        if(block == Blocks.rotaryPump) return "Reactor";
+        return block.localizedName;
     }
 
     private String sc2Name(UnitType unit){
-        return unit == null ? "" : unit.localizedName;
+        if(unit == null) return "";
+        if(unit == UnitTypes.dagger) return "Marine";
+        if(unit == UnitTypes.reaper) return "Reaper";
+        if(unit == UnitTypes.fortress) return "Marauder";
+        if(unit == UnitTypes.ghost) return "Ghost";
+        if(unit == UnitTypes.mace) return "Hellion";
+        if(unit == UnitTypes.locus) return "Hellbat";
+        if(unit == UnitTypes.crawler) return "Widow Mine";
+        if(unit == UnitTypes.hurricane) return "Cyclone";
+        if(unit == UnitTypes.precept) return "Siege Tank";
+        if(unit == UnitTypes.scepter) return "Thor";
+        if(unit == UnitTypes.flare) return "Viking";
+        if(unit == UnitTypes.mega) return "Medivac";
+        if(unit == UnitTypes.liberator) return "Liberator";
+        if(unit == UnitTypes.avert) return "Raven";
+        if(unit == UnitTypes.horizon) return "Banshee";
+        if(unit == UnitTypes.antumbra) return "Battlecruiser";
+        if(unit == UnitTypes.nova) return "SCV";
+        return unit.localizedName;
     }
 
     private void addEmpty(Table grid){

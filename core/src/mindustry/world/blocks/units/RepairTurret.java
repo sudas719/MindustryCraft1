@@ -165,7 +165,7 @@ public class RepairTurret extends Block{
             Draw.rect(baseRegion, x, y);
 
             Draw.z(Layer.turret);
-            Drawf.shadow(region, x - (size / 2f), y - (size / 2f), rotation - 90);
+            Drawf.hardShadow(region, x - (size / 2f), y - (size / 2f), rotation - 90);
             Draw.rect(region, x, y, rotation - 90);
 
             drawBeam(x, y, rotation, length, id, target, team, strength,

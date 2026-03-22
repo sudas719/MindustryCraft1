@@ -2,9 +2,8 @@ import java.text.SimpleDateFormat
 
 buildscript{
     ext{
-        arcHash = property("archash")
-
         localArc = !project.hasProperty("release") && new File(rootDir.parent, 'Arc').exists() && !project.hasProperty("noLocalArc")
+        arcHash = localArc && project.hasProperty("localArchash") ? property("localArchash") : property("archash")
 
         arcModule = { String name ->
             //skip to last submodule
@@ -89,7 +88,7 @@ allprojects{
         }
 
         getBuildVersion = {
-            if(!project.hasProperty("buildversion")) return "0.5"
+            if(!project.hasProperty("buildversion")) return "0.6"
             return project.getProperties()["buildversion"]
         }
 
@@ -351,7 +350,11 @@ project(":core"){
 
     afterEvaluate{
         task mergedJavadoc(type: Javadoc){
-            def blacklist = [project(":ios"), project(":desktop"), project(":server"), project(":annotations")]
+            def blacklist = [project(":desktop"), project(":server"), project(":annotations")]
+            def iosProject = findProject(":ios")
+            if(iosProject != null){
+                blacklist += iosProject
+            }
             if(findProject(":android") != null){
                 blacklist += project(":android")
             }

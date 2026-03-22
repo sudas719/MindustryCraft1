@@ -154,10 +154,18 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public void rotateMove(Vec2 vec){
-        moveAt(Tmp.v2.trns(rotation, vec.len()));
-
         if(!vec.isZero()){
-            rotation = Angles.moveToward(rotation, vec.angle(), type.rotateSpeed * Time.delta * speedMultiplier);
+            float target = vec.angle();
+            float rotateSpeed = type.rotateSpeed * Time.delta * speedMultiplier;
+            float angleDiff = Angles.angleDist(rotation, target);
+
+            rotation = Angles.moveToward(rotation, target, rotateSpeed);
+
+            if(angleDiff <= rotateSpeed){
+                moveAt(Tmp.v2.trns(rotation, vec.len()));
+            }else{
+                vel.setZero();
+            }
         }
     }
 
@@ -172,7 +180,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public boolean isPathImpassable(int tileX, int tileY){
-        if(type.flying || !world.tiles.in(tileX, tileY)) return false;
+        if(UnitTypes.usesFlyingRules(self()) || !world.tiles.in(tileX, tileY)) return false;
 
         Tile from = tileOn();
         Tile to = world.tile(tileX, tileY);
@@ -212,28 +220,54 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
                     return true;
                 }
             }
-            if(buildEjectTime > 0f){
-                float unitSize = Math.min(hitSize * 0.66f, 7.8f);
-                float ur = unitSize / 2f;
-                float br = build.block.size * tilesize / 2f;
-                float dx = x - build.x, dy = y - build.y;
-                float rs = ur + br;
-                if(dx * dx + dy * dy < rs * rs){
-                    return true;
-                }
+            if(buildEjectTime > 0f && overlapsSolidBuilding(build, x, y)){
+                return true;
             }
-            float unitSize = Math.min(hitSize * 0.66f, 7.8f);
-            float ur = unitSize / 2f;
-            float br = build.block.size * tilesize / 2f;
-            float dx = x - build.x, dy = y - build.y;
-            float rs = ur + br;
-            if(dx * dx + dy * dy < rs * rs){
-                return false;
-            }
-            return true;
+            return !overlapsSolidBuilding(build, tile.worldx(), tile.worldy());
         }
 
         return !s.solid(tileX, tileY);
+    }
+
+    @Replace
+    @Override
+    public boolean canPassOn(){
+        SolidPred s = solidity();
+        if(s == null) return true;
+
+        Tile tile = tileOn();
+        if(tile == null) return false;
+
+        Building build = tile.build;
+        if(build != null && (tile.block().solid || build.checkSolid())){
+            if(build instanceof ConstructBlock.ConstructBuild cons){
+                BuildPlan plan = buildPlan();
+                if(plan != null && plan.requireClose && plan.x == cons.tile.x && plan.y == cons.tile.y){
+                    return true;
+                }
+            }
+
+            boolean overlaps = overlapsSolidBuilding(build, x, y);
+
+            if(buildEjectTime > 0f && overlaps){
+                return true;
+            }
+
+            //When standing on a footprint tile that lies outside the building's round collision,
+            //treat the position as valid instead of falling back to the tile-wide square occupancy.
+            return !overlaps;
+        }
+
+        return canPass(tile.x, tile.y);
+    }
+
+    private boolean overlapsSolidBuilding(Building build, float px, float py){
+        float unitSize = Math.min(hitSize * 0.66f, 7.8f);
+        float ur = unitSize / 2f;
+        float br = build.hitSize() / 2f;
+        float dx = px - build.x, dy = py - build.y;
+        float rs = ur + br;
+        return dx * dx + dy * dy < rs * rs;
     }
 
     public boolean inRange(Position other){
@@ -545,18 +579,25 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         }
         boolean harvestCommand = controller instanceof HarvestAI ||
             (controller instanceof CommandAI cmd && cmd.currentCommand() == UnitCommand.harvestCommand);
-        boolean harvestCollision = harvestCommand && (type == UnitTypes.nova || type == UnitTypes.pulsar);
-        if(wasHarvestCollision && !harvestCollision){
+        boolean harvestNoCollision = harvestCommand && (type == UnitTypes.nova || (isFlying() && type == UnitTypes.pulsar));
+        if(wasHarvestCollision && !harvestNoCollision){
             harvestSoftTime = harvestSoftDuration;
         }
-        wasHarvestCollision = harvestCollision;
-        if(harvestCollision){
+        wasHarvestCollision = harvestNoCollision;
+        if(harvestNoCollision){
             return -1;
         }
-        if(isFlying() && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive()){
+        boolean usesFlyingRules = UnitTypes.usesFlyingRules(self());
+        if(usesFlyingRules && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive()){
             return -1;
         }
-        return type.allowLegStep && type.legPhysicsLayer ? PhysicsProcess.layerLegs : isGrounded() ? PhysicsProcess.layerGround : PhysicsProcess.layerFlying;
+        if(usesFlyingRules && moving()){
+            return -1;
+        }
+        if(usesFlyingRules){
+            return PhysicsProcess.layerFlying;
+        }
+        return PhysicsProcess.layerGround;
     }
 
     public float collisionPushScale(){
@@ -1107,11 +1148,12 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     private void updateAirSeparation(){
-        if(!(isFlying() && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive())) return;
+        if(type.flying) return;
+        if(!(type.flying && controller instanceof CommandAI cmd && cmd.moveOnlyCommandActive())) return;
         float radius = hitSize * unitCollisionRadiusScale;
         float size = radius * 2f;
         Units.nearby(x - radius, y - radius, size, size, other -> {
-            if(other == null || other == self() || !other.isValid() || !other.isFlying()) return;
+            if(other == null || other == self() || !other.isValid() || !other.type.flying) return;
             if(!(other.controller() instanceof CommandAI cmdOther) || !cmdOther.moveOnlyCommandActive()) return;
             float otherRadius = other.hitSize * unitCollisionRadiusScale;
             float rs = radius + otherRadius;
@@ -1187,7 +1229,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         }
 
         //if this unit crash landed (was flying), damage stuff in a radius
-        if(type.flying && !spawnedByCore && type.createWreck && state.rules.unitCrashDamage(team) > 0){
+        if(UnitTypes.usesFlyingRules(self()) && !spawnedByCore && type.createWreck && state.rules.unitCrashDamage(team) > 0){
             var shields = indexer.getEnemy(team, BlockFlag.shield);
             float crashDamage = Mathf.pow(hitSize, 0.75f) * type.crashDamageMultiplier * 2.5f * state.rules.unitCrashDamage(team);
             if(shields.isEmpty() || !shields.contains(b -> b instanceof ExplosionShield s && s.absorbExplosion(x, y, crashDamage))){
@@ -1250,7 +1292,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         dead = true;
 
         //don't waste time when the unit is already on the ground, just destroy it
-        if(!type.flying || !type.createWreck){
+        if(!UnitTypes.usesFlyingRules(self()) || !type.createWreck){
             destroy();
         }else{
            type.wreckSound.at(this, 1f, type.wreckSoundVolume);

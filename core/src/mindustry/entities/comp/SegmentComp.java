@@ -98,7 +98,13 @@ abstract class SegmentComp implements Posc, Rotc, Hitboxc, Unitc, Segmentc{
     @Replace
     public int collisionLayer(){
         if(parentSegment != null) return -1;
-        return type.allowLegStep && type.legPhysicsLayer ? PhysicsProcess.layerLegs : isGrounded() ? PhysicsProcess.layerGround : PhysicsProcess.layerFlying;
+        if(type.flying && moving()){
+            return -1;
+        }
+        if(type.flying){
+            return PhysicsProcess.layerFlying;
+        }
+        return PhysicsProcess.layerGround;
     }
 
     @Replace

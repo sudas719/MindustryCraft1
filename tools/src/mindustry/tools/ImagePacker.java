@@ -232,7 +232,6 @@ public class ImagePacker{
 
     static Pixmap get(TextureRegion region){
         validate(region);
-
         return cache.get(((AtlasRegion)region).name).pixmap.copy();
     }
 
@@ -278,7 +277,8 @@ public class ImagePacker{
     }
 
     static void replace(TextureRegion region, Pixmap image){
-        replace(((GenRegion)region).name, image);
+        validate(region);
+        replace(((AtlasRegion)region).name, image);
     }
 
     static void err(String message, Object... args){
@@ -286,9 +286,22 @@ public class ImagePacker{
     }
 
     static void validate(TextureRegion region){
-        if(((GenRegion)region).invalid){
-            ImagePacker.err("Region does not exist: @", ((GenRegion)region).name);
+        if(region == null){
+            ImagePacker.err("Region is null");
         }
+        if(region instanceof GenRegion gen){
+            if(gen.invalid){
+                ImagePacker.err("Region does not exist: @", gen.name);
+            }
+            return;
+        }
+        if(region instanceof AtlasRegion at){
+            if(!cache.containsKey(at.name)){
+                ImagePacker.err("Region does not exist: @", at.name);
+            }
+            return;
+        }
+        ImagePacker.err("Region does not exist: @", region);
     }
 
     static class GenRegion extends AtlasRegion{

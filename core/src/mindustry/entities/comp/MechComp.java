@@ -14,6 +14,7 @@ import static mindustry.Vars.*;
 @Component
 abstract class MechComp implements Posc, Hitboxc, Unitc, Mechc, ElevationMovec{
     @Import float x, y, hitSize;
+    @Import Vec2 vel;
     @Import UnitType type;
 
     @SyncField(false) @SyncLocal float baseRotation;
@@ -89,11 +90,18 @@ abstract class MechComp implements Posc, Hitboxc, Unitc, Mechc, ElevationMovec{
     @Override
     @Replace
     public void rotateMove(Vec2 vec){
-        //mechs use baseRotation to rotate, not rotation.
-        moveAt(Tmp.v2.trns(baseRotation, vec.len()));
-
         if(!vec.isZero()){
-            baseRotation = Angles.moveToward(baseRotation, vec.angle(), type.rotateSpeed * Math.max(Time.delta, 1));
+            float target = vec.angle();
+            float rotateSpeed = type.rotateSpeed * Math.max(Time.delta, 1f);
+            float angleDiff = Angles.angleDist(baseRotation, target);
+
+            baseRotation = Angles.moveToward(baseRotation, target, rotateSpeed);
+
+            if(angleDiff <= rotateSpeed){
+                moveAt(Tmp.v2.trns(baseRotation, vec.len()));
+            }else{
+                vel.setZero();
+            }
         }
     }
 

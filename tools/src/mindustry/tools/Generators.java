@@ -5,6 +5,7 @@ import arc.files.*;
 import arc.func.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
+import arc.graphics.g2d.TextureAtlas.AtlasRegion;
 import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
@@ -325,8 +326,8 @@ public class Generators{
                 TextureRegion[] regions = block.getGeneratedIcons();
 
                 for(TextureRegion region : block.makeIconRegions()){
-                    GenRegion gen = (GenRegion)region;
-                    save(get(region).outline(block.outlineColor, block.outlineRadius), gen.name + "-outline");
+                    AtlasRegion at = (AtlasRegion)region;
+                    save(get(region).outline(block.outlineColor, block.outlineRadius), at.name + "-outline");
                 }
 
                 Pixmap shardTeamTop = null;
@@ -353,7 +354,7 @@ public class Generators{
 
                 for(TextureRegion region : toOutline){
                     Pixmap pix = get(region).outline(block.outlineColor, block.outlineRadius);
-                    save(pix, ((GenRegion)region).name + "-outline");
+                    save(pix, ((AtlasRegion)region).name + "-outline");
                 }
 
                 if(regions.length == 0){
@@ -363,7 +364,7 @@ public class Generators{
                 try{
                     Pixmap last = null;
                     if(block.outlineIcon){
-                        GenRegion region = (GenRegion)regions[block.outlinedIcon >= 0 ? block.outlinedIcon : regions.length -1];
+                        AtlasRegion region = (AtlasRegion)regions[block.outlinedIcon >= 0 ? block.outlinedIcon : regions.length -1];
                         Pixmap base = get(region);
                         Pixmap out = last = base.outline(block.outlineColor, block.outlineRadius);
 
@@ -375,7 +376,9 @@ public class Generators{
                             }
                         }
 
-                        region.path.delete();
+                        if(region instanceof GenRegion gen && gen.path != null){
+                            gen.path.delete();
+                        }
 
                         //1 pixel of padding to prevent edges with linear filtering
                         int padding = 1;
@@ -572,7 +575,7 @@ public class Generators{
 
                 for(TextureRegion region : toOutline){
                     Pixmap pix = get(region).outline(type.outlineColor, type.outlineRadius);
-                    save(pix, ((GenRegion)region).name + "-outline");
+                    save(pix, ((AtlasRegion)region).name + "-outline");
                 }
 
                 Seq<DrawPart> allParts = new Seq<>();
@@ -615,12 +618,20 @@ public class Generators{
 
                 //generate tank animation
                 if(sample instanceof Tankc){
+                    if(!type.treadRegion.found()) return;
                     Pixmap pix = get(type.treadRegion);
 
                     for(int r = 0; r < type.treadRects.length; r++){
                         Rect treadRect = type.treadRects[r];
+                        int tx = (int)(treadRect.x + pix.width/2f);
+                        int ty = (int)(treadRect.y + pix.height/2f);
+                        int th = (int)treadRect.height;
+                        if(tx < 0 || tx >= pix.width || ty < 0 || ty + th > pix.height){
+                            Log.warn("Skipping tread generation for unit @: tread rect out of bounds (x=@ y=@ h=@) in @x@", type.name, tx, ty, th, pix.width, pix.height);
+                            return;
+                        }
                         //slice is always 1 pixel wide
-                        Pixmap slice = pix.crop((int)(treadRect.x + pix.width/2f), (int)(treadRect.y + pix.height/2f), 1, (int)treadRect.height);
+                        Pixmap slice = pix.crop(tx, ty, 1, th);
                         int frames = type.treadFrames;
                         for(int i = 0; i < frames; i++){
                             int pullOffset = type.treadPullOffset;
