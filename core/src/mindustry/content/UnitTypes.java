@@ -199,6 +199,50 @@ public class UnitTypes{
     private static final Effect battlecruiserWarpRippleEffect = new Effect(1f, e -> {
         // visual rings disabled; keep only shader-based distortion triggered in updateBattlecruiser()
     });
+    private static final Effect preceptMuzzleSmokeEffect = new Effect(16f, 80f, e -> {
+        Draw.z(Layer.effect + 0.04f);
+        float fin = e.fin();
+        float fout = e.fout();
+        float dirX = Angles.trnsx(e.rotation, 1f);
+        float dirY = Angles.trnsy(e.rotation, 1f);
+        float sideX = Angles.trnsx(e.rotation + 90f, 1f);
+        float sideY = Angles.trnsy(e.rotation + 90f, 1f);
+
+        Fx.rand.setSeed(e.id * 1427L + 59L);
+        for(int i = 0; i < 7; i++){
+            float alongBase = Fx.rand.random(-0.9f, 2.6f);
+            float alongSpeed = Fx.rand.random(0.35f, 2.4f);
+            float side = Fx.rand.range(1.35f) * (0.95f - fin * 0.35f);
+            float px = e.x + dirX * (alongBase + alongSpeed * fin * 5.4f) + sideX * side;
+            float py = e.y + dirY * (alongBase + alongSpeed * fin * 5.4f) + sideY * side;
+            float radius = Fx.rand.random(0.75f, 1.7f) * (0.7f + fin * 1.15f);
+            float alpha = fout * Fx.rand.random(0.08f, 0.2f);
+
+            Draw.color(0f, 0f, 0f, alpha);
+            Fill.circle(px, py, radius);
+            Draw.color(0.08f, 0.08f, 0.08f, alpha * 0.35f);
+            Fill.circle(px, py, radius * 0.55f);
+        }
+
+        Draw.reset();
+    });
+    private static final Effect infantryMuzzleFlashEffect = new Effect(12f, 48f, e -> {
+        Draw.z(Layer.effect + 0.06f);
+        float fout = e.fout();
+        Draw.color(Color.valueOf("ffdca0"), Color.valueOf("ff9f43"), e.fin());
+        Fill.circle(e.x, e.y, 0.55f + 0.8f * fout);
+        Lines.stroke(1.25f * fout);
+        Angles.randLenVectors(e.id, 7, 1.1f + 4f * e.fin(), e.rotation, 24f, (x, y) -> {
+            Lines.lineAngle(e.x + x * 0.3f, e.y + y * 0.3f, Angles.angle(x, y), 1.2f + 2.1f * fout);
+        });
+        Drawf.light(e.x, e.y, 10f * fout, Color.valueOf("ffb66a"), 0.45f * fout);
+        Draw.reset();
+    });
+    private static final Effect thorGroundHitEffect = new WrapEffect(Fx.dynamicExplosion, Color.white, 0.2f);
+    private static final Effect thorAirHitEffect = new MultiEffect(
+        Fx.reactorsmoke,
+        new RadialEffect(Fx.reactorsmoke, 2, 180f, 2.4f)
+    );
     private static final float bansheeCloakCost = 25f;
     private static final float bansheeCloakDrain = 1.3f;
     private static final int barracksBlastShieldCrystalCost = 100;
@@ -1078,6 +1122,11 @@ public class UnitTypes{
         return Mathf.clamp(unit.getDuration(StatusEffects.widowReloading) / widowReloadTime);
     }
 
+    public static float widowUnburrowProgress(@Nullable Unit unit){
+        if(!widowIsUnburrowing(unit)) return 0f;
+        return Mathf.clamp(1f - unit.getDuration(StatusEffects.widowUnburrowing) / widowUnburrowDuration(unit == null ? null : unit.team));
+    }
+
     public static void commandWidowBurrow(@Nullable Unit unit){
         if(!isWidow(unit)) return;
         if(widowIsBuried(unit) || widowIsBurrowing(unit) || widowIsUnburrowing(unit)) return;
@@ -1238,31 +1287,20 @@ public class UnitTypes{
     }
 
     private static void applyReaperKd8Knockback(Unit unit, float fromX, float fromY){
-        if(unit == null || !unit.isValid() || reaperKd8KnockbackSteps <= 0) return;
+        if(unit == null || !unit.isValid()) return;
         float dx = unit.x - fromX;
         float dy = unit.y - fromY;
         if(Mathf.len2(dx, dy) <= 0.001f) return;
+
         float len = reaperKd8KnockbackTiles * tilesize;
         float inv = 1f / (float)Math.sqrt(dx * dx + dy * dy);
-        float stepLen = len / (float)reaperKd8KnockbackSteps;
-        float stepX = dx * inv * stepLen;
-        float stepY = dy * inv * stepLen;
+        float floorDrag = unit.isGrounded() ? Math.max(unit.floorOn().dragMultiplier, 0.05f) : 1f;
+        float drag = Math.max(unit.type.drag * floorDrag * state.rules.dragMultiplier, 0.05f);
+        float frames = Math.max(reaperKd8KnockbackSteps * reaperKd8KnockbackStepInterval, 1f);
+        float decay = Mathf.clamp(1f - drag, 0f, 0.999f);
+        float velocity = (decay >= 0.999f ? len / frames : len * drag / Math.max(1f - Mathf.pow(decay, frames), 0.001f)) * 0.75f;
 
-        for(int i = 0; i < reaperKd8KnockbackSteps; i++){
-            float delay = reaperKd8KnockbackStepInterval * (i + 1);
-            Time.run(delay, () -> {
-                if(unit == null || !unit.isValid()) return;
-                float nx = unit.x + stepX;
-                float ny = unit.y + stepY;
-                nx = Mathf.clamp(nx, 0f, Math.max(world.unitWidth() - tilesize, 0f));
-                ny = Mathf.clamp(ny, 0f, Math.max(world.unitHeight() - tilesize, 0f));
-                int tx = World.toTile(nx);
-                int ty = World.toTile(ny);
-                if(tx >= 0 && ty >= 0 && tx < world.width() && ty < world.height() && !world.solid(tx, ty)){
-                    unit.set(nx, ny);
-                }
-            });
-        }
+        unit.velAddNet(dx * inv * velocity, dy * inv * velocity);
     }
 
     private static void impactReaperKd8Bomb(@Nullable Team team, float x, float y){
@@ -1348,6 +1386,11 @@ public class UnitTypes{
         return (isMace(unit) || isLocus(unit)) && getMaceLocusTransformData(unit).transforming;
     }
 
+    public static float maceLocusTransformProgress(@Nullable Unit unit){
+        if(!maceLocusTransforming(unit)) return 0f;
+        return Mathf.clamp(1f - getMaceLocusTransformData(unit).transformTime / Math.max(maceLocusTransformDuration(unit == null ? null : unit.team), 0.001f));
+    }
+
     public static boolean maceCanTransformToLocus(@Nullable Unit unit){
         if(!isMace(unit)) return false;
         if(!infantryWeaponHasArmory(unit.team)) return false;
@@ -1410,6 +1453,11 @@ public class UnitTypes{
 
     public static boolean vikingIsTransforming(@Nullable Unit unit){
         return isViking(unit) && getVikingData(unit).transforming;
+    }
+
+    public static float vikingTransformProgress(@Nullable Unit unit){
+        if(!vikingIsTransforming(unit)) return 0f;
+        return Mathf.clamp(1f - getVikingData(unit).transformTime / Math.max(vikingTransformDuration(unit == null ? null : unit.team), 0.001f));
     }
 
     public static boolean usesFlyingRules(@Nullable Unit unit){
@@ -1587,6 +1635,18 @@ public class UnitTypes{
 
     public static boolean liberatorIsUndeploying(@Nullable Unit unit){
         return isLiberator(unit) && getLiberatorData(unit).undeploying;
+    }
+
+    public static float liberatorTransitionProgress(@Nullable Unit unit){
+        if(!isLiberator(unit)) return 0f;
+        LiberatorData data = getLiberatorData(unit);
+        if(data.deploying){
+            return Mathf.clamp(1f - data.transitionTime / Math.max(liberatorDeployDuration(unit.team), 0.001f));
+        }
+        if(data.undeploying){
+            return Mathf.clamp(1f - data.transitionTime / Math.max(liberatorUndeployDuration(unit.team), 0.001f));
+        }
+        return 0f;
     }
 
     public static boolean liberatorCanEnterDefense(@Nullable Unit unit){
@@ -1775,6 +1835,11 @@ public class UnitTypes{
         return isThor(unit) && getScepterModeData(unit).switching;
     }
 
+    public static float scepterSwitchProgress(@Nullable Unit unit){
+        if(!scepterIsSwitching(unit)) return 0f;
+        return Mathf.clamp(1f - getScepterModeData(unit).switchTime / Math.max(scepterSwitchDuration(unit == null ? null : unit.team), 0.001f));
+    }
+
     public static boolean scepterUsingImpactMode(@Nullable Unit unit){
         return isThor(unit) && !scepterIsSwitching(unit) && getScepterModeData(unit).impactMode;
     }
@@ -1911,6 +1976,20 @@ public class UnitTypes{
 
     public static float preceptSiegeRange(){
         return preceptSiegeRangeTiles * tilesize;
+    }
+
+    public static Vec2 preceptImpactPoint(@Nullable Bullet bullet, float x, float y){
+        Tmp.v1.set(x, y);
+        if(bullet == null) return Tmp.v1;
+        if(!(bullet.data instanceof Teamc target) || !(target instanceof Sized sized)) return Tmp.v1;
+
+        float radius = sized.hitSize() / 2f;
+        if(radius <= 0.001f) return Tmp.v1.set(target.x(), target.y());
+
+        float angle = Angles.angle(bullet.originX, bullet.originY, target.x(), target.y());
+        float inset = Math.min(1f, radius * 0.5f);
+        float offset = Math.max(0f, radius - inset);
+        return Tmp.v1.set(target.x() - Angles.trnsx(angle, offset), target.y() - Angles.trnsy(angle, offset));
     }
 
     public static boolean preceptIsSieging(@Nullable Unit unit){
@@ -2187,6 +2266,21 @@ public class UnitTypes{
                 return forced;
             }
         }
+        if(bullet.owner instanceof Unit owner && owner.controller() instanceof Player player){
+            float mx = player.mouseX, my = player.mouseY;
+            Building build = world.buildWorld(mx, my);
+            if(build != null && build.team == bullet.team && Units.canTargetBuilding(bullet.type.collidesAir, bullet.type.collidesGround, build)){
+                return build;
+            }
+
+            float range = Math.max(8f, owner.hitSize);
+            Unit target = Units.closest(bullet.team, mx, my, range, u -> u != owner && u.isValid()
+                && u.checkTarget(bullet.type.collidesAir, bullet.type.collidesGround)
+                && u.within(mx, my, u.hitSize / 2f));
+            if(target != null){
+                return target;
+            }
+        }
         return null;
     }
 
@@ -2195,6 +2289,10 @@ public class UnitTypes{
         if(target.team() != bullet.team) return true;
         Teamc forced = forcedFriendlyAttackTarget(bullet);
         return forced != null && forced == target;
+    }
+
+    private static boolean canTrackFriendlyOnlyWhenForced(@Nullable Bullet bullet, @Nullable Teamc target){
+        return target != null && (!(target instanceof Healthc h) || h.isValid()) && canDamageFriendlyOnlyWhenForced(bullet, target);
     }
 
     private static @Nullable DrawPart copyObviatePart(@Nullable DrawPart part){
@@ -3801,19 +3899,6 @@ public class UnitTypes{
             Draw.reset();
         }
 
-        if(data.yamatoCharging){
-            float progress = Mathf.clamp(data.yamatoChargeTime / battlecruiserYamatoChargeTime);
-            float width = Math.max(34f, unit.hitSize * 1.2f);
-            float height = 4f;
-            float bx = unit.x - width / 2f;
-            float by = unit.y + unit.hitSize / 2f + 10f;
-            Draw.z(Layer.effect + 0.1f);
-            Draw.color(0f, 0f, 0f, 0.55f);
-            Fill.rect(unit.x, by, width, height);
-            Draw.color(Color.valueOf("66e7ff"));
-            Fill.rect(bx + width * progress / 2f, by, width * progress, height - 0.6f);
-            Draw.reset();
-        }
     }
 
     public static boolean isMedivac(@Nullable Unit unit){
@@ -3883,6 +3968,10 @@ public class UnitTypes{
 
     public static float barracksStimpackCooldownDuration(){
         return barracksStimpackCooldown;
+    }
+
+    public static float barracksStimpackDuration(){
+        return barracksStimpackDuration;
     }
 
     public static float barracksStimpackHealthCost(@Nullable Unit unit){
@@ -7993,8 +8082,31 @@ public class UnitTypes{
 
     public static @Nullable Unit medivacFindHealTarget(@Nullable Unit unit){
         if(!isMedivac(unit)) return null;
-        return Units.closest(unit.team, unit.x, unit.y, medivacHealRange * 3f,
-        u -> medivacCanHealTarget(u, unit.team));
+        if(unit.controller() instanceof CommandAI ai && ai.followTarget instanceof Unit followed && medivacCanHealTarget(followed, unit.team)){
+            return followed;
+        }
+
+        float searchRange = medivacHealRange * 4f;
+        float radius2 = searchRange * searchRange;
+        Unit[] best = {null};
+        float[] bestHealthf = {Float.MAX_VALUE};
+        float[] bestDst2 = {Float.MAX_VALUE};
+
+        Units.nearby(unit.team, unit.x - searchRange, unit.y - searchRange, searchRange * 2f, searchRange * 2f, other -> {
+            if(other == null || other == unit || !medivacCanHealTarget(other, unit.team)) return;
+
+            float dst2 = unit.dst2(other);
+            if(dst2 > radius2) return;
+
+            float healthf = other.healthf();
+            if(best[0] == null || healthf < bestHealthf[0] - 0.0001f || (Mathf.equal(healthf, bestHealthf[0], 0.0001f) && dst2 < bestDst2[0])){
+                best[0] = other;
+                bestHealthf[0] = healthf;
+                bestDst2[0] = dst2;
+            }
+        });
+
+        return best[0];
     }
 
     public static int medivacUnitSlotCost(@Nullable UnitType type){
@@ -8108,6 +8220,35 @@ public class UnitTypes{
 
     //endregion
 
+    public static boolean isSc2DatabaseUnit(@Nullable UnitType type){
+        return type == nova
+        || type == dagger
+        || type == reaper
+        || type == fortress
+        || type == ghost
+        || type == mace
+        || type == locus
+        || type == crawler
+        || type == hurricane
+        || type == precept
+        || type == scepter
+        || type == flare
+        || type == mega
+        || type == liberator
+        || type == avert
+        || type == horizon
+        || type == antumbra;
+    }
+
+    private static void markSc2DatabaseUnits(){
+        for(UnitType type : content.units()){
+            if(type == null || !isSc2DatabaseUnit(type)) continue;
+            type.databaseCategory = "unit";
+            type.databaseTag = "sc2";
+            type.allDatabaseTabs = true;
+        }
+    }
+
     public static void load(){
         ensureInfantryUpgradeHooks();
         //region ground attack
@@ -8189,18 +8330,7 @@ public class UnitTypes{
                     {
                         damage = 6f;
                         rangeOverride = 5f * tilesize;
-                        shootEffect = new Effect(12f, 48f, e -> {
-                            Draw.z(Layer.effect + 0.06f);
-                            float fout = e.fout();
-                            Draw.color(Color.valueOf("ffdca0"), Color.valueOf("ff9f43"), e.fin());
-                            Fill.circle(e.x, e.y, 0.55f + 0.8f * fout);
-                            Lines.stroke(1.25f * fout);
-                            Angles.randLenVectors(e.id, 7, 1.1f + 4f * e.fin(), e.rotation, 24f, (x, y) -> {
-                                Lines.lineAngle(e.x + x * 0.3f, e.y + y * 0.3f, Angles.angle(x, y), 1.2f + 2.1f * fout);
-                            });
-                            Drawf.light(e.x, e.y, 10f * fout, Color.valueOf("ffb66a"), 0.45f * fout);
-                            Draw.reset();
-                        });
+                        shootEffect = infantryMuzzleFlashEffect;
                         smokeEffect = Fx.none;
                         hitEffect = Fx.none;
                         despawnEffect = Fx.none;
@@ -8295,12 +8425,13 @@ public class UnitTypes{
 
             weapons.add(new Weapon(){{
                 reload = 0.79f * 60f;
-                shoot.shots = 2;
+                alternate = false;
+                shootY = 2.5f;
                 bullet = new PointBulletType(){
                     {
                         damage = 4f;
                         rangeOverride = 5f * tilesize;
-                        shootEffect = Fx.none;
+                        shootEffect = infantryMuzzleFlashEffect;
                         smokeEffect = Fx.none;
                         hitEffect = Fx.none;
                         despawnEffect = Fx.none;
@@ -8709,7 +8840,7 @@ public class UnitTypes{
 
                     private void applyImpactTargetDamage(Bullet b, FortressShellData data, float x, float y){
                         Teamc target = data.target;
-                        if(target == null || target.team() == b.team || !(target instanceof Healthc h) || !h.isValid()) return;
+                        if(!canTrackFriendlyOnlyWhenForced(b, target)) return;
 
                         if(target instanceof Unit unit){
                             if(!unit.hittable() || !unit.checkTarget(collidesAir, collidesGround)) return;
@@ -8746,7 +8877,7 @@ public class UnitTypes{
 
                         float maxRange = rangeOverride > 0f ? rangeOverride : 6f * tilesize;
                         Teamc target = data.target;
-                        boolean validTarget = target != null && target.team() != b.team && (!(target instanceof Healthc h) || h.isValid());
+                        boolean validTarget = canTrackFriendlyOnlyWhenForced(b, target);
 
                         if(validTarget){
                             float tx = target.getX(), ty = target.getY();
@@ -9182,15 +9313,15 @@ public class UnitTypes{
                     cooldownTime = 45f;
 
                     shoot = new ShootPattern(){{
-                        shots = 4;
+                        shots = 2;
                         shotDelay = 3f;
                     }};
 
-                    bullet = new MissileBulletType(8f, 6f, "missile-large"){
+                    bullet = new MissileBulletType(4f, 6f, "missile-large"){
                         {
                             rangeOverride = 10f * tilesize;
-                            width = 12f;
-                            height = 20f;
+                            width = 4f;
+                            height = 20f / 3f;
                             lifetime = 35f;
                             hitSize = 6f;
                             homingPower = 0f;
@@ -9198,9 +9329,10 @@ public class UnitTypes{
                             weaveScale = 0f;
                             hitColor = backColor = trailColor = Color.valueOf("feb380");
                             frontColor = Color.white;
-                            trailWidth = 4f;
+                            trailWidth = 4f / 3f;
                             trailLength = 9;
-                            hitEffect = despawnEffect = Fx.hitBulletColor;
+                            hitEffect = thorAirHitEffect;
+                            despawnEffect = Fx.none;
                             shootEffect = Fx.shootSmall;
                             smokeEffect = Fx.shootSmallSmoke;
 
@@ -9223,8 +9355,7 @@ public class UnitTypes{
                         public void update(Bullet b){
                             Teamc target = b.data instanceof Teamc t ? t : null;
 
-                            if(target instanceof Healthc h && !h.isValid()) target = null;
-                            if(target != null && target.team() == b.team) target = null;
+                            if(!canTrackFriendlyOnlyWhenForced(b, target)) target = null;
                             if(!(target instanceof Unit unit)){
                                 b.remove();
                                 return;
@@ -9245,19 +9376,29 @@ public class UnitTypes{
                                 if(unit.type.armorType == ArmorType.light){
                                     amount = damage + 6f + vehicleWeaponScepterBurstLightBonus(b.team);
                                 }
-                                unit.damage(amount);
+                                unit.damagePierce(Math.max(amount - unit.armor(), 0.5f));
 
                                 float radius = splashDamageRadius;
                                 if(radius > 0f && splashDamage > 0f){
-                                    Units.nearbyEnemies(b.team, tx - radius, ty - radius, radius * 2f, radius * 2f, other -> {
+                                    Cons<Unit> splash = other -> {
                                         if(other == unit || !other.isFlying()) return;
                                         if(!other.within(tx, ty, radius + other.hitSize / 2f)) return;
-                                        other.damage(splashDamage);
-                                    });
+                                        other.damagePierce(Math.max(splashDamage - other.armor(), 0.5f));
+                                    };
+                                    if(forcedFriendlyAttackTarget(b) != null){
+                                        Units.nearby((Team)null, tx - radius, ty - radius, radius * 2f, radius * 2f, splash);
+                                    }else{
+                                        Units.nearbyEnemies(b.team, tx - radius, ty - radius, radius * 2f, radius * 2f, splash);
+                                    }
                                 }
 
                                 b.remove();
                             }
+                        }
+
+                        @Override
+                        public void createSplashDamage(Bullet b, float x, float y){
+                            // Thor explosive payload uses flat area damage, not Mindustry splash falloff.
                         }
                     };
                 }
@@ -9289,7 +9430,7 @@ public class UnitTypes{
                 public void draw(Unit unit, WeaponMount mount){
                     if(!scepterDisplayImpactMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
+                    Draw.scl(prevX * scepterVisualScale, prevY * scepterVisualScale);
                     super.draw(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -9298,7 +9439,7 @@ public class UnitTypes{
                 public void drawOutline(Unit unit, WeaponMount mount){
                     if(!scepterDisplayImpactMode(unit)) return;
                     float prevX = Draw.xscl, prevY = Draw.yscl;
-                    Draw.scl(prevX * 1.35f * scepterVisualScale, prevY * 1.35f * scepterVisualScale);
+                    Draw.scl(prevX * scepterVisualScale, prevY * scepterVisualScale);
                     super.drawOutline(unit, mount);
                     Draw.scl(prevX, prevY);
                 }
@@ -9309,10 +9450,40 @@ public class UnitTypes{
                     bullet.data = mount.target;
                 }
 
+                @Override
+                protected void shoot(Unit unit, WeaponMount mount, float shootX, float shootY, float rotation){
+                    if(!flipSprite){
+                        super.shoot(unit, mount, shootX, shootY, rotation);
+                        return;
+                    }
+
+                    float
+                    weaponRotation = unit.rotation - 90f + (rotate ? mount.rotation : baseRotation),
+                    mountX = unit.x + Angles.trnsx(unit.rotation - 90f, x, y),
+                    mountY = unit.y + Angles.trnsy(unit.rotation - 90f, x, y),
+                    bulletX = mountX + Angles.trnsx(weaponRotation, this.shootX, this.shootY),
+                    bulletY = mountY + Angles.trnsy(weaponRotation, this.shootX, this.shootY),
+                    shootAngle = bulletRotation(unit, mount, bulletX, bulletY),
+                    angle = shootAngle + Mathf.range(inaccuracy + bullet.inaccuracy);
+
+                    shootSound.at(bulletX, bulletY, Mathf.random(soundPitchMin, soundPitchMax), shootSoundVolume);
+                    ejectEffect.at(mountX, mountY, angle * Mathf.sign(this.x));
+                    bullet.shootEffect.at(bulletX, bulletY, angle, bullet.hitColor, unit);
+                    bullet.smokeEffect.at(bulletX, bulletY, angle, bullet.hitColor, unit);
+
+                    unit.vel.add(Tmp.v1.trns(shootAngle + 180f, bullet.recoil));
+                    Effect.shake(shake, shake, bulletX, bulletY);
+                    mount.recoil = 1f;
+                    if(recoils > 0){
+                        mount.recoils[mount.barrelCounter % recoils] = 1f;
+                    }
+                    mount.heat = 1f;
+                }
+
                 {
                     top = false;
                     y = -2f * scepterVisualScale;
-                    x = 10.5f * scepterVisualScale;
+                    x = 5f;
                     shootY = 5f * scepterVisualScale;
                     reload = 0.91f * 60f;
                     recoil = 0.5f;
@@ -9327,78 +9498,54 @@ public class UnitTypes{
                     shootSoundVolume = 0.95f;
                     cooldownTime = 45f;
 
-                    bullet = new MissileBulletType(10f, 25f, "missile-large"){
+                    bullet = new PointBulletType(){
                         {
+                            damage = 25f;
                             rangeOverride = 11f * tilesize;
-                            width = 12f;
-                            height = 20f;
-                            lifetime = 35f;
-                            hitSize = 6f;
-                            homingPower = 0f;
-                            weaveMag = 0f;
-                            weaveScale = 0f;
-                            hitColor = backColor = trailColor = Color.valueOf("ffd58f");
-                            frontColor = Color.white;
-                            trailWidth = 4f;
-                            trailLength = 9;
-                            hitEffect = despawnEffect = Fx.hitBulletColor;
+                            hitEffect = thorAirHitEffect;
+                            despawnEffect = Fx.none;
                             shootEffect = Fx.shootSmall;
-                            smokeEffect = Fx.shootSmallSmoke;
+                            smokeEffect = Fx.none;
+                            trailEffect = Fx.none;
 
                             collides = false;
                             collidesTiles = false;
                             collidesAir = true;
                             collidesGround = false;
-                            hittable = false;
-                            absorbable = false;
-                            reflectable = false;
-                            keepVelocity = false;
-                            despawnHit = false;
-
-                            splashDamageRadius = 0.5f * tilesize;
-                            splashDamage = 25f;
-                            fragBullets = 0;
                         }
 
                         @Override
-                        public void update(Bullet b){
-                            Teamc target = b.data instanceof Teamc t ? t : null;
-
-                            if(target instanceof Healthc h && !h.isValid()) target = null;
-                            if(target != null && target.team() == b.team) target = null;
-                            if(!(target instanceof Unit unit)){
-                                b.remove();
-                                return;
+                        public void hitEntity(Bullet b, Hitboxc entity, float health){
+                            float prev = b.damage;
+                            float amount = damage + vehicleWeaponScepterImpactBaseBonus(b.team);
+                            if(entity instanceof Unit unit && unit.type.unitClasses.contains(UnitClass.heavy)){
+                                amount = damage + 10f + vehicleWeaponScepterImpactHeavyBonus(b.team);
                             }
+                            b.damage = amount;
+                            super.hitEntity(b, entity, health);
+                            b.damage = prev;
+
+                            if(!(entity instanceof Unit unit)) return;
 
                             float tx = unit.x, ty = unit.y;
-                            b.aimX = tx;
-                            b.aimY = ty;
-                            b.vel.setAngle(Angles.moveToward(b.rotation(), b.angleTo(tx, ty), 35f * Time.delta));
-                            b.vel.setLength(speed);
-                            b.rotation(b.vel.angle());
+                            float radius = 0.5f * tilesize;
+                            float splashDamage = 25f;
+                            Cons<Unit> splash = other -> {
+                                if(other == unit || !other.isFlying()) return;
+                                if(!other.within(tx, ty, radius + other.hitSize / 2f)) return;
+                                other.damagePierce(Math.max(splashDamage - other.armor(), 0.5f));
+                            };
 
-                            float hitRange = 4f + unit.hitSize / 2f;
-                            if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
-                                hit(b, tx, ty);
-
-                                float amount = damage + vehicleWeaponScepterImpactBaseBonus(b.team);
-                                if(unit.type.unitClasses.contains(UnitClass.heavy)){
-                                    amount = damage + 10f + vehicleWeaponScepterImpactHeavyBonus(b.team);
-                                }
-                                unit.damage(amount);
-
-                                float radius = splashDamageRadius;
-                                if(radius > 0f && splashDamage > 0f){
-                                    Units.nearbyEnemies(b.team, tx - radius, ty - radius, radius * 2f, radius * 2f, other -> {
-                                        if(other == unit || !other.isFlying()) return;
-                                        if(!other.within(tx, ty, radius + other.hitSize / 2f)) return;
-                                        other.damage(splashDamage);
-                                    });
-                                }
-
-                                b.remove();
+                            if(forcedFriendlyAttackTarget(b) != null){
+                                Units.nearby((Team)null, tx - radius, ty - radius, radius * 2f, radius * 2f, splash);
+                            }else{
+                                Units.nearbyEnemies(b.team, tx - radius, ty - radius, radius * 2f, radius * 2f, splash);
                             }
+                        }
+
+                        @Override
+                        public float buildingDamage(Bullet b){
+                            return 0f;
                         }
                     };
                 }
@@ -9465,9 +9612,9 @@ public class UnitTypes{
                         rangeOverride = 7f * tilesize;
                         collidesAir = false;
                         collidesGround = true;
-                        hitEffect = Fx.none;
+                        hitEffect = thorGroundHitEffect;
                         despawnEffect = Fx.none;
-                        shootEffect = Fx.none;
+                        shootEffect = Fx.hitBulletBig;
                         smokeEffect = Fx.none;
                         trailEffect = Fx.none;
                     }
@@ -9564,11 +9711,9 @@ public class UnitTypes{
             hitSizeFromRegion = false;
             spriteHitSizeRatio = 1.5f;
             hitSize = 0.875f * tilesize;
-            float scvTorchRange = 0.05f * tilesize;
-            float scvHitRadius = hitSize / 2f;
-            float scvTorchLength = scvTorchRange + scvHitRadius;
-            range = scvTorchRange;
-            maxRange = scvTorchRange;
+            float scvMeleeRange = 0.01f * tilesize;
+            range = scvMeleeRange;
+            maxRange = scvMeleeRange;
             fogRadius = 8f;
             health = 45f;
             armor = 1f;
@@ -9583,76 +9728,35 @@ public class UnitTypes{
             ammoType = new PowerAmmoType(1000);
 
             weapons.add(new Weapon("scv-touch-weapon"){{
-                reload = 6f;
+                reload = 1.07f * 60f;
                 shootCone = 20f;
                 mirror = false;
                 rotate = true;
                 top = false;
-                continuous = true;
-                alwaysContinuous = true;
-                cooldownTime = 8f;
                 x = 0f;
                 y = 0f;
                 shootY = 0f;
                 recoil = 0f;
                 shake = 0f;
-                shootSound = Sounds.beamPlasmaSmall;
-                initialShootSound = Sounds.shootBeamPlasmaSmall;
-                shootSoundVolume = 0.28f;
+                shootSound = Sounds.none;
                 ejectEffect = Fx.none;
                 targetAir = false;
                 targetGround = true;
 
-                bullet = new ContinuousLaserBulletType(){{
-                    damage = 0.4f;
-                    length = scvTorchLength;
-                    maxRange = scvTorchLength;
-                    lifetime = 10f;
-                    damageInterval = 5f;
-                    width = 1.1f;
-                    strokeFrom = 0.7f;
-                    strokeTo = 0.28f;
-                    backLength = 2f;
-                    frontLength = 4f;
-                    lightStroke = 12f;
-                    drawSize = 32f;
-                    shake = 0f;
-                    largeHit = false;
-                    hitSize = 3f;
+                bullet = new PointBulletType(){{
+                    damage = 5f;
+                    rangeOverride = scvMeleeRange;
                     collidesAir = false;
                     collidesGround = true;
                     collidesTiles = true;
-                    incendChance = 0f;
-                    incendSpread = 0f;
-                    incendAmount = 0;
-                    shootEffect = Fx.sparkShoot;
+                    shootEffect = Fx.none;
                     smokeEffect = Fx.none;
-                    hitEffect = Fx.colorSpark;
+                    hitEffect = Fx.none;
                     despawnEffect = Fx.none;
-                    hitColor = Color.valueOf("ffb36b");
-                    lightColor = hitColor;
-                    lightOpacity = 0.35f;
-                    colors = new Color[]{
-                        Color.valueOf("ff8d4620"),
-                        Color.valueOf("ff9d4f66"),
-                        Color.valueOf("ffb36b"),
-                        Color.white
-                    };
+                    trailEffect = Fx.none;
+                    hitSound = Sounds.none;
                 }};
-            }
-
-                @Override
-                public void update(Unit unit, WeaponMount mount){
-                    if(mount.shoot){
-                        Teamc target = mount.target;
-                        if(target == null || Units.edgeDst(target, unit.x, unit.y, unit.hitSize / 2f) > scvTorchRange){
-                            mount.shoot = false;
-                        }
-                    }
-
-                    super.update(unit, mount);
-                }
-            });
+            }});
         }};
 
         pulsar = new UnitType("pulsar"){{
@@ -9991,7 +10095,7 @@ public class UnitTypes{
                     if(target instanceof Healthc h && !h.isValid()){
                         target = null;
                     }
-                    if(target != null && target.team() == b.team){
+                    if(!canTrackFriendlyOnlyWhenForced(b, target)){
                         target = null;
                     }
 
@@ -10024,7 +10128,7 @@ public class UnitTypes{
                             if(shielded){
                                 u.damagePierce(35f);
                             }
-                        }else if(target instanceof Building build && build.team != b.team){
+                        }else if(target instanceof Building build && canDamageFriendlyOnlyWhenForced(b, build)){
                             build.damage(b.damage * buildingDamageMultiplier);
                         }
 
@@ -10835,7 +10939,7 @@ public class UnitTypes{
 
                                 float hitRange = 2f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
-                                    if(target.team() != b.team){
+                                    if(canDamageFriendlyOnlyWhenForced(b, target)){
                                         float amount = damage + shipWeaponVikingFighterBaseBonus(b.team);
                                         if(target instanceof Unit u && u.type.armorType == ArmorType.heavy){
                                             amount = 14f + shipWeaponVikingFighterHeavyBonus(b.team);
@@ -10903,7 +11007,7 @@ public class UnitTypes{
                                 super.init(b);
 
                                 Teamc target = b.data instanceof Teamc t ? t : null;
-                                if(target instanceof Healthc h && h.isValid() && target.team() != b.team){
+                                if(target instanceof Healthc h && h.isValid() && canDamageFriendlyOnlyWhenForced(b, target)){
                                     float damage = 12f + shipWeaponVikingMechBaseBonus(b.team);
                                     if(target instanceof Unit u && u.type.unitClasses.contains(UnitClass.mechanical)){
                                         damage = 20f + shipWeaponVikingMechMechanicalBonus(b.team);
@@ -11116,7 +11220,7 @@ public class UnitTypes{
 
                                 float hitRange = 2f + (target instanceof Sized s ? s.hitSize() / 2f : 0f);
                                 if(Mathf.within(b.x, b.y, tx, ty, hitRange)){
-                                    if(target.team() != b.team){
+                                    if(canDamageFriendlyOnlyWhenForced(b, target)){
                                         float amount = damage + shipWeaponLiberatorFighterBonus(b.team);
                                         if(target instanceof Unit u){
                                             u.damage(amount);
@@ -11200,6 +11304,7 @@ public class UnitTypes{
                     @Override
                     protected boolean checkTarget(Unit unit, Teamc target, float x, float y, float range){
                         if(!liberatorIsDefending(unit)) return true;
+                        if(target instanceof Building) return true;
                         if(target != null && target.team() == unit.team){
                             if(unit.controller() instanceof CommandAI ai && ai.attackTarget == target){
                                 return !liberatorTargetInZone(unit, target);
@@ -11243,7 +11348,7 @@ public class UnitTypes{
 
                             @Override
                             public float buildingDamage(Bullet b){
-                                return b.damage + shipWeaponLiberatorDefenseBonus(b.team);
+                                return 0f;
                             }
 
                             @Override
@@ -11321,7 +11426,7 @@ public class UnitTypes{
             }
 
             {
-                health = 100f;
+                health = 140f;
                 speed = 3.85f;
                 accel = 0.09f;
                 drag = 0.08f;
@@ -12046,10 +12151,10 @@ public class UnitTypes{
                     rotateSpeed = 6f;
                     shootY = 0f;
                     reload = 1f;
-                    beamWidth = 0.72f;
+                    beamWidth = 0.1f;
                     pulseRadius = 4f;
                     pulseStroke = 1.25f;
-                    widthSinMag = 0.08f;
+                    widthSinMag = 0f;
                     shootCone = 360f;
                     targetUnits = true;
                     targetBuildings = false;
@@ -12057,9 +12162,9 @@ public class UnitTypes{
                     autoTarget = true;
                     repairSpeed = 16f / 60f; // 16 HP/s -> 4 energy/s at 1 energy : 4 HP
                     fractionRepairSpeed = 0f;
-                    laserColor = Color.valueOf("9df7ff");
-                    laserTopColor = Color.white;
-                    healColor = Color.valueOf("9df7ff");
+                    laserColor = Color.valueOf("9df7ff").a(0.2f);
+                    laserTopColor = Color.white.cpy().a(0.2f);
+                    healColor = Color.valueOf("9df7ff").a(0.2f);
 
                     bullet = new BulletType(){{
                         maxRange = medivacHealRange;
@@ -13769,6 +13874,18 @@ public class UnitTypes{
                         super.update(unit, mount);
                     }
 
+                    @Override
+                    public void draw(Unit unit, WeaponMount mount){
+                        if(preceptIsSieged(unit)) return;
+                        super.draw(unit, mount);
+                    }
+
+                    @Override
+                    public void drawOutline(Unit unit, WeaponMount mount){
+                        if(preceptIsSieged(unit)) return;
+                        super.drawOutline(unit, mount);
+                    }
+
                     {
                         shootSound = Sounds.explosionDull;
                         layerOffset = 0.0001f;
@@ -13789,11 +13906,17 @@ public class UnitTypes{
                                 rangeOverride = preceptMobileRange();
                                 collidesAir = false;
                                 collidesGround = true;
-                                hitEffect = Fx.none;
+                                hitEffect = new WrapEffect(Fx.dynamicExplosion, Color.white, 0.25f);
                                 despawnEffect = Fx.none;
-                                shootEffect = Fx.none;
+                                shootEffect = preceptMuzzleSmokeEffect;
                                 smokeEffect = Fx.none;
                                 trailEffect = Fx.none;
+                            }
+
+                            @Override
+                            public void hit(Bullet b, float x, float y){
+                                Vec2 point = preceptImpactPoint(b, x, y);
+                                super.hit(b, point.x, point.y);
                             }
 
                             @Override
@@ -13841,12 +13964,26 @@ public class UnitTypes{
 
                     @Override
                     public void draw(Unit unit, WeaponMount mount){
-                        //Uses base tank turret sprite from precept-weapon.
+                        if(!preceptIsSieged(unit)) return;
+                        super.draw(unit, mount);
                     }
 
                     @Override
                     public void drawOutline(Unit unit, WeaponMount mount){
-                        //Uses base tank turret sprite from precept-weapon.
+                        if(!preceptIsSieged(unit)) return;
+                        super.drawOutline(unit, mount);
+                    }
+
+                    @Override
+                    public void load(){
+                        super.load();
+
+                        var file = Core.files.internal("sprites/units/weapons/precept-siege-weapon.png");
+                        if(file.exists()){
+                            region = new TextureRegion(new Texture(file));
+                            heatRegion = Core.atlas.find("precept-weapon-heat");
+                            cellRegion = Core.atlas.find("precept-weapon-cell");
+                        }
                     }
 
                     @Override
@@ -13869,6 +14006,7 @@ public class UnitTypes{
                         y = -1f;
                         heatColor = Color.valueOf("f9350f");
                         cooldownTime = 30f;
+                        shoot.firstShotDelay = 0.2f * 60f;
                         targetAir = false;
                         targetGround = true;
                         noAttack = false;
@@ -13880,11 +14018,17 @@ public class UnitTypes{
                                 rangeOverride = preceptSiegeRange();
                                 collidesAir = false;
                                 collidesGround = true;
-                                hitEffect = Fx.none;
+                                hitEffect = new WrapEffect(Fx.dynamicExplosion, Color.white, 0.75f);
                                 despawnEffect = Fx.none;
-                                shootEffect = Fx.none;
+                                shootEffect = preceptMuzzleSmokeEffect;
                                 smokeEffect = Fx.none;
                                 trailEffect = Fx.none;
+                            }
+
+                            @Override
+                            public void hit(Bullet b, float x, float y){
+                                Vec2 point = preceptImpactPoint(b, x, y);
+                                super.hit(b, point.x, point.y);
                             }
 
                             @Override
@@ -14294,8 +14438,7 @@ public class UnitTypes{
                                     target = t;
                                 }
 
-                                if(target instanceof Healthc h && !h.isValid()) target = null;
-                                if(target != null && target.team() == b.team) target = null;
+                                if(!canTrackFriendlyOnlyWhenForced(b, target)) target = null;
 
                                 float tx, ty;
                                 if(target != null){
@@ -16165,6 +16308,11 @@ public class UnitTypes{
         }
 
         @Override
+        public void drawShadow(Unit unit){
+            //Lifted buildings already render their payload body directly; the carrier should stay visually invisible.
+        }
+
+        @Override
         public void load(){
             super.load();
             region = Core.atlas.find("core-nucleus");
@@ -16294,6 +16442,8 @@ public class UnitTypes{
             envEnabled = Env.any;
             envDisabled = Env.none;
         }};
+
+        markSc2DatabaseUnits();
 
         //All energy units regenerate at a unified rate.
         for(UnitType type : content.units()){

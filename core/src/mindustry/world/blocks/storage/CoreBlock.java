@@ -658,9 +658,10 @@ public class CoreBlock extends StorageBlock{
             drawLandingThrusters(x, y, rotation, thrusterFrame);
             Draw.alpha(1f);
 
-            if(teamRegions[team.id] == teamRegion) Draw.color(team.color);
+            TextureRegion region = team.hasPalette ? teamRegions[team.id] : teamRegion;
+            if(region == teamRegion) Draw.color(team.color);
 
-            Drawf.spinSprite(teamRegions[team.id], x, y, rotation);
+            Drawf.spinSprite(region, x, y, rotation);
 
             Draw.color();
             Draw.scl();
@@ -969,6 +970,8 @@ public class CoreBlock extends StorageBlock{
             if(net.client()) return;
             if(type == null) return;
             Unit unit = type.create(team);
+            String owner = Build.ownerName(this);
+            if(owner != null) unit.ownerName = owner;
             Vec2 spawn = getSpawnPosition(unit);
             unit.set(spawn.x, spawn.y);
             unit.add();

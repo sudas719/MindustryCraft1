@@ -6,6 +6,7 @@ import arc.func.*;
 import arc.graphics.*;
 import arc.graphics.Texture.*;
 import arc.input.*;
+import arc.math.*;
 import arc.scene.*;
 import arc.scene.event.*;
 import arc.scene.style.*;
@@ -230,6 +231,31 @@ public class SettingsMenuDialog extends BaseDialog{
         add(buttons).fillX();
 
         addSettings();
+    }
+
+    private void addTeamColorSlotSettings(SettingsTable table){
+        for(int i = 0; i < TeamDisplayColors.slotCount(); i++){
+            addTeamColorSlotSetting(table, true, i);
+        }
+
+        for(int i = 0; i < TeamDisplayColors.slotCount(); i++){
+            addTeamColorSlotSetting(table, false, i);
+        }
+    }
+
+    private void addTeamColorSlotSetting(SettingsTable table, boolean ally, int slot){
+        int defaultIndex = ally ? TeamDisplayColors.defaultAllyIndex(slot) : TeamDisplayColors.defaultEnemyIndex(slot);
+        String key = ally ? TeamDisplayColors.allySetting(slot) : TeamDisplayColors.enemySetting(slot);
+        String titleKey = ally ? "setting.teamcolor.allyslot" : "setting.teamcolor.enemyslot";
+        String descriptionKey = ally ? "setting.teamcolor.allyslot.description" : "setting.teamcolor.enemyslot.description";
+
+        settings.defaults(key, defaultIndex);
+
+        var setting = new SettingsTable.ColorChoiceSetting(key, defaultIndex, TeamDisplayColors.presetCount(),
+        TeamDisplayColors::presetName, TeamDisplayColors::presetColor, TeamDisplayColors::presetGroupName);
+        setting.title = Core.bundle.format(titleKey, slot + 1);
+        setting.description = Core.bundle.get(descriptionKey);
+        table.pref(setting);
     }
 
     String getLogs(){
@@ -474,6 +500,11 @@ public class SettingsMenuDialog extends BaseDialog{
         graphics.checkPref("drawlight", true);
         graphics.checkPref("destroyedblocks", true);
         graphics.checkPref("blockstatus", false);
+        graphics.sliderPref("healthbardisplay", 0, 0, 2, 1, i -> {
+            if(i == 1) return Core.bundle.get("all");
+            return i == 2 ? Core.bundle.get("setting.healthbardisplay.damaged") : Core.bundle.get("off");
+        });
+        addTeamColorSlotSettings(graphics);
         graphics.checkPref("playerchat", true);
         if(!mobile){
             graphics.checkPref("coreitems", true);
@@ -482,10 +513,10 @@ public class SettingsMenuDialog extends BaseDialog{
         graphics.checkPref("selectionringabove", true);
 
         //Minimap size setting
-        graphics.sliderPref("minimapsize", 200, 100, 400, 10, s -> s + "px");
+        graphics.sliderPref("minimapsize", 400, 100, 1000, 10, s -> s + "px");
 
         //Control panel height setting (background vertical size)
-        graphics.sliderPref("controlpanelheight", 600, 300, 1200, 1, s -> s + "px").widthScale(2f);
+        graphics.sliderPref("controlpanelheight", 700, 300, 1200, 1, s -> s + "px").widthScale(2f);
 
         //Chat panel vertical offset (can move above or below control panel top)
         graphics.sliderPref("chatpaneloffset", 0, -1000, 1000, 1, s -> s + "px");
@@ -646,6 +677,14 @@ public class SettingsMenuDialog extends BaseDialog{
         String get(int i);
     }
 
+    public interface ColorProcessor{
+        Color get(int i);
+    }
+
+    public interface IndexStringProcessor{
+        String get(int i);
+    }
+
     public static class SettingsCategory{
         public String name;
         public @Nullable Drawable icon;
@@ -710,6 +749,16 @@ public class SettingsMenuDialog extends BaseDialog{
 
         public void textPref(String name, String def, Cons<String> changed){
             list.add(new TextSetting(name, def, changed));
+            settings.defaults(name, def);
+            rebuild();
+        }
+
+        public void colorChoicePref(String name, int def, int count, StringProcessor names, ColorProcessor colors){
+            colorChoicePref(name, def, count, names, colors, null);
+        }
+
+        public void colorChoicePref(String name, int def, int count, StringProcessor names, ColorProcessor colors, @Nullable IndexStringProcessor groups){
+            list.add(new ColorChoiceSetting(name, def, count, names, colors, groups));
             settings.defaults(name, def);
             rebuild();
         }
@@ -845,6 +894,141 @@ public class SettingsMenuDialog extends BaseDialog{
                 float width = Math.min(baseWidth * widthScale, Core.graphics.getWidth() - 60f);
                 addDesc(table.stack(slider, content).width(width).left().padTop(4f).get());
                 table.row();
+            }
+        }
+
+        public static class ColorChoiceSetting extends Setting{
+            int def, count;
+            StringProcessor names;
+            ColorProcessor colors;
+            @Nullable IndexStringProcessor groups;
+            boolean expanded;
+
+            public ColorChoiceSetting(String name, int def, int count, StringProcessor names, ColorProcessor colors, @Nullable IndexStringProcessor groups){
+                super(name);
+                this.def = def;
+                this.count = count;
+                this.names = names;
+                this.colors = colors;
+                this.groups = groups;
+            }
+
+            @Override
+            public void add(SettingsTable table){
+                Table holder = new Table();
+                holder.left();
+
+                Table listTable = new Table();
+                listTable.left().defaults().left().growX();
+
+                String lastGroup = null;
+                for(int i = 0; i < count; i++){
+                    String group = groups == null ? null : groups.get(i);
+                    if(group != null && !group.equals(lastGroup)){
+                        listTable.table(t -> {
+                            t.left();
+                            t.image(Tex.whiteui).color(Pal.accent).size(14f, 3f).padRight(6f);
+                            t.add(group, Styles.outlineLabel).color(Pal.accent).left();
+                        }).growX().padTop(lastGroup == null ? 0f : 6f).padBottom(4f);
+                        listTable.row();
+                        lastGroup = group;
+                    }
+
+                    int index = i;
+                    Button option = listTable.button(t -> {
+                        t.left();
+                        addColorPreview(t, colors.get(index), 20f);
+                        t.add(names.get(index)).left().growX().padLeft(8f);
+                    }, Styles.flatTogglet, () -> settings.put(name, index)).growX().height(42f).padBottom(2f).get();
+
+                    option.update(() -> option.setChecked(selected() == index));
+                    listTable.row();
+                }
+
+                ScrollPane pane = new ScrollPane(listTable, Styles.smallPane);
+                pane.setScrollingDisabled(true, false);
+                pane.setFadeScrollBars(false);
+                pane.setOverscroll(false, false);
+                pane.update(() -> {
+                    if(expanded && pane.hasMouse()){
+                        Core.scene.setScrollFocus(pane);
+                    }
+                });
+                pane.addListener(new InputListener(){
+                    @Override
+                    public void enter(InputEvent event, float x, float y, int pointer, Element fromActor){
+                        if(pointer == -1){
+                            Core.scene.setScrollFocus(pane);
+                        }
+                    }
+
+                    @Override
+                    public boolean mouseMoved(InputEvent event, float x, float y){
+                        Core.scene.setScrollFocus(pane);
+                        return false;
+                    }
+
+                    @Override
+                    public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button){
+                        Core.scene.setScrollFocus(pane);
+                        return false;
+                    }
+
+                    @Override
+                    public boolean scrolled(InputEvent event, float x, float y, float sx, float sy){
+                        Core.scene.setScrollFocus(pane);
+                        event.stop();
+                        return true;
+                    }
+                });
+
+                Collapser collapser = new Collapser(new Table(c -> c.left().add(pane).growX().maxHeight(220f)), !expanded);
+                collapser.setDuration(0.12f);
+
+                final Image[] preview = {null};
+                final Label[] value = {null};
+                final Image[] arrow = {null};
+
+                Button header = holder.button(t -> {
+                    t.left();
+                    preview[0] = addColorPreview(t, colors.get(selected()), 22f);
+                    t.add(title).left().growX().wrap().padLeft(8f);
+                    value[0] = t.add(names.get(selected()), Styles.outlineLabel).right().padLeft(10f).get();
+                    arrow[0] = t.image(Icon.downOpen).padLeft(8f).get();
+                }, Styles.flatTogglet, () -> {
+                    expanded = !expanded;
+                    collapser.setCollapsed(!expanded, true);
+                }).growX().height(50f).get();
+
+                header.update(() -> {
+                    if(preview[0] != null) preview[0].setColor(colors.get(selected()));
+                    if(value[0] != null) value[0].setText(names.get(selected()));
+                    if(arrow[0] != null) arrow[0].setDrawable(collapser.isCollapsed() ? Icon.downOpen : Icon.upOpen);
+                    header.setChecked(!collapser.isCollapsed());
+                });
+
+                holder.row();
+                holder.add(collapser).growX().padTop(4f);
+
+                addDesc(table.add(holder).left().growX().padTop(4f).get());
+                table.row();
+            }
+
+            private int selected(){
+                return Mathf.clamp(settings.getInt(name, def), 0, Math.max(count - 1, 0));
+            }
+
+            private Image addColorPreview(Table table, Color color, float size){
+                Table preview = new Table();
+                preview.setBackground(Tex.whiteui);
+                preview.setColor(Color.darkGray);
+
+                Image inner = new Image(Tex.whiteui);
+                inner.setColor(color);
+                preview.add(inner).size(size - 4f).pad(2f);
+
+                table.add(preview).size(size);
+                return inner;
             }
         }
 

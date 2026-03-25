@@ -329,7 +329,24 @@ public class CommandAI extends AIController{
         followTarget = null;
     }
 
+    private boolean tryPickupSpecificUnit(Payloadc pay, @Nullable Unit target){
+        if(target == null || !target.isValid()) return false;
+        if(!target.isGrounded()) return false;
+        if(!pay.canPickup(target)) return false;
+        if(!target.within(unit, target.hitSize + unit.hitSize)) return false;
+
+        Call.pickedUnitPayload(unit, target);
+        return true;
+    }
+
     void tryPickupUnit(Payloadc pay){
+        if(command == UnitCommand.loadUnitsCommand && UnitTypes.isMedivac(unit)){
+            if(followTarget instanceof Unit followed){
+                tryPickupSpecificUnit(pay, followed);
+            }
+            return;
+        }
+
         float pickupRange = UnitTypes.isMedivac(unit) ? UnitTypes.medivacLoadRange() : unit.type.hitSize * 2f;
         Unit target = Units.closest(unit.team, unit.x, unit.y, pickupRange, u ->
             (UnitTypes.isMedivac(unit) || u.isAI()) && u != unit && u.isGrounded() && pay.canPickup(u) && u.within(unit, u.hitSize + unit.hitSize));
@@ -732,6 +749,8 @@ public class CommandAI extends AIController{
             if(attackTarget == null || retainAttackTargetOnMove){
                 float finishRange;
                 Position finishPos = vecMovePos;
+                boolean waitForCloseBuild = buildFinishRange > 0f && plan != null && plan.requireClose && targetPos != null &&
+                    Mathf.equal(targetPos.x, plan.drawx()) && Mathf.equal(targetPos.y, plan.drawy()) && !plan.isDone();
                 if(command == UnitCommand.enterPayloadCommand){
                     finishRange = 4f;
                     finishPos = targetPos;
@@ -745,7 +764,7 @@ public class CommandAI extends AIController{
                         finishRange = groupedMove ? (command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f)) : centerArrivalThreshold;
                     }
                 }
-                if(finishPos != null && unit.within(finishPos, finishRange)){
+                if(finishPos != null && unit.within(finishPos, finishRange) && !waitForCloseBuild){
                     if(!groupedMove){
                         unit.vel.setZero();
                     }
@@ -1210,7 +1229,14 @@ public class CommandAI extends AIController{
             return unit.range();
         }
 
-        return Math.max(0f, best - unit.hitSize / 2f);
+        float engage = Math.max(0f, best - unit.hitSize / 2f);
+
+        //Hellbat flame damage is applied from a short cone near the body, so it must walk closer than the nominal bullet range.
+        if(unit.type == UnitTypes.mace){
+            engage = Math.max(0f, engage - tilesize);
+        }
+
+        return engage;
     }
 
     private boolean preceptWeaponActive(Weapon weapon, Unit unit){

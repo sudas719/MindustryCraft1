@@ -9,6 +9,8 @@ import mindustry.io.*;
 
 import java.util.zip.*;
 
+import static mindustry.Vars.*;
+
 /** Class for storing all packets. */
 public class Packets{
 
@@ -195,6 +197,60 @@ public class Packets{
         @Override
         public int getPriority(){
             return priorityHigh;
+        }
+    }
+
+    public static class SpectatorCameraTargetPacket extends Packet{
+        public int targetPlayerId = -1;
+
+        @Override
+        public void write(Writes buffer){
+            buffer.i(targetPlayerId);
+        }
+
+        @Override
+        public void read(Reads buffer){
+            targetPlayerId = buffer.i();
+        }
+
+        @Override
+        public void handleServer(NetConnection con){
+            if(netServer != null){
+                netServer.handleSpectatorCameraTarget(con, targetPlayerId);
+            }
+        }
+    }
+
+    public static class SpectatorCameraStatePacket extends Packet{
+        public int targetPlayerId = -1;
+        public boolean active;
+        public float viewX, viewY, viewWidth, viewHeight;
+
+        @Override
+        public void write(Writes buffer){
+            buffer.i(targetPlayerId);
+            buffer.b((byte)(active ? 1 : 0));
+            buffer.f(viewX);
+            buffer.f(viewY);
+            buffer.f(viewWidth);
+            buffer.f(viewHeight);
+        }
+
+        @Override
+        public void read(Reads buffer){
+            targetPlayerId = buffer.i();
+            active = buffer.b() == 1;
+            viewX = buffer.f();
+            viewY = buffer.f();
+            viewWidth = buffer.f();
+            viewHeight = buffer.f();
+        }
+
+        @Override
+        public void handleClient(){
+            if(control != null && control.input != null){
+                control.input.receiveSpectatorCameraState(targetPlayerId, active, viewX, viewY, viewWidth, viewHeight);
+            }
         }
     }
 }

@@ -1443,6 +1443,8 @@ public class UnitFactory extends UnitBlock{
         private void spawnUnit(UnitPlan plan){
             if(net.client()) return;
             Unit unit = plan.unit.create(team);
+            String owner = Build.ownerName(this);
+            if(owner != null) unit.ownerName = owner;
             if(unit.isCommandable()){
                 unit.command().command(command == null && unit.type.defaultCommand != null ? unit.type.defaultCommand : command);
                 Teamc target = resolveCommandTarget();

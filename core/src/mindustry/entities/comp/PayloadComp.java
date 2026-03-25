@@ -195,8 +195,13 @@ abstract class PayloadComp implements Posc, Rotc, Hitboxc, Unitc{
             payload.place(on, tile.rotation);
             Events.fire(new PayloadDropEvent(self(), tile));
 
-            if(getControllerName() != null){
-                payload.build.lastAccessed = getControllerName();
+            String owner = getControllerName();
+            if(owner == null){
+                owner = ((Unit)self()).ownerName;
+            }
+            if(owner != null){
+                payload.build.lastAccessed = owner;
+                payload.build.ownerName = owner;
             }
 
             Fx.unitDrop.at(tile);

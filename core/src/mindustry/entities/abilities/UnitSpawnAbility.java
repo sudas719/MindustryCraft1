@@ -49,6 +49,9 @@ public class UnitSpawnAbility extends Ability{
             float x = unit.x + Angles.trnsx(unit.rotation, spawnY, -spawnX), y = unit.y + Angles.trnsy(unit.rotation, spawnY, -spawnX);
             spawnEffect.at(x, y, 0f, parentizeEffects ? unit : null);
             Unit u = this.unit.create(unit.team);
+            String owner = unit.getControllerName();
+            if(owner == null) owner = unit.ownerName;
+            if(owner != null) u.ownerName = owner;
             u.set(x, y);
             u.rotation = unit.rotation;
             Events.fire(new UnitCreateEvent(u, null, unit));

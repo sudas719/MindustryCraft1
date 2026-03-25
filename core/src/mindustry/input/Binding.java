@@ -52,7 +52,6 @@ public class Binding{
 
     selectAllUnits = KeyBind.add("select_all_units", KeyCode.f2),
     selectIdleWorkers = KeyBind.add("select_idle_workers", KeyCode.f1),
-    selectAllUnitFactories = KeyBind.add("select_all_unit_factories", KeyCode.unset),  //Disabled: conflicts with RTS Hold command
     selectAllUnitTransport = KeyBind.add("select_all_unit_transport", KeyCode.unset),
     selectAcrossScreen = KeyBind.add("select_across_screen", KeyCode.altLeft),
 
@@ -122,18 +121,22 @@ public class Binding{
     zoom = KeyBind.add("zoom", new Axis(KeyCode.scroll), "view"),
     detachCamera = KeyBind.add("detach_camera", KeyCode.unset),
 
-    //View presets: Ctrl+F1-F4 to save, F1-F4 to jump
-    viewPreset1 = KeyBind.add("view_preset_1", KeyCode.unset),
-    viewPreset2 = KeyBind.add("view_preset_2", KeyCode.unset),
-    viewPreset3 = KeyBind.add("view_preset_3", KeyCode.f3),
-    viewPreset4 = KeyBind.add("view_preset_4", KeyCode.f4),
+    //View presets: Ctrl+F3-F8 to save, F3-F8 to jump
+    viewPreset1 = KeyBind.add("view_preset_1", KeyCode.f3),
+    viewPreset2 = KeyBind.add("view_preset_2", KeyCode.f4),
+    viewPreset3 = KeyBind.add("view_preset_3", KeyCode.f5),
+    viewPreset4 = KeyBind.add("view_preset_4", KeyCode.f6),
+    viewPreset5 = KeyBind.add("view_preset_5", KeyCode.f7),
+    viewPreset6 = KeyBind.add("view_preset_6", KeyCode.f8),
     viewPresetSet1 = KeyBind.add("view_preset_set_1", KeyCode.unset),
     viewPresetSet2 = KeyBind.add("view_preset_set_2", KeyCode.unset),
     viewPresetSet3 = KeyBind.add("view_preset_set_3", KeyCode.unset),
     viewPresetSet4 = KeyBind.add("view_preset_set_4", KeyCode.unset),
+    viewPresetSet5 = KeyBind.add("view_preset_set_5", KeyCode.unset),
+    viewPresetSet6 = KeyBind.add("view_preset_set_6", KeyCode.unset),
 
     menu = KeyBind.add("menu", Vars.android ? KeyCode.back : KeyCode.f10),
-    fullscreen = KeyBind.add("fullscreen", KeyCode.f11),
+    fullscreen = KeyBind.add("fullscreen", KeyCode.unset),
     pause = KeyBind.add("pause", KeyCode.space),
     skipWave = KeyBind.add("skip_wave", KeyCode.unset),
     minimap = KeyBind.add("minimap", KeyCode.unset),  //Disabled: conflicts with RTS Move command
@@ -142,15 +145,15 @@ public class Binding{
     blockInfo = KeyBind.add("block_info", KeyCode.unset),  //Disabled to avoid conflict with view presets
     toggleMenus = KeyBind.add("toggle_menus", KeyCode.unset),
     screenshot = KeyBind.add("screenshot", KeyCode.unset),  //Disabled: conflicts with RTS Patrol command
-    togglePowerLines = KeyBind.add("toggle_power_lines", KeyCode.f5),
-    toggleBlockStatus = KeyBind.add("toggle_block_status", KeyCode.f6),
+    togglePowerLines = KeyBind.add("toggle_power_lines", KeyCode.unset),
+    toggleBlockStatus = KeyBind.add("toggle_block_status", KeyCode.unset),
     playerList = KeyBind.add("player_list", KeyCode.k, "multiplayer"),
     chat = KeyBind.add("chat", KeyCode.enter),
     chatHistoryPrev = KeyBind.add("chat_history_prev", KeyCode.up),
     chatHistoryNext = KeyBind.add("chat_history_next", KeyCode.down),
     chatScroll = KeyBind.add("chat_scroll", new Axis(KeyCode.scroll)),
     chatMode = KeyBind.add("chat_mode", KeyCode.tab),
-    console = KeyBind.add("console", KeyCode.f8),
+    console = KeyBind.add("console", KeyCode.unset),
     debugHitboxes = KeyBind.add("debug_hitboxes", KeyCode.unset)
     ;
 

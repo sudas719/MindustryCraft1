@@ -45,17 +45,20 @@ public final class FogRenderer{
     }
 
     public void drawFog(){
+        Team viewer = ViewerPerspective.team();
+        if(viewer == null) return;
+
         //there is no fog.
-        if(fogControl.getDiscovered(player.team()) == null) return;
+        if(fogControl.getDiscovered(viewer) == null) return;
 
         //resize if world size changes
         boolean clearStatic = staticFog.resizeCheck(world.width(), world.height());
 
         dynamicFog.resize(world.width(), world.height());
 
-        if(state.rules.staticFog && player.team() != lastTeam){
+        if(state.rules.staticFog && viewer != lastTeam){
             copyFromCpu();
-            lastTeam = player.team();
+            lastTeam = viewer;
             clearStatic = false;
         }
 
@@ -65,7 +68,7 @@ public final class FogRenderer{
             dynamicFog.begin(Color.black);
             ScissorStack.push(rect.set(1, 1, staticFog.getWidth() - 2, staticFog.getHeight() - 2));
 
-            Team team = player.team();
+            Team team = viewer;
 
             for(var build : indexer.getFlagged(team, BlockFlag.hasFogRadius)){
                 revealDynamic(build.x, build.y, build.fogRadius(), false, HeightLayerData.edgeLayer(build.x, build.y, build.hitSize() / 2f));
@@ -208,13 +211,16 @@ public final class FogRenderer{
     }
 
     public void copyFromCpu(){
+        Team viewer = ViewerPerspective.team();
+        if(viewer == null) return;
+
         staticFog.resize(world.width(), world.height());
         staticFog.begin(Color.black);
         Draw.proj(0, 0, staticFog.getWidth(), staticFog.getHeight());
         Draw.color();
         int ww = world.width(), wh = world.height();
 
-        var data = fogControl.getDiscovered(player.team());
+        var data = fogControl.getDiscovered(viewer);
         int len = world.width() * world.height();
         if(data != null){
             for(int i = 0; i < len; i++){

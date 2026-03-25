@@ -29,6 +29,18 @@ import static mindustry.Vars.*;
 public class Build{
     private static final IntSet tmp = new IntSet();
 
+    public static @Nullable String ownerName(@Nullable Unit unit){
+        if(unit == null) return null;
+        String owner = unit.getControllerName();
+        return owner != null ? owner : unit.ownerName;
+    }
+
+    public static @Nullable String ownerName(@Nullable Building build){
+        if(build == null) return null;
+        String owner = build.lastAccessed;
+        return owner != null ? owner : build.ownerName;
+    }
+
     public static boolean meetsPrerequisites(Block type, Team team){
         if(type == null || team == null) return false;
         if(type == Blocks.doorLarge) return team.data().hasCore();
@@ -83,8 +95,10 @@ public class Build{
         build.prevBuild = prevBuild;
         tile.build.health = tile.build.maxHealth * prevPercent;
 
-        if(unit != null && unit.getControllerName() != null){
-            tile.build.lastAccessed = unit.getControllerName();
+        String owner = ownerName(unit);
+        if(owner != null){
+            tile.build.lastAccessed = owner;
+            tile.build.ownerName = owner;
         }
 
         Events.fire(new BlockBuildBeginEvent(tile, team, unit, true));
@@ -111,7 +125,8 @@ public class Build{
 
         //auto-rotate the block to the correct orientation and bail out
         if(tile.team() == team && tile.block == result && tile.build != null && tile.block.quickRotate){
-            if(unit != null && unit.getControllerName() != null) tile.build.lastAccessed = unit.getControllerName();
+            String owner = ownerName(unit);
+            if(owner != null) tile.build.lastAccessed = owner;
             int previous = tile.build.rotation;
             tile.build.rotation = Mathf.mod(rotation, 4);
             tile.build.updateProximity();
@@ -135,7 +150,11 @@ public class Build{
             tile.build.updateProximity();
             tile.build.onRepaired();
 
-            if(unit != null && unit.getControllerName() != null) tile.build.lastAccessed = unit.getControllerName();
+            String owner = ownerName(unit);
+            if(owner != null){
+                tile.build.lastAccessed = owner;
+                tile.build.ownerName = owner;
+            }
 
             if(fogControl.isVisibleTile(team, tile.x, tile.y)){
                 result.placeEffect.at(tile.drawx(), tile.drawy(), result.size);
@@ -182,7 +201,11 @@ public class Build{
 
         build.setConstruct(previous.size == sub.size ? previous : Blocks.air, result);
         build.prevBuild = prevBuild;
-        if(unit != null && unit.getControllerName() != null) build.lastAccessed = unit.getControllerName();
+        String owner = ownerName(unit);
+        if(owner != null){
+            build.lastAccessed = owner;
+            build.ownerName = owner;
+        }
 
         Events.fire(new BlockBuildBeginEvent(tile, team, unit, false));
 

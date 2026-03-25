@@ -6,8 +6,10 @@ import arc.graphics.g2d.*;
 import arc.input.*;
 import arc.math.*;
 import arc.math.geom.*;
+import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
+import arc.util.pooling.*;
 import mindustry.*;
 import mindustry.content.*;
 import mindustry.ai.types.*;
@@ -18,10 +20,12 @@ import mindustry.game.*;
 import mindustry.game.Teams.*;
 import mindustry.gen.*;
 import mindustry.input.*;
+import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
 import mindustry.world.blocks.defense.BunkerBlock;
 import mindustry.world.blocks.defense.Radar;
+import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
 import mindustry.world.blocks.units.UnitFactory.*;
@@ -36,6 +40,29 @@ public class OverlayRenderer{
     private static final float radarEnemyDashArc = 10f;
     private static final float radarEnemyDashStep = 20f;
     private static final int radarEnemyDashSegments = 18;
+    private static final float overheadBarHeight = 3.5f * 2f / 3f / 2f;
+    private static final float overheadBarSpacing = overheadBarHeight + 1.05f * 2f / 3f;
+    private static final float overheadBarBaseOffset = 3.25f;
+    private static final float overheadBarStackShift = overheadBarSpacing * 2f;
+    private static final float overheadBarCullMargin = 24f;
+    private static final float overheadBorderStroke = 0.17f;
+    private static final float overheadInnerInset = 0.12f;
+    private static final float overheadSegmentIdeal = 3.2f / 2f;
+    private static final int overheadSegmentMax = 24;
+    private static final float overheadGroundBarLayer = Layer.flyingUnitLow - 0.25f;
+    private static final float overheadAirBarLayer = Layer.light - 0.25f;
+    private static final float overheadBorderLayerOffset = 0.02f;
+    private static final Color overheadHealthLow = Color.valueOf("6f1616");
+    private static final Color overheadHealthHigh = Color.valueOf("38d667");
+    private static final Color overheadEnemyHealthColor = Color.valueOf("ff0000");
+    private static final Color overheadEnergyColor = Color.valueOf("b57aff");
+    private static final Color overheadProgressColor = Color.valueOf("66e7ff");
+    private static final Color overheadRemainingColor = Color.valueOf("d8d8d8");
+    private static final float hoverOwnerFontScale = 0.25f;
+    private static final float hoverOwnerPadX = 3f;
+    private static final float hoverOwnerPadY = 2f;
+    private static final float hoverOwnerGap = 2.5f;
+    private static final float hoverOwnerBorderStroke = 0.45f;
 
     private static final float indicatorLength = 14f;
     private static final float spawnerMargin = tilesize*11f;
@@ -183,7 +210,6 @@ public class OverlayRenderer{
 
         input.drawTop();
         input.drawUnitSelection();
-        drawProgressBars();
 
         boolean dead = player.dead();
 
@@ -304,11 +330,10 @@ public class OverlayRenderer{
     }
 
     public void drawRadarIntelPostFog(){
-        if(player == null || player.team() == null || state == null || state.isMenu()){
+        Team viewer = ViewerPerspective.team();
+        if(viewer == null || state == null || state.isMenu()){
             return;
         }
-
-        Team viewer = player.team();
         float pulse = 0.68f + Mathf.absin(Time.time, 8f, 0.12f);
 
         Draw.z(Layer.fogOfWar + 0.01f);
@@ -343,81 +368,491 @@ public class OverlayRenderer{
         Draw.reset();
     }
 
-    private void drawProgressBars(){
-        InputHandler input = control.input;
-        if(input == null) return;
-        var hover = input.updateHover(false);
-        Building hoverBuild = hover != null && hover.build != null && hover.build.isValid() ? hover.build : null;
-        Unit hoverUnit = hover != null && hover.unit != null && hover.unit.isValid() ? hover.unit : null;
+    private void drawGroundProgressBars(){
+        Team viewer = ViewerPerspective.team();
+        if(viewer == null || state == null || state.isMenu()) return;
 
-        Draw.draw(Layer.blockOver + 1f, () -> {
-                if(hoverBuild != null){
-                    if(hoverBuild instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
-                        float size = cons.current.size * tilesize;
-                        drawProgressBar(hoverBuild.x, hoverBuild.y, size, cons.progress);
-                    }else if(hoverBuild instanceof CoreBuild core){
-                        if(core.isUpgrading()){
-                            float fraction = core.isUpgradingOrbital() ? core.orbitalUpgradeFraction() : core.fortressUpgradeFraction();
-                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), fraction, Color.cyan);
-                        }else if(core.unitQueue != null && !core.unitQueue.isEmpty()){
-                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.unitProgressFraction());
-                        }
-                        if(core.block == Blocks.coreOrbital && core.orbitalEnergy >= 0f){
-                            drawEnergyBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), core.orbitalEnergy / CoreBlock.orbitalEnergyCap);
-                        }
-                    }else if(hoverBuild instanceof BunkerBlock.BunkerBuild bunker){
-                        if(bunker.isRecycling()){
-                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), bunker.recycleRemainingFraction(), Color.orange);
-                        }
-                    }else if(hoverBuild instanceof Radar.RadarBuild radar){
-                        if(radar.isRecycling()){
-                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), radar.recycleRemainingFraction(), Color.orange);
-                        }
-                    }else if(hoverBuild instanceof UnitFactoryBuild factory){
-                        if(factory.currentPlan != -1){
-                            drawProgressBar(hoverBuild.x, hoverBuild.y, hoverBuild.hitSize(), factory.fraction());
-                        }
-                    }
-                }
-            if(hoverUnit != null){
-                float remaining = PulsarDrops.remainingFraction(hoverUnit);
-                if(remaining > 0f){
-                    drawProgressBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, remaining, Color.gray);
-                }
-                if(hoverUnit.type.energyCapacity > 0f){
-                    drawEnergyBar(hoverUnit.x, hoverUnit.y, hoverUnit.hitSize, hoverUnit.energy / hoverUnit.type.energyCapacity);
-                }
-            }
+        Rect bounds = Core.camera.bounds(Tmp.r1);
+        float vx = bounds.x - overheadBarCullMargin;
+        float vy = bounds.y - overheadBarCullMargin;
+        float vw = bounds.width + overheadBarCullMargin * 2f;
+        float vh = bounds.height + overheadBarCullMargin * 2f;
+        float maxX = vx + vw;
+        float maxY = vy + vh;
+        int healthBarDisplay = Core.settings.getInt("healthbardisplay", 0);
+
+        Draw.draw(overheadGroundBarLayer, () -> {
+            Groups.build.each(build -> {
+                if(build == null || !build.isValid() || build.inFogTo(viewer)) return;
+                if(build.x < vx || build.x > maxX || build.y < vy || build.y > maxY) return;
+                boolean sameSide = !viewer.isEnemy(build.team);
+                drawBuildingOverheadBars(build, healthBarDisplay, sameSide, sameSide, overheadGroundBarLayer);
+            });
+
+            Groups.unit.intersect(vx, vy, vw, vh, unit -> {
+                if(unit == null || !unit.isValid() || unit.dead() || unit.inFogTo(viewer) || unit.isFlying()) return;
+                boolean sameSide = !viewer.isEnemy(unit.team);
+                drawUnitOverheadBars(unit, healthBarDisplay, sameSide, sameSide, overheadGroundBarLayer);
+            });
+
             Draw.reset();
         });
     }
 
-    private void drawProgressBar(float x, float y, float size, float progress){
-        drawProgressBar(x, y, size, progress, Color.cyan);
+    private void drawAirProgressBars(){
+        Team viewer = ViewerPerspective.team();
+        if(viewer == null || state == null || state.isMenu()) return;
+
+        Rect bounds = Core.camera.bounds(Tmp.r1);
+        float vx = bounds.x - overheadBarCullMargin;
+        float vy = bounds.y - overheadBarCullMargin;
+        float vw = bounds.width + overheadBarCullMargin * 2f;
+        float vh = bounds.height + overheadBarCullMargin * 2f;
+        int healthBarDisplay = Core.settings.getInt("healthbardisplay", 0);
+
+        Draw.draw(overheadAirBarLayer, () -> {
+            Groups.unit.intersect(vx, vy, vw, vh, unit -> {
+                if(unit == null || !unit.isValid() || unit.dead() || unit.inFogTo(viewer) || !unit.isFlying()) return;
+                boolean sameSide = !viewer.isEnemy(unit.team);
+                drawUnitOverheadBars(unit, healthBarDisplay, sameSide, sameSide, overheadAirBarLayer);
+            });
+
+            Draw.reset();
+        });
     }
 
-    private void drawProgressBar(float x, float y, float size, float progress, Color color){
-        float barWidth = size;
-        float barHeight = 3.5f;
-        float offset = size / 2f + 4f;
-        float clamped = Mathf.clamp(progress);
+    public void drawWorldProgressBars(){
+        drawGroundProgressBars();
+        drawAirProgressBars();
+    }
 
-        Draw.color(Color.black, 0.6f);
-        Fill.rect(x, y + offset, barWidth, barHeight);
+    private void drawUnitOverheadBars(Unit unit, int healthBarDisplay, boolean showLoadBar, boolean showProgressBar, float barLayer){
+        float width = entityWidth(unit);
+        if(width <= 0.001f) return;
+
+        LoadBarData load = showLoadBar ? unitLoadData(unit) : null;
+        float energy = unit.type.energyCapacity > 0f ? Mathf.clamp(unit.energy / Math.max(unit.type.energyCapacity, 0.001f)) : -1f;
+        Color progressColor = Tmp.c2.set(overheadProgressColor);
+        float progress = showProgressBar ? unitProgressFraction(unit, progressColor) : -1f;
+        float remaining = showProgressBar ? unitRemainingFraction(unit) : -1f;
+        float bottomY = unit.y + entityHeight(unit) / 2f + overheadBarBaseOffset - overheadBarStackShift;
+
+        drawOverheadStack(unit.x, bottomY, width,
+        Mathf.clamp(unit.healthf()),
+        load,
+        energy,
+        progress, progressColor,
+        remaining,
+        healthBarDisplay,
+        showLoadBar,
+        barLayer);
+    }
+
+    private void drawBuildingOverheadBars(Building build, int healthBarDisplay, boolean showLoadBar, boolean showProgressBar, float barLayer){
+        float width = entityWidth(build);
+        if(width <= 0.001f) return;
+
+        LoadBarData load = showLoadBar ? buildingLoadData(build) : null;
+        float energy = buildingEnergyFraction(build);
+        Color progressColor = Tmp.c2.set(overheadProgressColor);
+        float progress = showProgressBar ? buildingProgressFraction(build, progressColor) : -1f;
+        float remaining = showProgressBar ? buildingRemainingFraction(build) : -1f;
+        float bottomY = build.y + entityHeight(build) / 2f + overheadBarBaseOffset;
+
+        drawOverheadStack(build.x, bottomY, width,
+        Mathf.clamp(build.healthf()),
+        load,
+        energy,
+        progress, progressColor,
+        remaining,
+        healthBarDisplay,
+        showLoadBar,
+        barLayer);
+    }
+
+    private void drawOverheadStack(float x, float bottomY, float width, float health, @Nullable LoadBarData load, float energy, float progress, Color progressColor, float remaining, int healthBarDisplay, boolean sameSide, float barLayer){
+        float y = bottomY;
+        boolean drewRegularBar = false;
+        int segments = segmentedBarSegments(width);
+
+        if(energy >= 0f){
+            drawSegmentedBar(x, y, width, energy, overheadEnergyColor, segments, barLayer);
+            y += overheadBarSpacing;
+            drewRegularBar = true;
+        }
+        if(load != null && load.totalSlots > 0){
+            drawLoadBar(x, y, width, load, barLayer);
+            y += overheadBarSpacing;
+            drewRegularBar = true;
+        }
+
+        if(shouldDrawHealthBar(healthBarDisplay, health)){
+            drawSegmentedBar(x, y, width, health, healthColor(health, sameSide), segments, barLayer);
+            drewRegularBar = true;
+        }
+
+        int lowerBars = 0;
+        if(progress >= 0f){
+            float progressY = drewRegularBar ? bottomY - overheadBarSpacing : bottomY;
+            drawSolidBar(x, progressY, width, progress, progressColor, false, barLayer);
+            lowerBars = 1;
+        }
+
+        if(remaining >= 0f){
+            float remainingY = drewRegularBar ? bottomY - overheadBarSpacing * (lowerBars + 1f) : bottomY;
+            drawSolidBar(x, remainingY, width, remaining, overheadRemainingColor, false, barLayer);
+        }
+    }
+
+    private boolean shouldDrawHealthBar(int mode, float health){
+        if(mode == 1) return true;
+        return mode == 2 && health < 0.999f;
+    }
+
+    private float buildingProgressFraction(Building build, Color colorOut){
+        if(build instanceof ConstructBuild cons && cons.current != null && cons.current != Blocks.air && cons.progress < 1f){
+            colorOut.set(overheadProgressColor);
+            return Mathf.clamp(cons.progress);
+        }
+
+        if(build instanceof CoreBuild core){
+            if(core.isUpgrading()){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(core.isUpgradingOrbital() ? core.orbitalUpgradeFraction() : core.fortressUpgradeFraction());
+            }
+            if(core.unitQueue != null && !core.unitQueue.isEmpty()){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(core.unitProgressFraction());
+            }
+        }
+
+        if(build instanceof UnitFactoryBuild factory){
+            if(factory.currentPlan != -1){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(factory.fraction());
+            }
+
+            if(factory.hasTechAddon()){
+                Sc2ResearchSpec spec = ResearchQueueService.techLabActiveResearch(build.team, factory.block);
+                if(spec != null){
+                    colorOut.set(overheadProgressColor);
+                    return Mathf.clamp(spec.progress(build.team));
+                }
+            }
+        }
+
+        if(build.block == Blocks.launchPad){
+            if(UnitTypes.ghostWarheadProducing(build)){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(UnitTypes.ghostWarheadProductionProgress(build));
+            }
+            if(UnitTypes.ghostCamoAnyResearching(build.team)){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(UnitTypes.ghostCamoResearchProgress(build.team));
+            }
+        }
+
+        Sc2ResearchSpec research = buildingResearchSpec(build);
+        if(research != null){
+            colorOut.set(overheadProgressColor);
+            return Mathf.clamp(research.progress(build.team));
+        }
+
+        return -1f;
+    }
+
+    private float buildingRemainingFraction(Building build){
+        if(build instanceof BunkerBlock.BunkerBuild bunker && bunker.isRecycling()){
+            return Mathf.clamp(bunker.recycleRemainingFraction());
+        }
+        if(build instanceof Radar.RadarBuild radar && radar.isRecycling()){
+            return Mathf.clamp(radar.recycleRemainingFraction());
+        }
+        return -1f;
+    }
+
+    private @Nullable Sc2ResearchSpec buildingResearchSpec(Building build){
+        Team team = build.team;
+
+        if(ResearchQueueService.armoryActiveResearchBlock(team) == build.block){
+            Sc2ResearchSpec spec = ResearchQueueService.armoryActiveResearch(team);
+            if(spec != null) return spec;
+        }
+        if(ResearchQueueService.engineeringActiveResearchBlock(team) == build.block){
+            Sc2ResearchSpec spec = ResearchQueueService.engineeringActiveResearch(team);
+            if(spec != null) return spec;
+        }
+        if(build.block == Blocks.surgeCrucible){
+            Sc2ResearchSpec spec = ResearchQueueService.fusionCoreActiveResearch(team);
+            if(spec != null) return spec;
+        }
+
+        return null;
+    }
+
+    private float unitProgressFraction(Unit unit, Color colorOut){
+        float progress = UnitTypes.widowReloadProgress(unit);
+        if(progress > 0f){
+            colorOut.set(Color.gray);
+            return progress;
+        }
+
+        progress = UnitTypes.battlecruiserYamatoChargeProgress(unit);
+        if(progress > 0f){
+            colorOut.set(overheadProgressColor);
+            return progress;
+        }
+
+        progress = UnitTypes.battlecruiserWarpChargeProgress(unit);
+        if(progress > 0f){
+            colorOut.set(Color.valueOf("b9f7ff"));
+            return progress;
+        }
+
+        return -1f;
+    }
+
+    private float unitRemainingFraction(Unit unit){
+        float remaining = PulsarDrops.remainingFraction(unit);
+        if(remaining > 0f) return remaining;
+
+        remaining = UnitTypes.ravenTurretLifeProgress(unit);
+        if(remaining > 0f) return remaining;
+
+        if(UnitTypes.medivacAfterburnerActive(unit)){
+            return Mathf.clamp(unit.getDuration(StatusEffects.medivacAfterburner) / Math.max(UnitTypes.medivacAfterburnerDuration(), 0.001f));
+        }
+
+        if(unit.hasEffect(StatusEffects.barracksStimpackMarine) || unit.hasEffect(StatusEffects.barracksStimpackMarauder)){
+            float time = Math.max(unit.getDuration(StatusEffects.barracksStimpackMarine), unit.getDuration(StatusEffects.barracksStimpackMarauder));
+            return Mathf.clamp(time / Math.max(UnitTypes.barracksStimpackDuration(), 0.001f));
+        }
+
+        if(UnitTypes.hurricaneLockActive(unit)){
+            return Mathf.clamp(UnitTypes.getHurricaneLockData(unit).activeTime / Math.max(UnitTypes.hurricaneLockDuration(), 0.001f));
+        }
+
+        if(unit.hasEffect(StatusEffects.ravenAntiArmor)){
+            return Mathf.clamp(unit.getDuration(StatusEffects.ravenAntiArmor) / Math.max(UnitTypes.ravenAntiArmorDuration(), 0.001f));
+        }
+
+        if(unit.hasEffect(StatusEffects.ravenMatrixLock)){
+            return Mathf.clamp(unit.getDuration(StatusEffects.ravenMatrixLock) / Math.max(UnitTypes.ravenMatrixDuration(), 0.001f));
+        }
+
+        return -1f;
+    }
+
+    private @Nullable LoadBarData unitLoadData(Unit unit){
+        if(!UnitTypes.isMedivac(unit) || !(unit instanceof Payloadc payload)) return null;
+
+        LoadBarData data = new LoadBarData(8);
+        Seq<Payload> payloads = payload.payloads();
+        for(int i = 0; i < payloads.size && data.hasFreeSlots(); i++){
+            data.occupy(i + 1, payloadSlotCost(payloads.get(i)));
+        }
+        return data;
+    }
+
+    private @Nullable LoadBarData buildingLoadData(Building build){
+        if(!(build instanceof BunkerBlock.BunkerBuild bunker)) return null;
+
+        int totalSlots = bunker.usedSlots() + bunker.freeSlots();
+        if(totalSlots <= 0) return null;
+
+        LoadBarData data = new LoadBarData(totalSlots);
+        for(int i = 0; i < bunker.garrison.size && data.hasFreeSlots(); i++){
+            BunkerBlock.GarrisonEntry entry = bunker.garrison.get(i);
+            data.occupy(i + 1, BunkerBlock.unitSlotCost(content.unit(entry.typeId)));
+        }
+        return data;
+    }
+
+    private float buildingEnergyFraction(Building build){
+        if(build instanceof CoreBuild core && build.block == Blocks.coreOrbital && core.orbitalEnergy >= 0f){
+            return Mathf.clamp(core.orbitalEnergy / CoreBlock.orbitalEnergyCap);
+        }
+        return -1f;
+    }
+
+    private float entityWidth(Unit unit){
+        TextureRegion region = unit.type.region != null && unit.type.region.found() ? unit.type.region : unit.type.fullIcon;
+        float width = region != null && region.found() ? region.width * region.scl() : unit.hitSize;
+        return Math.max(unit.hitSize, width);
+    }
+
+    private float entityHeight(Unit unit){
+        TextureRegion region = unit.type.region != null && unit.type.region.found() ? unit.type.region : unit.type.fullIcon;
+        float height = region != null && region.found() ? region.height * region.scl() : unit.hitSize;
+        return Math.max(unit.hitSize, height);
+    }
+
+    private float entityWidth(Building build){
+        TextureRegion region = build.block.fullIcon != null && build.block.fullIcon.found() ? build.block.fullIcon : build.block.region;
+        float width = region != null && region.found() ? region.width * region.scl() : build.hitSize();
+        return Math.max(build.block.size * tilesize, width);
+    }
+
+    private float entityHeight(Building build){
+        TextureRegion region = build.block.fullIcon != null && build.block.fullIcon.found() ? build.block.fullIcon : build.block.region;
+        float height = region != null && region.found() ? region.height * region.scl() : build.hitSize();
+        return Math.max(build.block.size * tilesize, height);
+    }
+
+    private int segmentedBarSegments(float width){
+        return segmentCount(width, overheadSegmentIdeal, overheadSegmentMax, 0f);
+    }
+
+    private int segmentCount(float width, float idealWidth, int maxSegments, float gap){
+        return Math.max(1, Math.min(maxSegments, Math.round((Math.max(width, 1f) + gap) / Math.max(idealWidth + gap, 0.001f))));
+    }
+
+    private Color healthColor(float fraction, boolean sameSide){
+        if(!sameSide) return Tmp.c1.set(overheadEnemyHealthColor);
+        return Tmp.c1.set(overheadHealthLow).lerp(overheadHealthHigh, Mathf.clamp(fraction));
+    }
+
+    private void drawSegmentedBar(float x, float y, float width, float progress, Color color, int segments, float barLayer){
+        float clamped = Mathf.clamp(progress);
+        float totalWidth = Math.max(width, 1f);
+        int count = Math.max(1, segments);
+        float segmentWidth = totalWidth / count;
+        float left = x - totalWidth / 2f;
+        float innerHeight = Math.max(0.2f, overheadBarHeight - overheadInnerInset * 2f);
+
+        Draw.z(barLayer);
         Draw.color(color);
-        Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
+
+        for(int i = 0; i < count; i++){
+            float segProgress = clamped * count - i;
+            float fill = Mathf.clamp(segProgress);
+            if(fill <= 0.001f) continue;
+
+            float segLeft = left + i * segmentWidth;
+            float fillWidth = Math.max(0f, (segmentWidth - overheadInnerInset * 2f) * fill);
+            if(fillWidth <= 0.001f) continue;
+
+            Fill.rect(segLeft + overheadInnerInset + fillWidth / 2f, y, fillWidth, innerHeight);
+        }
+
+        Draw.z(barLayer + overheadBorderLayerOffset);
+        Draw.color(Color.black);
+        Lines.stroke(overheadBorderStroke);
+        float bottom = y - overheadBarHeight / 2f;
+        float top = y + overheadBarHeight / 2f;
+        Lines.rect(left, bottom, totalWidth, overheadBarHeight);
+
+        for(int i = 1; i < count; i++){
+            float split = left + i * segmentWidth;
+            Lines.line(split, bottom, split, top);
+        }
+
+        Draw.reset();
     }
 
-    private void drawEnergyBar(float x, float y, float size, float progress){
-        float barWidth = size;
-        float barHeight = 3.5f;
-        float offset = size / 2f + 8f;
-        float clamped = Mathf.clamp(progress);
+    private int payloadSlotCost(Payload payload){
+        if(payload instanceof UnitPayload up){
+            return Math.max(1, UnitTypes.medivacUnitSlotCost(up.unit == null ? null : up.unit.type));
+        }
+        return Math.max(1, Mathf.ceil(payload.size() * payload.size() / tilePayload));
+    }
 
-        Draw.color(Color.black, 0.6f);
-        Fill.rect(x, y + offset, barWidth, barHeight);
-        Draw.color(Color.valueOf("b57aff"));
-        Fill.rect(x - barWidth / 2f + barWidth * clamped / 2f, y + offset, barWidth * clamped, barHeight);
+    private void drawLoadBar(float x, float y, float width, LoadBarData load, float barLayer){
+        float totalWidth = Math.max(width, 1f);
+        float slotWidth = totalWidth / load.totalSlots;
+        float slotLeft = x - totalWidth / 2f;
+        float left = x - totalWidth / 2f;
+        float innerHeight = Math.max(0.2f, overheadBarHeight - overheadInnerInset * 2f);
+
+        Draw.z(barLayer);
+        Draw.color(Color.white);
+
+        for(int i = 0; i < load.totalSlots; ){
+            int owner = load.slotOwners.get(i);
+            int start = i;
+            while(i < load.totalSlots && load.slotOwners.get(i) == owner){
+                i++;
+            }
+
+            if(owner <= 0) continue;
+
+            float fillWidth = Math.max(0f, (i - start) * slotWidth - overheadInnerInset * 2f);
+            if(fillWidth <= 0.001f) continue;
+
+            float fillLeft = slotLeft + start * slotWidth + overheadInnerInset;
+            Fill.rect(fillLeft + fillWidth / 2f, y, fillWidth, innerHeight);
+        }
+
+        Draw.z(barLayer + overheadBorderLayerOffset);
+        Draw.color(Color.black);
+        Lines.stroke(overheadBorderStroke);
+        float bottom = y - overheadBarHeight / 2f;
+        float top = y + overheadBarHeight / 2f;
+        Lines.rect(left, bottom, totalWidth, overheadBarHeight);
+
+        for(int i = 1; i < load.totalSlots; i++){
+            if(!load.divider(i - 1)) continue;
+            float split = slotLeft + i * slotWidth;
+            Lines.line(split, bottom, split, top);
+        }
+
+        Draw.reset();
+    }
+
+    private void drawSolidBar(float x, float y, float width, float progress, Color color, boolean reverse, float barLayer){
+        float clamped = Mathf.clamp(progress);
+        float totalWidth = Math.max(width, 1f);
+        float left = x - totalWidth / 2f;
+        float right = x + totalWidth / 2f;
+        float innerHeight = Math.max(0.2f, overheadBarHeight - overheadInnerInset * 2f);
+        float innerWidth = Math.max(0f, (totalWidth - overheadInnerInset * 2f) * clamped);
+
+        if(innerWidth > 0.001f){
+            Draw.z(barLayer);
+            Draw.color(color);
+            float fillCenter = reverse ? right - overheadInnerInset - innerWidth / 2f : left + overheadInnerInset + innerWidth / 2f;
+            Fill.rect(fillCenter, y, innerWidth, innerHeight);
+        }
+
+        Draw.z(barLayer + overheadBorderLayerOffset);
+        Draw.color(Color.black);
+        Lines.stroke(overheadBorderStroke);
+        Lines.rect(left, y - overheadBarHeight / 2f, totalWidth, overheadBarHeight);
+        Draw.reset();
+    }
+
+    private static class LoadBarData{
+        final IntSeq slotOwners;
+        final int totalSlots;
+        int nextSlot;
+
+        LoadBarData(int totalSlots){
+            this.totalSlots = Math.max(0, totalSlots);
+            this.slotOwners = new IntSeq(this.totalSlots);
+
+            for(int i = 0; i < this.totalSlots; i++){
+                slotOwners.add(-(i + 1));
+            }
+        }
+
+        boolean hasFreeSlots(){
+            return nextSlot < totalSlots;
+        }
+
+        void occupy(int owner, int slots){
+            int amount = Math.max(1, slots);
+            for(int i = 0; i < amount && nextSlot < totalSlots; i++){
+                slotOwners.set(nextSlot++, owner);
+            }
+        }
+
+        boolean filled(int slot){
+            return slotOwners.get(slot) > 0;
+        }
+
+        boolean divider(int leftSlot){
+            return slotOwners.get(leftSlot) != slotOwners.get(leftSlot + 1);
+        }
     }
 
     public void drawHoverRing(){
@@ -489,6 +924,7 @@ public class OverlayRenderer{
             hoverPulseTarget = null;
         }
 
+        drawHoverOwnerBox(hover);
         Draw.reset();
     }
 
@@ -510,13 +946,67 @@ public class OverlayRenderer{
         }
     }
 
+    private void drawHoverOwnerBox(InputHandler.HoverInfo hover){
+        if(!net.active() || Groups.player.size() <= 1) return;
+        if(hover == null || !hover.isValid() || hover.resource != null) return;
+
+        String owner = hoverOwnerText(hover);
+        if(owner == null || owner.isEmpty()) return;
+
+        float radius = hover.resource != null ? Math.max(1f, hover.radius + InputHandler.selectionSolidRadiusOffset) : hoverRotatingRadius(hover.radius);
+        Font font = Fonts.outline;
+        GlyphLayout layout = Pools.obtain(GlyphLayout.class, GlyphLayout::new);
+        boolean ints = font.usesIntegerPositions();
+        font.setUseIntegerPositions(false);
+        font.getData().setScale(hoverOwnerFontScale / Scl.scl(1f));
+        layout.setText(font, owner);
+
+        float boxW = layout.width + hoverOwnerPadX * 2f;
+        float boxH = layout.height + hoverOwnerPadY * 2f;
+        float boxX = hover.x;
+        float boxY = hover.y - radius - hoverOwnerGap - boxH / 2f;
+
+        Draw.z(Layer.playerName);
+        Draw.color(0f, 0f, 0f, 0.6f);
+        Fill.rect(boxX, boxY, boxW, boxH);
+        Draw.color(hoverColor(hover));
+        Lines.stroke(hoverOwnerBorderStroke);
+        Lines.rect(boxX - boxW / 2f, boxY - boxH / 2f, boxW, boxH);
+
+        float prev = Drawf.text();
+        font.setColor(Color.white);
+        font.draw(owner, boxX, boxY + layout.height / 2f, 0f, Align.center, false);
+        Draw.z(prev);
+
+        font.getData().setScale(1f);
+        font.setUseIntegerPositions(ints);
+        Draw.reset();
+        Pools.free(layout);
+    }
+
+    private @Nullable String hoverOwnerText(InputHandler.HoverInfo hover){
+        if(hover.unit != null){
+            String owner = hover.unit.getControllerName();
+            if(owner == null) owner = hover.unit.ownerName;
+            if(owner == null && hover.unit.team != null) owner = hover.unit.team.coloredName();
+            return owner;
+        }
+        if(hover.build != null){
+            String owner = hover.build.ownerName;
+            if(owner == null) owner = hover.build.lastAccessed;
+            if(owner == null && hover.build.team != null) owner = hover.build.team.coloredName();
+            return owner;
+        }
+        return null;
+    }
+
     private Color hoverColor(InputHandler.HoverInfo hover){
         if(hover.resource != null) return Color.yellow;
         Team team = hover.team;
         if(team == null) return Color.white;
-        if(team == player.team()) return Color.green;
+        if(ViewerPerspective.isFriendly(team)) return Color.green;
         if(team == Team.derelict) return Color.yellow;
-        return team != player.team() ? Color.red : Color.green;
+        return Color.red;
     }
 
     public void checkApplySelection(Unit u){
@@ -541,10 +1031,11 @@ public class OverlayRenderer{
 
         @Nullable
         Team displayed(){
+            Team viewer = ViewerPerspective.team();
             return
                 t1 == t2 ? null :
-                t1 == player.team() ? t2 :
-                t2 == player.team() ? t1 :
+                t1 == viewer ? t2 :
+                t2 == viewer ? t1 :
                 t2.id == 0 ? t1 :
                 t1.id < t2.id && t1.id != 0 ? t1 : t2;
         }

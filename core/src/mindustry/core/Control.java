@@ -122,6 +122,8 @@ public class Control implements ApplicationListener, Loadable{
             }else{
                 camera.position.set(player);
             }
+
+            Time.runTask(10f, this::showFirstDesktopMenuInfo);
         });
 
         Events.on(SaveLoadEvent.class, event -> {
@@ -395,6 +397,16 @@ public class Control implements ApplicationListener, Loadable{
         }
 
         Events.on(ClientLoadEvent.class, e -> input.add());
+    }
+
+    private void showFirstDesktopMenuInfo(){
+        if(mobile || state.isEditor() || !state.isGame() || Core.settings.getBool("desktop_menu_info_shown", false)) return;
+
+        Core.settings.put("desktop_menu_info_shown", true);
+
+        KeyCode menuKey = Binding.menu.value.key;
+        String menuKeyName = menuKey == null || menuKey == KeyCode.unset ? "F10" : menuKey.toString();
+        ui.showOkText(bundle.get("firstplay.menu.title"), bundle.format("firstplay.menu.text", menuKeyName), () -> {});
     }
 
     public void setInput(InputHandler newInput){

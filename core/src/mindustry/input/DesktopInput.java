@@ -92,14 +92,18 @@ public class DesktopInput extends InputHandler{
     public int lastCtrlGroup;
     /** Time of most recent control group selection */
     public long lastCtrlGroupSelectMillis;
+    /** Time of most recent select-all-combat-units press */
+    public long lastSelectAllUnitsMillis;
+    /** Time of most recent idle-worker selection press */
+    public long lastSelectIdleWorkersMillis;
 
     /** Time of most recent payload pickup/drop key press*/
     public long lastPayloadKeyTapMillis;
     /** Time of most recent payload pickup/drop key hold*/
     public long lastPayloadKeyHoldMillis;
 
-    /** View presets: camera positions for F1-F4 */
-    public Vec2[] viewPresets = new Vec2[4];
+    /** View presets: camera positions for F3-F8 */
+    public Vec2[] viewPresets = new Vec2[6];
 
     private int lastOrbitalCoreId = -1;
 
@@ -136,6 +140,56 @@ public class DesktopInput extends InputHandler{
             blankCursor = Core.graphics.newCursor("blank", Fonts.cursorScale());
         }
         return blankCursor;
+    }
+
+    private void panToCurrentCommandSelection(){
+        float totalX = 0f, totalY = 0f;
+        int count = 0;
+
+        for(Unit unit : selectedUnits){
+            totalX += unit.x;
+            totalY += unit.y;
+            count++;
+        }
+
+        for(Building building : commandBuildings){
+            totalX += building.x;
+            totalY += building.y;
+            count++;
+        }
+
+        if(count > 0){
+            panning = true;
+            Core.camera.position.set(totalX / count, totalY / count);
+        }
+    }
+
+    private float spectatorCameraScale(float viewWidth, float viewHeight){
+        if(viewWidth <= 0f || viewHeight <= 0f) return -1f;
+        return Math.min(Core.graphics.getWidth() / viewWidth, Core.graphics.getHeight() / viewHeight);
+    }
+
+    private float resolveSpectatorCamera(Player target, Vec2 out){
+        if(target == null) return -1f;
+
+        if(hasRemoteSpectatorCameraState(target.id)){
+            out.set(remoteSpectatorCameraX(), remoteSpectatorCameraY());
+            return spectatorCameraScale(remoteSpectatorCameraWidth(), remoteSpectatorCameraHeight());
+        }
+
+        if(net.server()){
+            if(target.con != null && target.con.viewWidth > 0f && target.con.viewHeight > 0f){
+                out.set(target.con.viewX, target.con.viewY);
+                return spectatorCameraScale(target.con.viewWidth, target.con.viewHeight);
+            }
+
+            if(target.isLocal() && !headless){
+                out.set(Core.camera.position);
+                return spectatorCameraScale(Core.camera.width, Core.camera.height);
+            }
+        }
+
+        return -1f;
     }
 
     private static java.lang.reflect.Method findCursorCatchMethod(Class<?> type){
@@ -657,7 +711,7 @@ public class DesktopInput extends InputHandler{
         }
 
         if(!ui.chatfrag.shown() && !scene.hasField() && !scene.hasDialog() && Core.input.keyTap(KeyCode.tab)){
-            if(!selectedUnits.isEmpty()){
+            if(!selectedUnits.isEmpty() || !commandBuildings.isEmpty()){
                 boolean forward = !(Core.input.keyDown(KeyCode.shiftLeft) || Core.input.keyDown(KeyCode.shiftRight));
                 if(cycleAbilitySubgroup(forward)){
                     Events.fire(Trigger.unitCommandChange);
@@ -707,8 +761,7 @@ public class DesktopInput extends InputHandler{
             if(middleMousePanning){
                 middlePan = true;
                 panning = true;
-                spectating = null;
-                spectatingPlayer = -1;
+                clearSpectating();
 
                 //ensure cursor stays hidden/locked even if some other UI code changes it
                 if(middleMouseCaptured){
@@ -758,21 +811,18 @@ public class DesktopInput extends InputHandler{
                 if(!detached){
                     panning = false;
                 }
-                spectating = null;
-                spectatingPlayer = -1;
+                clearSpectating();
             }
 
             if(!middlePan && input.keyDown(Binding.pan)){
                 panCam = true;
                 panning = true;
-                spectating = null;
-                spectatingPlayer = -1;
+                clearSpectating();
             }
 
             if((Math.abs(Core.input.axis(Binding.moveX)) > 0 || Math.abs(Core.input.axis(Binding.moveY)) > 0 || input.keyDown(Binding.mouseMove))){
                 panning = false;
-                spectating = null;
-                spectatingPlayer = -1;
+                clearSpectating();
             }
 
             if(!ui.chatfrag.shown()){
@@ -783,8 +833,7 @@ public class DesktopInput extends InputHandler{
                 arrowCam = !middlePan && (arrowCamX != 0f || arrowCamY != 0f);
                 if(arrowCam){
                     panning = true;
-                    spectating = null;
-                    spectatingPlayer = -1;
+                    clearSpectating();
                 }
             }
         }
@@ -810,9 +859,22 @@ public class DesktopInput extends InputHandler{
                 Team corePanTeam = state.won ? state.rules.waveTeam : player.team();
                 Position coreTarget = state.gameOver && !state.rules.pvp && corePanTeam.data().lastCore != null ? corePanTeam.data().lastCore : null;
                 Player spectatePlayer = spectatingPlayer();
-                Position panTarget = coreTarget != null ? coreTarget : spectating != null ? spectating : spectatePlayer != null ? spectatePlayer : player;
+                float spectateScale = -1f;
+                Position panTarget;
+
+                if(coreTarget != null){
+                    panTarget = coreTarget;
+                }else if(spectatePlayer != null){
+                    spectateScale = resolveSpectatorCamera(spectatePlayer, Tmp.v2);
+                    panTarget = spectateScale > 0f ? Tmp.v2 : spectating != null ? spectating : spectatePlayer;
+                }else{
+                    panTarget = spectating != null ? spectating : player;
+                }
 
                 Core.camera.position.lerpDelta(panTarget, Core.settings.getBool("smoothcamera") ? 0.08f : 1f);
+                if(spectateScale > 0f){
+                    renderer.setScale(spectateScale);
+                }
             }
 
             if(panCam && !middlePan){
@@ -875,6 +937,7 @@ public class DesktopInput extends InputHandler{
         //validate commanding units
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
         restorePreservedUnitSelection();
+        sanitizeReadOnlySelection();
 
         if(commandMode && !scene.hasField() && !scene.hasDialog()){
             if(input.keyTap(Binding.selectAllUnits)){
@@ -890,6 +953,11 @@ public class DesktopInput extends InputHandler{
                         }
                     }
                 }
+
+                if(Time.timeSinceMillis(lastSelectAllUnitsMillis) < 400){
+                    panToCurrentCommandSelection();
+                }
+                lastSelectAllUnitsMillis = Time.millis();
             }
 
             if(input.keyTap(Binding.selectIdleWorkers)){
@@ -905,6 +973,11 @@ public class DesktopInput extends InputHandler{
                         }
                     }
                 }
+
+                if(Time.timeSinceMillis(lastSelectIdleWorkersMillis) < 400){
+                    panToCurrentCommandSelection();
+                }
+                lastSelectIdleWorkersMillis = Time.millis();
             }
 
             if(input.keyTap(Binding.selectAllUnitTransport)){
@@ -919,20 +992,6 @@ public class DesktopInput extends InputHandler{
                             selectedUnits.add(unit);
                         }
                     }
-                }
-            }
-
-            if(input.keyTap(Binding.selectAllUnitFactories)){
-                selectedUnits.clear();
-                commandBuildings.clear();
-                for(var build : player.team().data().buildings){
-                    if(build.isCommandable()){
-                        commandBuildings.add(build);
-                    }
-                }
-                if(input.keyDown(Binding.selectAcrossScreen)){
-                    camera.bounds(Tmp.r1);
-                    commandBuildings.retainAll(b -> Tmp.r1.overlaps(b.x - (b.hitSize() /2), b.y - (b.hitSize() /2), b.hitSize(), b.hitSize()));
                 }
             }
 
@@ -1006,30 +1065,7 @@ public class DesktopInput extends InputHandler{
                         group.addAll(selectedBuildingPos);
                     }
 
-                    //remove invalid units and buildings
-                    for(int j = 0; j < group.size; j++){
-                        int id = group.get(j);
-                        Unit u = Groups.unit.getByID(id);
-                        Building b = null;
-
-                        //Buildings don't have ID mapping, search manually
-                        if(u == null){
-                            b = world.build(id);
-                            if(b == null){
-                                for(Building building : Groups.build){
-                                    if(building.id == id){
-                                        b = building;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if((u == null || !u.isValid()) && (b == null || !b.isValid())){
-                            group.removeIndex(j);
-                            j --;
-                        }
-                    }
+                    sanitizeControlGroup(group);
 
                     //replace the selected units/buildings with the current control group
                     if(!group.isEmpty() && !creating && !adding){
@@ -1053,31 +1089,16 @@ public class DesktopInput extends InputHandler{
                                 }
                             }
 
-                            if(unit != null){
+                            if(unit != null && unit.team == player.team()){
                                 selectedUnits.addAll(unit);
-                            }else if(building != null){
+                            }else if(building != null && building.team == player.team()){
                                 commandBuildings.add(building);
                             }
                         });
 
                         //double tap to center camera
                         if(lastCtrlGroup == i && Time.timeSinceMillis(lastCtrlGroupSelectMillis) < 400){
-                            float totalX = 0, totalY = 0;
-                            int count = 0;
-                            for(Unit unit : selectedUnits){
-                                totalX += unit.x;
-                                totalY += unit.y;
-                                count++;
-                            }
-                            for(Building building : commandBuildings){
-                                totalX += building.x;
-                                totalY += building.y;
-                                count++;
-                            }
-                            if(count > 0){
-                                panning = true;
-                                Core.camera.position.set(totalX / count, totalY / count);
-                            }
+                            panToCurrentCommandSelection();
                         }
                         lastCtrlGroup = i;
                         lastCtrlGroupSelectMillis = Time.millis();
@@ -1105,8 +1126,8 @@ public class DesktopInput extends InputHandler{
         }
 
         //View presets: bindable save + jump
-        KeyBind[] viewPresetKeys = {Binding.viewPreset1, Binding.viewPreset2, Binding.viewPreset3, Binding.viewPreset4};
-        KeyBind[] viewPresetSetKeys = {Binding.viewPresetSet1, Binding.viewPresetSet2, Binding.viewPresetSet3, Binding.viewPresetSet4};
+        KeyBind[] viewPresetKeys = {Binding.viewPreset1, Binding.viewPreset2, Binding.viewPreset3, Binding.viewPreset4, Binding.viewPreset5, Binding.viewPreset6};
+        KeyBind[] viewPresetSetKeys = {Binding.viewPresetSet1, Binding.viewPresetSet2, Binding.viewPresetSet3, Binding.viewPresetSet4, Binding.viewPresetSet5, Binding.viewPresetSet6};
         for(int i = 0; i < viewPresetKeys.length; i++){
             boolean ctrlDown = Core.input.keyDown(KeyCode.controlLeft) || Core.input.keyDown(KeyCode.controlRight);
             if(input.keyTap(viewPresetSetKeys[i]) || (ctrlDown && input.keyTap(viewPresetKeys[i]))){
@@ -1662,6 +1683,7 @@ public class DesktopInput extends InputHandler{
         if(unit.activelyBuilding() || unit.isBuilding()) return false;
         if(unit.controller() instanceof CommandAI){
             CommandAI ai = (CommandAI)unit.controller();
+            if(ai.currentCommand() == UnitCommand.harvestCommand) return false;
             if(ai.hasCommand() || ai.commandQueue.any() || ai.attackTarget != null || ai.followTarget != null || ai.pendingHarvestTarget != null ||
                 ai.queuedCommandPos != null || ai.queuedCommandTarget != null || ai.queuedFollowTarget != null){
                 return false;
@@ -1674,9 +1696,9 @@ public class DesktopInput extends InputHandler{
         if(hover.resource != null) return ui.hoverYellowCursor;
         Team team = hover.team;
         if(team == null) return SystemCursor.arrow;
-        if(team == player.team()) return ui.hoverGreenCursor;
+        if(ViewerPerspective.isFriendly(team)) return ui.hoverGreenCursor;
         if(team == Team.derelict) return ui.hoverYellowCursor;
-        return team != player.team() ? ui.hoverRedCursor : ui.hoverGreenCursor;
+        return ui.hoverRedCursor;
     }
 
     private boolean useAbilityTargetCursor(){
@@ -1713,9 +1735,9 @@ public class DesktopInput extends InputHandler{
         if(hover.resource != null) return ui.targetYellowCursor;
         Team team = hover.team;
         if(team == null) return ui.targetYellowCursor;
-        if(team == player.team()) return ui.targetGreenCursor;
+        if(ViewerPerspective.isFriendly(team)) return ui.targetGreenCursor;
         if(team == Team.derelict) return ui.targetYellowCursor;
-        return team != player.team() ? ui.targetRedCursor : ui.targetGreenCursor;
+        return ui.targetRedCursor;
     }
 
     @Override

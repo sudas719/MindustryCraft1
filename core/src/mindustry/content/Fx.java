@@ -1650,12 +1650,14 @@ public class Fx{
         float alpha = Interp.pow5Out.apply(fin);
         float scale = (1f - alpha) * 0.3f + 1f;
         float height = 100f + Mathf.randomSeedRange(e.id, 30f);
+        float rightOffset = 44f + Mathf.randomSeedRange(e.id + 2, 10f);
+        float x = e.x + Interp.pow4In.apply(fout) * rightOffset;
         float y = e.y + Interp.pow4In.apply(fout) * height;
-        float rotation = fout * (90f + Mathf.randomSeedRange(e.id + 1, 50f));
+        float rotation = -32f + fout * (16f + Mathf.randomSeedRange(e.id + 1, 10f));
 
         Draw.z(Layer.effect + 0.001f);
         Draw.alpha(alpha);
-        Draw.rect(region, e.x, y, region.width * region.scl() * scale, region.height * region.scl() * scale, rotation);
+        Draw.rect(region, x, y, region.width * region.scl() * scale, region.height * region.scl() * scale, rotation);
         Draw.reset();
     }),
 

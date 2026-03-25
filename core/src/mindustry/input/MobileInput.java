@@ -788,6 +788,7 @@ public class MobileInput extends InputHandler implements GestureListener{
         //validate commanding units
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
         restorePreservedUnitSelection();
+        sanitizeReadOnlySelection();
 
         if(!commandMode){
             commandBuildings.clear();
@@ -806,8 +807,7 @@ public class MobileInput extends InputHandler implements GestureListener{
             rotateCameraMove(delta);
             Core.camera.position.add(delta);
             if(!delta.isZero()){
-                spectating = null;
-                spectatingPlayer = -1;
+                clearSpectating();
             }
         }
 
@@ -975,8 +975,7 @@ public class MobileInput extends InputHandler implements GestureListener{
             Tmp.v1.set(-deltaX, -deltaY);
             rotateCameraMove(Tmp.v1);
             Core.camera.position.add(Tmp.v1);
-            spectating = null;
-            spectatingPlayer = -1;
+            clearSpectating();
         }
 
         float half = tilesize / 2f;

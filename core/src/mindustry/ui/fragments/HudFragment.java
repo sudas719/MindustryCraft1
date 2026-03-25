@@ -738,10 +738,11 @@ public class HudFragment{
 
                     if(!spectatorExpanded) return;
 
-                    panel.add("D 队列/升级" + (spectatorView == SpectatorView.queue ? " [已选]" : "")).left().row();
-                    panel.add("U 总单位" + (spectatorView == SpectatorView.units ? " [已选]" : "")).left().row();
-                    panel.add("G 已完成升级" + (spectatorView == SpectatorView.upgrades ? " [已选]" : "")).left().row();
-                    panel.add("M APM" + (spectatorView == SpectatorView.apm ? " [已选]" : "")).left().row();
+                    addSpectatorModeButton(panel, "无", SpectatorView.none);
+                    addSpectatorModeButton(panel, "D 队列/升级", SpectatorView.queue);
+                    addSpectatorModeButton(panel, "U 总单位", SpectatorView.units);
+                    addSpectatorModeButton(panel, "G 已完成升级", SpectatorView.upgrades);
+                    addSpectatorModeButton(panel, "M APM", SpectatorView.apm);
 
                     buildSpectatorModeBody(panel);
                 });
@@ -794,7 +795,7 @@ public class HudFragment{
                 });
             }).width(350f);
             t.update(() -> {
-                float size = Core.settings.getInt("minimapsize", 200);
+                float size = Core.settings.getInt("minimapsize", 400);
                 float uiHeight = size + 10f;
                 t.marginBottom(uiHeight + 6f);
             });
@@ -879,8 +880,8 @@ public class HudFragment{
                 @Override
                 public void draw(){
                     //Get current settings
-                    float panelHeight = Core.settings.getInt("controlpanelheight", 200);
-                    float minimapSize = Core.settings.getInt("minimapsize", 200);
+                    float panelHeight = Core.settings.getInt("controlpanelheight", 700);
+                    float minimapSize = Core.settings.getInt("minimapsize", 400);
 
                     //Calculate background position and size
                     //Start after minimap (with margin), extend to screen right edge
@@ -954,6 +955,7 @@ public class HudFragment{
             uiLayer.table(unitTable -> {
                 unitTable.name = "unitselection";
                 unitTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0 ||
+                    control.input.hasReadOnlySelection() ||
                     (control.input.selectedResource != null && (control.input.selectedResource.block() instanceof CrystalMineralWall
                         || control.input.selectedResource.floor() instanceof SteamVent)));
                 unitTable.add(new UnitSelectionGrid()).maxWidth(600f).pad(4f);
@@ -963,7 +965,7 @@ public class HudFragment{
             abilityPanel = new UnitAbilityPanel();
             uiLayer.table(abilityTable -> {
                 abilityTable.name = "abilitypanel";
-                abilityTable.visible(() -> true);
+                abilityTable.visible(() -> !control.input.hasReadOnlySelection());
                 abilityTable.add(abilityPanel).pad(4f);
             }).bottom().right();
 
@@ -976,7 +978,7 @@ public class HudFragment{
             //UI elements stay at fixed height, only minimap size is adjustable
             //Control panel height only affects background drawing, not UI layout
             stack.update(() -> {
-                float size = Core.settings.getInt("minimapsize", 200);
+                float size = Core.settings.getInt("minimapsize", 400);
                 minimap.setMinimapSize(size);
 
                 //Stack height is based on minimap size, not control panel height
@@ -1646,18 +1648,33 @@ public class HudFragment{
         }
 
         if(Core.input.keyTap(KeyCode.d)){
-            spectatorView = SpectatorView.queue;
-            spectatorExpanded = true;
+            toggleSpectatorView(SpectatorView.queue);
         }else if(Core.input.keyTap(KeyCode.u)){
-            spectatorView = SpectatorView.units;
-            spectatorExpanded = true;
+            toggleSpectatorView(SpectatorView.units);
         }else if(Core.input.keyTap(KeyCode.g)){
-            spectatorView = SpectatorView.upgrades;
-            spectatorExpanded = true;
+            toggleSpectatorView(SpectatorView.upgrades);
         }else if(Core.input.keyTap(KeyCode.m)){
-            spectatorView = SpectatorView.apm;
-            spectatorExpanded = true;
+            toggleSpectatorView(SpectatorView.apm);
         }
+    }
+
+    private void toggleSpectatorView(SpectatorView view){
+        spectatorExpanded = true;
+        spectatorView = spectatorView == view ? SpectatorView.none : view;
+    }
+
+    private void addSpectatorModeButton(Table panel, String label, SpectatorView view){
+        TextButton button = panel.button(label, Styles.flatTogglet, () -> {
+            if(view == SpectatorView.none){
+                spectatorExpanded = true;
+                spectatorView = SpectatorView.none;
+            }else{
+                toggleSpectatorView(view);
+            }
+        }).left().growX().get();
+        button.getLabel().setAlignment(Align.left);
+        button.update(() -> button.setChecked(spectatorView == view));
+        panel.row();
     }
 
     private void rebuildSpectatorPlayers(){
@@ -1689,7 +1706,15 @@ public class HudFragment{
         return found != null ? found : spectatorPlayers.first();
     }
 
+    public @Nullable Player spectatorInfoFocusedPlayer(){
+        return focusedSpectatorPlayer();
+    }
+
     private void buildSpectatorModeBody(Table panel){
+        if(spectatorView == SpectatorView.none){
+            return;
+        }
+
         Player focused = focusedSpectatorPlayer();
         if(focused == null){
             panel.add("无在场玩家").left().row();

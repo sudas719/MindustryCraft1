@@ -137,6 +137,8 @@ public class PayloadSource extends PayloadBlock{
                     payload = new UnitPayload(unit.create(team));
 
                     Unit p = ((UnitPayload)payload).unit;
+                    String owner = Build.ownerName(this);
+                    if(owner != null) p.ownerName = owner;
                     if(commandPos != null && p.isCommandable()){
                         p.command().commandPosition(commandPos);
                     }

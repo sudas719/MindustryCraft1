@@ -28,6 +28,7 @@ import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.input.*;
+import mindustry.input.Sc2AbilityHotkeys.Ability;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
@@ -136,6 +137,8 @@ public class UnitAbilityPanel extends Table{
     private static final int coreUpgradeFortress = 1;
     private final IntSeq coreDistributeHistoryUpgradeCore = new IntSeq();
     private final IntSeq coreDistributeHistoryUpgradeType = new IntSeq();
+    private final IntIntMap factoryDistributeLastAddonFactoryId = new IntIntMap();
+    private final IntIntMap coreDistributeLastUpgradeCoreId = new IntIntMap();
 
     //Command definitions
     private static class RTSCommand{
@@ -338,6 +341,7 @@ public class UnitAbilityPanel extends Table{
         hash = hash * 31 + novaPanel.ordinal();
         hash = hash * 31 + corePanel.ordinal();
         hash = hash * 31 + (placingBlock == null ? -1 : placingBlock.id);
+        hash = hash * 31 + Sc2AbilityHotkeys.revision();
 
         Seq<Unit> units = abilityUnits();
         hash = hash * 31 + units.size;
@@ -607,9 +611,9 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        AbilityInfo stimpackInfo = makeAbilityInfo("t", "Stimpack", "Consumes health to temporarily boost Marine and Marauder mobility and attack output.");
+        AbilityInfo stimpackInfo = makeAbilityInfo(Ability.stimpack, "Stimpack", "Consumes health to temporarily boost Marine and Marauder mobility and attack output.");
         stimpackInfo.costLineOverride = selectedBarracksStimpackCostLine();
-        addBattlecruiserCooldownButton(grid, "t", Icon.upOpen, this::anyBarracksStimpackSelectedCanUse,
+        addBattlecruiserCooldownButton(grid, hotkey(Ability.stimpack), Icon.upOpen, this::anyBarracksStimpackSelectedCanUse,
         this::issueBarracksStimpackCommand,
         this::selectedBarracksStimpackCooldown, UnitTypes::barracksStimpackCooldownDuration, stimpackInfo);
         addEmpty(grid);
@@ -651,8 +655,8 @@ public class UnitAbilityPanel extends Table{
         addEmpty(grid);
 
         if(anyWidowCanBurrow()){
-            Button burrowButton = addIconButton(grid, "e", Icon.downOpen, this::anyWidowCanBurrow, () -> issueWidowBurrowCommand(true));
-            BuildInfo burrowInfo = makeWidowActionInfo("e", "Widow Burrow", Color.cyan, this::selectedWidowBurrowProgress, this::anyWidowBurrowing, UnitTypes.widowBurrowDuration() / 60f);
+            Button burrowButton = addIconButton(grid, hotkey(Ability.widowBurrow), Icon.downOpen, this::anyWidowCanBurrow, () -> issueWidowBurrowCommand(true));
+            BuildInfo burrowInfo = makeWidowActionInfo(hotkey(Ability.widowBurrow), "Widow Burrow", Color.cyan, this::selectedWidowBurrowProgress, this::anyWidowBurrowing, UnitTypes.widowBurrowDuration() / 60f);
             burrowButton.update(() -> {
                 if(burrowButton.isOver()){
                     hoverBuildInfo = burrowInfo;
@@ -665,8 +669,8 @@ public class UnitAbilityPanel extends Table{
         }
 
         if(anyWidowCanUnburrow()){
-            Button unburrowButton = addIconButton(grid, "d", Icon.upOpen, this::anyWidowCanUnburrow, () -> issueWidowBurrowCommand(false));
-            BuildInfo reloadInfo = makeWidowActionInfo("d", "Widow Reload", Color.gray, this::selectedWidowReloadProgress, this::anyWidowReloading, UnitTypes.widowReloadDuration() / 60f);
+            Button unburrowButton = addIconButton(grid, hotkey(Ability.widowUnburrow), Icon.upOpen, this::anyWidowCanUnburrow, () -> issueWidowBurrowCommand(false));
+            BuildInfo reloadInfo = makeWidowActionInfo(hotkey(Ability.widowUnburrow), "Widow Reload", Color.gray, this::selectedWidowReloadProgress, this::anyWidowReloading, UnitTypes.widowReloadDuration() / 60f);
             unburrowButton.update(() -> {
                 if(unburrowButton.isOver()){
                     hoverBuildInfo = reloadInfo;
@@ -705,9 +709,9 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        AbilityInfo kd8Info = makeAbilityInfo("d", "KD8 Bomb", "Throw a timed bomb that detonates after 1.5s. Deals 5 pierce damage and knocks back light targets.");
+        AbilityInfo kd8Info = makeAbilityInfo(Ability.reaperKd8, "KD8 Bomb", "Throw a timed bomb that detonates after 1.5s. Deals 5 pierce damage and knocks back light targets.");
         kd8Info.timeSeconds = UnitTypes.reaperKd8ArmTimeDuration() / 60f;
-        addCooldownIconButton(grid, "d", Icon.warning, this::anyReaperCanUseKd8, () -> enterCommandMode(CommandMode.REAPER_KD8),
+        addCooldownIconButton(grid, hotkey(Ability.reaperKd8), Icon.warning, this::anyReaperCanUseKd8, () -> enterCommandMode(CommandMode.REAPER_KD8),
         this::selectedReaperKd8Cooldown, UnitTypes::reaperKd8CooldownDuration, kd8Info);
         addEmpty(grid);
         addEmpty(grid);
@@ -769,17 +773,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyScepterCanSwitchToImpact()){
-            AbilityInfo impactInfo = makeAbilityInfo("e", "High Impact Payload", "Thor switches to high-impact anti-air payload for stronger single-target air damage.");
+            AbilityInfo impactInfo = makeAbilityInfo(Ability.thorHighImpact, "High Impact Payload", "Thor switches to high-impact anti-air payload for stronger single-target air damage.");
             impactInfo.timeSeconds = UnitTypes.scepterSwitchDuration(player.team()) / 60f;
-            addIconButton(grid, "e", Icon.upOpen, this::anyScepterCanSwitchToImpact, () -> issueScepterAirModeCommand(true), impactInfo);
+            addIconButton(grid, hotkey(Ability.thorHighImpact), Icon.upOpen, this::anyScepterCanSwitchToImpact, () -> issueScepterAirModeCommand(true), impactInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyScepterCanSwitchToBurst()){
-            AbilityInfo burstInfo = makeAbilityInfo("d", "Explosive Payload", "Thor switches to explosive anti-air payload, better against light air units.");
+            AbilityInfo burstInfo = makeAbilityInfo(Ability.thorExplosive, "Explosive Payload", "Thor switches to explosive anti-air payload, better against light air units.");
             burstInfo.timeSeconds = UnitTypes.scepterSwitchDuration(player.team()) / 60f;
-            addIconButton(grid, "d", Icon.downOpen, this::anyScepterCanSwitchToBurst, () -> issueScepterAirModeCommand(false), burstInfo);
+            addIconButton(grid, hotkey(Ability.thorExplosive), Icon.downOpen, this::anyScepterCanSwitchToBurst, () -> issueScepterAirModeCommand(false), burstInfo);
         }else{
             addEmpty(grid);
         }
@@ -812,23 +816,23 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addAutoCastIconButton(grid, "e", Icon.add, () -> true,
+        addAutoCastIconButton(grid, hotkey(Ability.medivacHeal), Icon.add, () -> true,
         () -> enterCommandMode(CommandMode.MEDIVAC_HEAL),
         this::selectedMedivacHealAutoCastEnabled, this::toggleSelectedMedivacHealAutoCast,
-        makeAbilityInfo("e", "Heal", "Continuously restores health to biological allied units. Right-click toggles autocast."));
-        addIconButton(grid, "b", Icon.upOpen, () -> true, this::issueMedivacAfterburnerCommand,
-        makeAbilityInfo("b", "Afterburners", "Grants a short burst of movement speed for pursuit, retreat, or repositioning."));
+        makeAbilityInfo(Ability.medivacHeal, "Heal", "Continuously restores health to biological allied units. Right-click toggles autocast."));
+        addIconButton(grid, hotkey(Ability.medivacAfterburners), Icon.upOpen, () -> true, this::issueMedivacAfterburnerCommand,
+        makeAbilityInfo(Ability.medivacAfterburners, "Afterburners", "Grants a short burst of movement speed for pursuit, retreat, or repositioning."));
 
         if(anyMedivacCanLoadMore()){
-            addIconButton(grid, "l", Icon.upload, this::anyMedivacCanLoadMore, () -> enterCommandMode(CommandMode.MEDIVAC_LOAD),
-            makeAbilityInfo("l", "Load", "Loads nearby friendly ground units into the transport bay."));
+            addIconButton(grid, hotkey(Ability.medivacLoad), Icon.upload, this::anyMedivacCanLoadMore, () -> enterCommandMode(CommandMode.MEDIVAC_LOAD),
+            makeAbilityInfo(Ability.medivacLoad, "Load", "Loads nearby friendly ground units into the transport bay."));
         }else{
             addEmpty(grid);
         }
 
         if(anyMedivacHasPayload()){
-            addIconButton(grid, "d", Icon.download, this::anyMedivacHasPayload, () -> enterCommandMode(CommandMode.MEDIVAC_UNLOAD),
-            makeAbilityInfo("d", "Unload", "Unloads units currently carried in the transport bay."));
+            addIconButton(grid, hotkey(Ability.medivacUnload), Icon.download, this::anyMedivacHasPayload, () -> enterCommandMode(CommandMode.MEDIVAC_UNLOAD),
+            makeAbilityInfo(Ability.medivacUnload, "Unload", "Unloads units currently carried in the transport bay."));
         }else{
             addEmpty(grid);
         }
@@ -855,22 +859,22 @@ public class UnitAbilityPanel extends Table{
         }
         grid.row();
 
-        AbilityInfo nukeInfo = makeAbilityInfo("n", "Tactical Nuke", "Calls down a nuclear strike on the target area. Requires a prepared warhead.");
+        AbilityInfo nukeInfo = makeAbilityInfo(Ability.ghostNuke, "Tactical Nuke", "Calls down a nuclear strike on the target area. Requires a prepared warhead.");
         nukeInfo.timeSeconds = 14f;
-        addCountedIconButton(grid, "n", Icon.warning, this::anyGhostCanUseTacticalNuke, () -> enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE), this::selectedGhostWarheadCount, nukeInfo);
+        addCountedIconButton(grid, hotkey(Ability.ghostNuke), Icon.warning, this::anyGhostCanUseTacticalNuke, () -> enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE), this::selectedGhostWarheadCount, nukeInfo);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
         grid.row();
 
-        AbilityInfo stableAimInfo = makeAbilityInfo("r", "Stable Aim", "Aims, then fires a high-damage snipe with extra effect against psionic targets.");
+        AbilityInfo stableAimInfo = makeAbilityInfo(Ability.ghostStableAim, "Stable Aim", "Aims, then fires a high-damage snipe with extra effect against psionic targets.");
         stableAimInfo.timeSeconds = 1.43f;
-        addIconButton(grid, "r", Icon.warning, this::anyGhostCanUseStableAim, () -> enterCommandMode(CommandMode.GHOST_STABLE_AIM), stableAimInfo);
-        addIconButton(grid, "e", Icon.warning, this::anyGhostCanUseEmp, () -> enterCommandMode(CommandMode.GHOST_EMP),
-        makeAbilityInfo("e", "EMP Round", "Fires an EMP round that removes shields, burns psionic energy, and reveals cloaked targets."));
-        addIconButton(grid, "c", Icon.eyeSmall, this::anyGhostCanToggleCloak, this::issueGhostCloakCommand,
-        makeAbilityInfo("c", "Cloak", "Enters cloak and continuously drains energy."));
+        addIconButton(grid, hotkey(Ability.ghostStableAim), Icon.warning, this::anyGhostCanUseStableAim, () -> enterCommandMode(CommandMode.GHOST_STABLE_AIM), stableAimInfo);
+        addIconButton(grid, hotkey(Ability.ghostEmp), Icon.warning, this::anyGhostCanUseEmp, () -> enterCommandMode(CommandMode.GHOST_EMP),
+        makeAbilityInfo(Ability.ghostEmp, "EMP Round", "Fires an EMP round that removes shields, burns psionic energy, and reveals cloaked targets."));
+        addIconButton(grid, hotkey(Ability.ghostCloak), Icon.eyeSmall, this::anyGhostCanToggleCloak, this::issueGhostCloakCommand,
+        makeAbilityInfo(Ability.ghostCloak, "Cloak", "Enters cloak and continuously drains energy."));
         addEmpty(grid);
         addEmpty(grid);
 
@@ -899,16 +903,16 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyVikingCanSwitchToFighter()){
-            AbilityInfo fighterInfo = makeAbilityInfo("e", "Fighter Mode", "Transform to Fighter Mode.");
+            AbilityInfo fighterInfo = makeAbilityInfo(Ability.vikingFighterMode, "Fighter Mode", "Transform to Fighter Mode.");
             fighterInfo.timeSeconds = UnitTypes.vikingTransformDuration(player.team()) / 60f;
-            addIconButton(grid, "e", Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false), fighterInfo);
+            addIconButton(grid, hotkey(Ability.vikingFighterMode), Icon.upOpen, this::anyVikingCanSwitchToFighter, () -> issueVikingModeCommand(false), fighterInfo);
         }else{
             addEmpty(grid);
         }
         if(anyVikingCanSwitchToMech()){
-            AbilityInfo mechInfo = makeAbilityInfo("d", "Mech Mode", "Transform to Mech Mode.");
+            AbilityInfo mechInfo = makeAbilityInfo(Ability.vikingMechMode, "Mech Mode", "Transform to Mech Mode.");
             mechInfo.timeSeconds = UnitTypes.vikingTransformDuration(player.team()) / 60f;
-            addIconButton(grid, "d", Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true), mechInfo);
+            addIconButton(grid, hotkey(Ability.vikingMechMode), Icon.downOpen, this::anyVikingCanSwitchToMech, () -> issueVikingModeCommand(true), mechInfo);
         }else{
             addEmpty(grid);
         }
@@ -941,10 +945,10 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyMaceSelected()){
-            AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
+            AbilityInfo locusInfo = makeAbilityInfo(Ability.hellionToHellbat, "Locus Mode", "Transform to Locus. Requires Armory.");
             locusInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
             addIconButton(
-                grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
+                grid, hotkey(Ability.hellionToHellbat), Icon.upOpen, this::anyMaceCanTransformToLocus,
                 () -> issueMaceLocusModeCommand(true),
                 locusInfo
             );
@@ -953,10 +957,10 @@ public class UnitAbilityPanel extends Table{
         }
 
         if(anyLocusSelected()){
-            AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
+            AbilityInfo maceInfo = makeAbilityInfo(Ability.hellbatToHellion, "Mace Mode", "Transform to Mace. Requires Armory.");
             maceInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
             addIconButton(
-                grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
+                grid, hotkey(Ability.hellbatToHellion), Icon.downOpen, this::anyLocusCanTransformToMace,
                 () -> issueMaceLocusModeCommand(false),
                 maceInfo
             );
@@ -992,10 +996,10 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        AbilityInfo locusInfo = makeAbilityInfo("e", "Locus Mode", "Transform to Locus. Requires Armory.");
+        AbilityInfo locusInfo = makeAbilityInfo(Ability.hellionToHellbat, "Locus Mode", "Transform to Locus. Requires Armory.");
         locusInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
         addIconButton(
-            grid, "e", Icon.upOpen, this::anyMaceCanTransformToLocus,
+            grid, hotkey(Ability.hellionToHellbat), Icon.upOpen, this::anyMaceCanTransformToLocus,
             () -> issueMaceLocusModeCommand(true),
             locusInfo
         );
@@ -1029,10 +1033,10 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         addEmpty(grid);
-        AbilityInfo maceInfo = makeAbilityInfo("d", "Mace Mode", "Transform to Mace. Requires Armory.");
+        AbilityInfo maceInfo = makeAbilityInfo(Ability.hellbatToHellion, "Mace Mode", "Transform to Mace. Requires Armory.");
         maceInfo.timeSeconds = UnitTypes.maceLocusTransformDuration(player.team()) / 60f;
         addIconButton(
-            grid, "d", Icon.downOpen, this::anyLocusCanTransformToMace,
+            grid, hotkey(Ability.hellbatToHellion), Icon.downOpen, this::anyLocusCanTransformToMace,
             () -> issueMaceLocusModeCommand(false),
             maceInfo
         );
@@ -1064,12 +1068,12 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "t", Icon.add, this::anyRavenCanDeployTurret, () -> enterCommandMode(CommandMode.RAVEN_TURRET),
-        makeAbilityInfo("t", "Auto Turret", "Deploys a temporary auto turret at the target point."));
-        addIconButton(grid, "r", Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR),
-        makeAbilityInfo("r", "Anti-Armor Missile", "Launches an anti-armor missile that makes units in the area take extra damage."));
-        addIconButton(grid, "c", Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX),
-        makeAbilityInfo("c", "Interference Matrix", "Disables an enemy mechanical unit for a short duration."));
+        addIconButton(grid, hotkey(Ability.ravenTurret), Icon.add, this::anyRavenCanDeployTurret, () -> enterCommandMode(CommandMode.RAVEN_TURRET),
+        makeAbilityInfo(Ability.ravenTurret, "Auto Turret", "Deploys a temporary auto turret at the target point."));
+        addIconButton(grid, hotkey(Ability.ravenAntiArmor), Icon.downOpen, this::anyRavenCanUseAntiArmor, () -> enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR),
+        makeAbilityInfo(Ability.ravenAntiArmor, "Anti-Armor Missile", "Launches an anti-armor missile that makes units in the area take extra damage."));
+        addIconButton(grid, hotkey(Ability.ravenMatrix), Icon.warning, this::anyRavenCanUseMatrix, () -> enterCommandMode(CommandMode.RAVEN_MATRIX),
+        makeAbilityInfo(Ability.ravenMatrix, "Interference Matrix", "Disables an enemy mechanical unit for a short duration."));
         addEmpty(grid);
         addEmpty(grid);
 
@@ -1097,8 +1101,8 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        addIconButton(grid, "c", Icon.eyeSmall, this::anyBansheeCanToggleCloak, this::issueBansheeCloakCommand,
-        makeAbilityInfo("c", "Cloak", "Enters cloak and continuously drains energy."));
+        addIconButton(grid, hotkey(Ability.bansheeCloak), Icon.eyeSmall, this::anyBansheeCanToggleCloak, this::issueBansheeCloakCommand,
+        makeAbilityInfo(Ability.bansheeCloak, "Cloak", "Enters cloak and continuously drains energy."));
         addEmpty(grid);
         addEmpty(grid);
         addEmpty(grid);
@@ -1128,14 +1132,14 @@ public class UnitAbilityPanel extends Table{
         fillRow(grid, 1, 0);
         grid.row();
 
-        AbilityInfo yamatoInfo = makeAbilityInfo("y", "Yamato Cannon", "Charges up and deals massive damage to a single target.");
+        AbilityInfo yamatoInfo = makeAbilityInfo(Ability.battlecruiserYamato, "Yamato Cannon", "Charges up and deals massive damage to a single target.");
         yamatoInfo.timeSeconds = 2f;
-        addBattlecruiserCooldownButton(grid, "y", Icon.warning, this::anyBattlecruiserCanUseYamato,
+        addBattlecruiserCooldownButton(grid, hotkey(Ability.battlecruiserYamato), Icon.warning, this::anyBattlecruiserCanUseYamato,
         () -> enterCommandMode(CommandMode.BATTLECRUISER_YAMATO),
         this::selectedBattlecruiserYamatoCooldown, UnitTypes::battlecruiserYamatoCooldownDuration, yamatoInfo);
-        AbilityInfo warpInfo = makeAbilityInfo("t", "Tactical Jump", "Charges briefly, then warps to the selected location.");
+        AbilityInfo warpInfo = makeAbilityInfo(Ability.battlecruiserJump, "Tactical Jump", "Charges briefly, then warps to the selected location.");
         warpInfo.timeSeconds = 1f;
-        addBattlecruiserCooldownButton(grid, "t", Icon.effect, this::anyBattlecruiserCanUseWarp,
+        addBattlecruiserCooldownButton(grid, hotkey(Ability.battlecruiserJump), Icon.effect, this::anyBattlecruiserCanUseWarp,
         () -> enterCommandMode(CommandMode.BATTLECRUISER_WARP),
         this::selectedBattlecruiserWarpCooldown, UnitTypes::battlecruiserWarpCooldownDuration, warpInfo);
         addEmpty(grid);
@@ -1199,17 +1203,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyLiberatorCanEnterDefense()){
-            AbilityInfo defenseInfo = makeAbilityInfo("e", "Defense Mode", "Deploys into defense mode and can only attack ground targets inside the defense circle.");
+            AbilityInfo defenseInfo = makeAbilityInfo(Ability.liberatorDefenseMode, "Defense Mode", "Deploys into defense mode and can only attack ground targets inside the defense circle.");
             defenseInfo.timeSeconds = UnitTypes.smartServosLevel(player.team()) > 0 ? 2f : 4f;
-            addIconButton(grid, "e", Icon.downOpen, this::anyLiberatorCanEnterDefense, () -> enterCommandMode(CommandMode.LIBERATOR_ZONE), defenseInfo);
+            addIconButton(grid, hotkey(Ability.liberatorDefenseMode), Icon.downOpen, this::anyLiberatorCanEnterDefense, () -> enterCommandMode(CommandMode.LIBERATOR_ZONE), defenseInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyLiberatorCanExitDefense()){
-            AbilityInfo fighterInfo = makeAbilityInfo("d", "Fighter Mode", "Switches into a mobile fighter configuration.");
+            AbilityInfo fighterInfo = makeAbilityInfo(Ability.liberatorFighterMode, "Fighter Mode", "Switches into a mobile fighter configuration.");
             fighterInfo.timeSeconds = UnitTypes.smartServosLevel(player.team()) > 0 ? 2f : 1.5f;
-            addIconButton(grid, "d", Icon.upOpen, this::anyLiberatorCanExitDefense, this::issueLiberatorFighterCommand, fighterInfo);
+            addIconButton(grid, hotkey(Ability.liberatorFighterMode), Icon.upOpen, this::anyLiberatorCanExitDefense, this::issueLiberatorFighterCommand, fighterInfo);
         }else{
             addEmpty(grid);
         }
@@ -1253,17 +1257,17 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         if(anyPreceptCanSiege()){
-            AbilityInfo siegeInfo = makeAbilityInfo("e", "Siege Mode", "Deploys into siege mode for long-range anti-ground splash fire, but the tank cannot move.");
+            AbilityInfo siegeInfo = makeAbilityInfo(Ability.siegeTankSiegeMode, "Siege Mode", "Deploys into siege mode for long-range anti-ground splash fire, but the tank cannot move.");
             siegeInfo.timeSeconds = UnitTypes.preceptTransitionDuration() / 60f;
-            addIconButton(grid, "e", Icon.downOpen, this::anyPreceptCanSiege, () -> issuePreceptSiegeCommand(true), siegeInfo);
+            addIconButton(grid, hotkey(Ability.siegeTankSiegeMode), Icon.downOpen, this::anyPreceptCanSiege, () -> issuePreceptSiegeCommand(true), siegeInfo);
         }else{
             addEmpty(grid);
         }
 
         if(anyPreceptCanTankMode()){
-            AbilityInfo tankInfo = makeAbilityInfo("d", "Tank Mode", "Packs up and returns to the mobile tank configuration.");
+            AbilityInfo tankInfo = makeAbilityInfo(Ability.siegeTankTankMode, "Tank Mode", "Packs up and returns to the mobile tank configuration.");
             tankInfo.timeSeconds = UnitTypes.preceptTransitionDuration() / 60f;
-            addIconButton(grid, "d", Icon.upOpen, this::anyPreceptCanTankMode, () -> issuePreceptSiegeCommand(false), tankInfo);
+            addIconButton(grid, hotkey(Ability.siegeTankTankMode), Icon.upOpen, this::anyPreceptCanTankMode, () -> issuePreceptSiegeCommand(false), tankInfo);
         }else{
             addEmpty(grid);
         }
@@ -1309,14 +1313,14 @@ public class UnitAbilityPanel extends Table{
         grid.row();
 
         //Row 2
-        addIconButton(grid, "g", Icon.terrain, () -> true, () -> enterCommandMode(CommandMode.HARVEST));
-        addIconButton(grid, "r", UnitCommand.repairCommand.getIcon(), () -> true, () -> enterCommandMode(CommandMode.REPAIR));
+        addIconButton(grid, hotkey(Ability.novaHarvest), Icon.terrain, () -> true, () -> enterCommandMode(CommandMode.HARVEST));
+        addIconButton(grid, hotkey(Ability.novaRepair), UnitCommand.repairCommand.getIcon(), () -> true, () -> enterCommandMode(CommandMode.REPAIR));
         fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
-        addIconButton(grid, "b", Icon.hammer, () -> true, () -> novaPanel = NovaPanel.BUILD_BASIC);
-        addIconButton(grid, "v", Icon.wrench, () -> true, () -> novaPanel = NovaPanel.BUILD_ADV);
+        addIconButton(grid, hotkey(Ability.novaBuildBasic), Icon.hammer, () -> true, () -> novaPanel = NovaPanel.BUILD_BASIC);
+        addIconButton(grid, hotkey(Ability.novaBuildAdvanced), Icon.wrench, () -> true, () -> novaPanel = NovaPanel.BUILD_ADV);
         fillRow(grid, 2, 2);
 
         add(grid);
@@ -1344,22 +1348,22 @@ public class UnitAbilityPanel extends Table{
         setPanelRows(3);
         Table grid = new Table();
         //Row 1
-        addBuildButton(grid, "c", Blocks.coreNucleus, () -> true, () -> startPlacement(Blocks.coreNucleus));
-        addBuildButton(grid, "r", Blocks.ventCondenser, () -> true, () -> startPlacement(Blocks.ventCondenser));
-        addBuildButton(grid, "s", Blocks.doorLarge, () -> Build.meetsPrerequisites(Blocks.doorLarge, player.team()), () -> startPlacement(Blocks.doorLarge));
+        addBuildButton(grid, hotkey(Ability.novaBuildCommandCenter), Blocks.coreNucleus, () -> true, () -> startPlacement(Blocks.coreNucleus));
+        addBuildButton(grid, hotkey(Ability.novaBuildRefinery), Blocks.ventCondenser, () -> true, () -> startPlacement(Blocks.ventCondenser));
+        addBuildButton(grid, hotkey(Ability.novaBuildSupplyDepot), Blocks.doorLarge, () -> Build.meetsPrerequisites(Blocks.doorLarge, player.team()), () -> startPlacement(Blocks.doorLarge));
         fillRow(grid, 0, 3);
         grid.row();
 
         //Row 2
-        addBuildButton(grid, "b", Blocks.groundFactory, () -> Build.meetsPrerequisites(Blocks.groundFactory, player.team()), () -> startPlacement(Blocks.groundFactory));
-        addBuildButton(grid, "e", Blocks.multiPress, () -> Build.meetsPrerequisites(Blocks.multiPress, player.team()), () -> startPlacement(Blocks.multiPress));
+        addBuildButton(grid, hotkey(Ability.novaBuildBarracks), Blocks.groundFactory, () -> Build.meetsPrerequisites(Blocks.groundFactory, player.team()), () -> startPlacement(Blocks.groundFactory));
+        addBuildButton(grid, hotkey(Ability.novaBuildEngineeringBay), Blocks.multiPress, () -> Build.meetsPrerequisites(Blocks.multiPress, player.team()), () -> startPlacement(Blocks.multiPress));
         fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
-        addBuildButton(grid, "u", Blocks.atmosphericConcentrator, () -> Build.meetsPrerequisites(Blocks.atmosphericConcentrator, player.team()), () -> startPlacement(Blocks.atmosphericConcentrator));
-        addBuildButton(grid, "t", Blocks.swarmer, () -> Build.meetsPrerequisites(Blocks.swarmer, player.team()), () -> startPlacement(Blocks.swarmer));
-        addBuildButton(grid, "n", Blocks.radar, () -> Build.meetsPrerequisites(Blocks.radar, player.team()), () -> startPlacement(Blocks.radar));
+        addBuildButton(grid, hotkey(Ability.novaBuildBunker), Blocks.atmosphericConcentrator, () -> Build.meetsPrerequisites(Blocks.atmosphericConcentrator, player.team()), () -> startPlacement(Blocks.atmosphericConcentrator));
+        addBuildButton(grid, hotkey(Ability.novaBuildMissileTurret), Blocks.swarmer, () -> Build.meetsPrerequisites(Blocks.swarmer, player.team()), () -> startPlacement(Blocks.swarmer));
+        addBuildButton(grid, hotkey(Ability.novaBuildSensorTower), Blocks.radar, () -> Build.meetsPrerequisites(Blocks.radar, player.team()), () -> startPlacement(Blocks.radar));
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
         add(grid);
@@ -1369,19 +1373,19 @@ public class UnitAbilityPanel extends Table{
         setPanelRows(3);
         Table grid = new Table();
         //Row 1
-        addBuildButton(grid, "g", Blocks.launchPad, () -> Build.meetsPrerequisites(Blocks.launchPad, player.team()), () -> startPlacement(Blocks.launchPad));
+        addBuildButton(grid, hotkey(Ability.novaBuildGhostAcademy), Blocks.launchPad, () -> Build.meetsPrerequisites(Blocks.launchPad, player.team()), () -> startPlacement(Blocks.launchPad));
         fillRow(grid, 0, 1);
         grid.row();
 
         //Row 2
-        addBuildButton(grid, "f", Blocks.tankFabricator, () -> Build.meetsPrerequisites(Blocks.tankFabricator, player.team()), () -> startPlacement(Blocks.tankFabricator));
-        addBuildButton(grid, "a", Blocks.siliconCrucible, () -> Build.meetsPrerequisites(Blocks.siliconCrucible, player.team()), () -> startPlacement(Blocks.siliconCrucible));
+        addBuildButton(grid, hotkey(Ability.novaBuildFactory), Blocks.tankFabricator, () -> Build.meetsPrerequisites(Blocks.tankFabricator, player.team()), () -> startPlacement(Blocks.tankFabricator));
+        addBuildButton(grid, hotkey(Ability.novaBuildArmory), Blocks.siliconCrucible, () -> Build.meetsPrerequisites(Blocks.siliconCrucible, player.team()), () -> startPlacement(Blocks.siliconCrucible));
         fillRow(grid, 1, 2);
         grid.row();
 
         //Row 3
-        addBuildButton(grid, "s", Blocks.shipFabricator, () -> Build.meetsPrerequisites(Blocks.shipFabricator, player.team()), () -> startPlacement(Blocks.shipFabricator));
-        addBuildButton(grid, "c", Blocks.surgeCrucible, () -> Build.meetsPrerequisites(Blocks.surgeCrucible, player.team()), () -> startPlacement(Blocks.surgeCrucible));
+        addBuildButton(grid, hotkey(Ability.novaBuildStarport), Blocks.shipFabricator, () -> Build.meetsPrerequisites(Blocks.shipFabricator, player.team()), () -> startPlacement(Blocks.shipFabricator));
+        addBuildButton(grid, hotkey(Ability.novaBuildFusionCore), Blocks.surgeCrucible, () -> Build.meetsPrerequisites(Blocks.surgeCrucible, player.team()), () -> startPlacement(Blocks.surgeCrucible));
         addEmpty(grid);
         addEmpty(grid);
         addEscButton(grid, () -> novaPanel = NovaPanel.MAIN);
@@ -1721,17 +1725,19 @@ public class UnitAbilityPanel extends Table{
         if(reference == null || reference.block == null || addon == null) return;
 
         int blockId = reference.block.id;
-        UnitFactory.UnitFactoryBuild chosen = null;
+        Seq<UnitFactory.UnitFactoryBuild> eligible = new Seq<>();
         for(Building build : abilityBuildings()){
             if(!(build instanceof UnitFactory.UnitFactoryBuild f)) continue;
             if(!f.isValid() || f.block != reference.block || !f.sc2QueueEnabled()) continue;
             if(!f.canShowAddonButtons()) continue;
             if(!f.canAffordAddon(crystalCost, gasCost)) continue;
             if(!factoryAddonPlaceValid(f, addon)) continue;
-            if(chosen == null || f.id < chosen.id){
-                chosen = f;
-            }
+            eligible.add(f);
         }
+        sortFactoriesByBuildOrder(eligible);
+
+        int lastId = factoryDistributeLastAddonFactoryId.get(blockId, -1);
+        UnitFactory.UnitFactoryBuild chosen = chooseFactoryRoundRobin(eligible, lastId);
         if(chosen == null) return;
 
         chosen.configure(config);
@@ -1741,6 +1747,7 @@ public class UnitAbilityPanel extends Table{
             factoryDistributeHistoryBlock.removeIndex(0);
             factoryDistributeHistoryFactory.removeIndex(0);
         }
+        factoryDistributeLastAddonFactoryId.put(blockId, chosen.id);
         factoryDistributeLastFactoryId.put(blockId, chosen.id);
         if(chosen.hasDoubleAddon()){
             factoryDistributeLastDoubleId.put(blockId, chosen.id);
@@ -1775,18 +1782,8 @@ public class UnitAbilityPanel extends Table{
 
     private @Nullable UnitFactory.UnitFactoryBuild chooseFactoryRoundRobin(Seq<UnitFactory.UnitFactoryBuild> list, int lastId){
         if(list.isEmpty()) return null;
-
-        float min = Float.POSITIVE_INFINITY;
         for(UnitFactory.UnitFactoryBuild f : list){
-            min = Math.min(min, factoryEffectiveQueue(f));
-        }
-        if(Float.isInfinite(min)) return null;
-
-        for(UnitFactory.UnitFactoryBuild f : list){
-            if(f == null) continue;
-            if(Mathf.equal(factoryEffectiveQueue(f), min, 0.0001f)){
-                return f;
-            }
+            if(f != null && f.id > lastId) return f;
         }
         return list.first();
     }
@@ -1795,15 +1792,28 @@ public class UnitAbilityPanel extends Table{
         if(list.isEmpty() || Float.isInfinite(load)) return null;
 
         for(UnitFactory.UnitFactoryBuild f : list){
-            if(f == null) continue;
-            if(Mathf.equal(factoryEffectiveQueue(f), load, 0.0001f)){
-                return f;
-            }
+            if(f != null && f.id > lastId && Mathf.equal(factoryEffectiveQueue(f), load, 0.0001f)) return f;
+        }
+        for(UnitFactory.UnitFactoryBuild f : list){
+            if(f != null && Mathf.equal(factoryEffectiveQueue(f), load, 0.0001f)) return f;
         }
         return null;
     }
 
     private void sortFactoriesByBuildOrder(Seq<UnitFactory.UnitFactoryBuild> list){
+        if(list.size <= 1) return;
+        list.sort((a, b) -> Integer.compare(a.id, b.id));
+    }
+
+    private @Nullable CoreBuild chooseCoreRoundRobin(Seq<CoreBuild> list, int lastId){
+        if(list.isEmpty()) return null;
+        for(CoreBuild core : list){
+            if(core != null && core.id > lastId) return core;
+        }
+        return list.first();
+    }
+
+    private void sortCoresByBuildOrder(Seq<CoreBuild> list){
         if(list.size <= 1) return;
         list.sort((a, b) -> Integer.compare(a.id, b.id));
     }
@@ -3116,6 +3126,27 @@ public class UnitAbilityPanel extends Table{
         return info;
     }
 
+    private AbilityInfo makeAbilityInfo(Ability key, String name, String description){
+        return makeAbilityInfo(hotkey(key), name, description);
+    }
+
+    private String hotkey(Ability key){
+        return Sc2AbilityHotkeys.label(key);
+    }
+
+    private boolean hotkeyTapped(Ability key){
+        return Sc2AbilityHotkeys.tapped(key);
+    }
+
+    private float hotkeyScale(String key){
+        if(key == null || key.isEmpty()) return abilityKeyScale;
+        if(key.length() <= 1) return abilityKeyScale;
+        if(key.length() <= 3) return 0.52f;
+        if(key.length() <= 6) return 0.44f;
+        if(key.length() <= 9) return 0.36f;
+        return 0.30f;
+    }
+
     private AbilityInfo defaultAbilityInfo(String key){
         return makeAbilityInfo(key, "Ability", "Left-click acts as hotkey.");
     }
@@ -3175,7 +3206,7 @@ public class UnitAbilityPanel extends Table{
             Table keyTable = new Table();
             keyTable.top().left();
             Label keyLabel = new Label(key);
-            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.setFontScale(hotkeyScale(key));
             keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
             keyTable.add(keyLabel).pad(3f);
             stack.add(keyTable);
@@ -3242,7 +3273,7 @@ public class UnitAbilityPanel extends Table{
             Table keyTable = new Table();
             keyTable.top().left();
             Label keyLabel = new Label(key);
-            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.setFontScale(hotkeyScale(key));
             keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
             keyTable.add(keyLabel).pad(3f);
             stack.add(keyTable);
@@ -3280,7 +3311,7 @@ public class UnitAbilityPanel extends Table{
         Table keyTable = new Table();
         keyTable.top().left();
         Label keyLabel = new Label(key);
-        keyLabel.setFontScale(abilityKeyScale);
+        keyLabel.setFontScale(hotkeyScale(key));
         keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
         keyTable.add(keyLabel).pad(3f);
         stack.add(keyTable);
@@ -3316,7 +3347,7 @@ public class UnitAbilityPanel extends Table{
             Table keyTable = new Table();
             keyTable.top().left();
             Label keyLabel = new Label(key);
-            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.setFontScale(hotkeyScale(key));
             keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
             keyTable.add(keyLabel).pad(3f);
             stack.add(keyTable);
@@ -3418,8 +3449,8 @@ public class UnitAbilityPanel extends Table{
 
         Table keyTable = new Table();
         keyTable.top().left();
-        Label keyLabel = new Label("c");
-        keyLabel.setFontScale(abilityKeyScale);
+        Label keyLabel = new Label(hotkey(Ability.hurricaneLock));
+        keyLabel.setFontScale(hotkeyScale(hotkey(Ability.hurricaneLock)));
         keyLabel.update(() -> keyLabel.setColor(enabled.get() ? Color.white : Color.gray));
         keyTable.add(keyLabel).pad(3f);
         stack.add(keyTable);
@@ -3428,7 +3459,7 @@ public class UnitAbilityPanel extends Table{
 
         button.add(stack).size(abilityButtonSize);
         grid.add(button).size(abilityButtonSize).pad(2f);
-        bindAbilityHover(button, makeAbilityInfo("c", "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."), enabled);
+        bindAbilityHover(button, makeAbilityInfo(Ability.hurricaneLock, "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."), enabled);
         return button;
     }
 
@@ -3454,7 +3485,7 @@ public class UnitAbilityPanel extends Table{
             Table keyTable = new Table();
             keyTable.top().left();
             Label keyLabel = new Label(key);
-            keyLabel.setFontScale(abilityKeyScale);
+            keyLabel.setFontScale(hotkeyScale(key));
             keyLabel.update(() -> keyLabel.setColor(allowed.get() ? Color.white : Color.gray));
             keyTable.add(keyLabel).pad(3f);
             stack.add(keyTable);
@@ -5574,7 +5605,7 @@ public class UnitAbilityPanel extends Table{
     private void queueSelectedCoreUpgrade(int type){
         if(control == null || control.input == null) return;
 
-        CoreBuild chosen = null;
+        Seq<CoreBuild> eligible = new Seq<>();
         boolean anyNucleus = false;
         boolean anyTraining = false;
         boolean anyUpgrading = false;
@@ -5609,10 +5640,10 @@ public class UnitAbilityPanel extends Table{
             }
             boolean can = type == coreUpgradeOrbital ? core.canStartOrbitalUpgrade() : core.canStartFortressUpgrade();
             if(!can) continue;
-            if(chosen == null || core.id < chosen.id){
-                chosen = core;
-            }
+            eligible.add(core);
         }
+        sortCoresByBuildOrder(eligible);
+        CoreBuild chosen = chooseCoreRoundRobin(eligible, coreDistributeLastUpgradeCoreId.get(type, -1));
         if(chosen == null){
             if(!anyNucleus){
                 ui.hudfrag.setHudText("Already upgraded");
@@ -5636,6 +5667,7 @@ public class UnitAbilityPanel extends Table{
             Call.coreStartFortressUpgrade(player, chosen.pos());
         }
 
+        coreDistributeLastUpgradeCoreId.put(type, chosen.id);
         coreDistributeHistoryUpgradeCore.add(chosen.id);
         coreDistributeHistoryUpgradeType.add(type);
         if(coreDistributeHistoryUpgradeCore.size > 1024){
@@ -5754,13 +5786,13 @@ public class UnitAbilityPanel extends Table{
 
         switch(novaPanel){
             case MAIN:
-                if(Core.input.keyTap(KeyCode.g)){
+                if(hotkeyTapped(Ability.novaHarvest)){
                     enterCommandMode(CommandMode.HARVEST);
-                }else if(Core.input.keyTap(KeyCode.r)){
+                }else if(hotkeyTapped(Ability.novaRepair)){
                     enterCommandMode(CommandMode.REPAIR);
-                }else if(Core.input.keyTap(KeyCode.b)){
+                }else if(hotkeyTapped(Ability.novaBuildBasic)){
                     novaPanel = NovaPanel.BUILD_BASIC;
-                }else if(Core.input.keyTap(KeyCode.v)){
+                }else if(hotkeyTapped(Ability.novaBuildAdvanced)){
                     novaPanel = NovaPanel.BUILD_ADV;
                 }
                 break;
@@ -5769,21 +5801,21 @@ public class UnitAbilityPanel extends Table{
                     novaPanel = NovaPanel.MAIN;
                     break;
                 }
-                if(Core.input.keyTap(KeyCode.c)){
+                if(hotkeyTapped(Ability.novaBuildCommandCenter)){
                     startPlacement(Blocks.coreNucleus);
-                }else if(Core.input.keyTap(KeyCode.r)){
+                }else if(hotkeyTapped(Ability.novaBuildRefinery)){
                     startPlacement(Blocks.ventCondenser);
-                }else if(Core.input.keyTap(KeyCode.s)){
+                }else if(hotkeyTapped(Ability.novaBuildSupplyDepot)){
                     startPlacement(Blocks.doorLarge);
-                }else if(Core.input.keyTap(KeyCode.b)){
+                }else if(hotkeyTapped(Ability.novaBuildBarracks)){
                     startPlacement(Blocks.groundFactory);
-                }else if(Core.input.keyTap(KeyCode.e)){
+                }else if(hotkeyTapped(Ability.novaBuildEngineeringBay)){
                     startPlacement(Blocks.multiPress);
-                }else if(Core.input.keyTap(KeyCode.u)){
+                }else if(hotkeyTapped(Ability.novaBuildBunker)){
                     startPlacement(Blocks.atmosphericConcentrator);
-                }else if(Core.input.keyTap(KeyCode.t)){
+                }else if(hotkeyTapped(Ability.novaBuildMissileTurret)){
                     startPlacement(Blocks.swarmer);
-                }else if(Core.input.keyTap(KeyCode.n)){
+                }else if(hotkeyTapped(Ability.novaBuildSensorTower)){
                     startPlacement(Blocks.radar);
                 }
                 break;
@@ -5792,15 +5824,15 @@ public class UnitAbilityPanel extends Table{
                     novaPanel = NovaPanel.MAIN;
                     break;
                 }
-                if(Core.input.keyTap(KeyCode.g)){
+                if(hotkeyTapped(Ability.novaBuildGhostAcademy)){
                     startPlacement(Blocks.launchPad);
-                }else if(Core.input.keyTap(KeyCode.f)){
+                }else if(hotkeyTapped(Ability.novaBuildFactory)){
                     startPlacement(Blocks.tankFabricator);
-                }else if(Core.input.keyTap(KeyCode.a)){
+                }else if(hotkeyTapped(Ability.novaBuildArmory)){
                     startPlacement(Blocks.siliconCrucible);
-                }else if(Core.input.keyTap(KeyCode.s)){
+                }else if(hotkeyTapped(Ability.novaBuildStarport)){
                     startPlacement(Blocks.shipFabricator);
-                }else if(Core.input.keyTap(KeyCode.c)){
+                }else if(hotkeyTapped(Ability.novaBuildFusionCore)){
                     startPlacement(Blocks.surgeCrucible);
                 }
                 break;
@@ -5808,21 +5840,21 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleWidowHotkeys(){
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.widowBurrow)){
             issueWidowBurrowCommand(true);
-        }else if(Core.input.keyTap(KeyCode.d)){
+        }else if(hotkeyTapped(Ability.widowUnburrow)){
             issueWidowBurrowCommand(false);
         }
     }
 
     private void handleMaceLocusHotkeys(){
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.hellionToHellbat)){
             if(anyMaceCanTransformToLocus()){
                 issueMaceLocusModeCommand(true);
             }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
                 ui.hudfrag.setHudText("Requires Armory");
             }
-        }else if(Core.input.keyTap(KeyCode.d)){
+        }else if(hotkeyTapped(Ability.hellbatToHellion)){
             if(anyLocusCanTransformToMace()){
                 issueMaceLocusModeCommand(false);
             }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
@@ -5832,7 +5864,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleMaceHotkeys(){
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.hellionToHellbat)){
             if(anyMaceCanTransformToLocus()){
                 issueMaceLocusModeCommand(true);
             }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
@@ -5842,7 +5874,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleLocusHotkeys(){
-        if(Core.input.keyTap(KeyCode.d)){
+        if(hotkeyTapped(Ability.hellbatToHellion)){
             if(anyLocusCanTransformToMace()){
                 issueMaceLocusModeCommand(false);
             }else if(!UnitTypes.infantryWeaponHasArmory(player.team())){
@@ -5852,23 +5884,23 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handlePreceptHotkeys(){
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.siegeTankSiegeMode)){
             issuePreceptSiegeCommand(true);
-        }else if(Core.input.keyTap(KeyCode.d)){
+        }else if(hotkeyTapped(Ability.siegeTankTankMode)){
             issuePreceptSiegeCommand(false);
         }
     }
 
     private void handleHurricaneHotkeys(){
-        if(Core.input.keyTap(KeyCode.c)){
+        if(hotkeyTapped(Ability.hurricaneLock)){
             issueHurricaneLockCommand();
         }
     }
 
     private void handleScepterHotkeys(){
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.thorHighImpact)){
             issueScepterAirModeCommand(true);
-        }else if(Core.input.keyTap(KeyCode.d)){
+        }else if(hotkeyTapped(Ability.thorExplosive)){
             issueScepterAirModeCommand(false);
         }
     }
@@ -5881,9 +5913,9 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.e) && anyLiberatorCanEnterDefense()){
+        if(hotkeyTapped(Ability.liberatorDefenseMode) && anyLiberatorCanEnterDefense()){
             enterCommandMode(CommandMode.LIBERATOR_ZONE);
-        }else if(Core.input.keyTap(KeyCode.d) && anyLiberatorCanExitDefense()){
+        }else if(hotkeyTapped(Ability.liberatorFighterMode) && anyLiberatorCanExitDefense()){
             issueLiberatorFighterCommand();
         }
     }
@@ -5896,21 +5928,21 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.medivacHeal)){
             enterCommandMode(CommandMode.MEDIVAC_HEAL);
-        }else if(Core.input.keyTap(KeyCode.b)){
+        }else if(hotkeyTapped(Ability.medivacAfterburners)){
             issueMedivacAfterburnerCommand();
-        }else if(Core.input.keyTap(KeyCode.l) && anyMedivacCanLoadMore()){
+        }else if(hotkeyTapped(Ability.medivacLoad) && anyMedivacCanLoadMore()){
             enterCommandMode(CommandMode.MEDIVAC_LOAD);
-        }else if(Core.input.keyTap(KeyCode.d) && anyMedivacHasPayload()){
+        }else if(hotkeyTapped(Ability.medivacUnload) && anyMedivacHasPayload()){
             enterCommandMode(CommandMode.MEDIVAC_UNLOAD);
         }
     }
 
     private void handleVikingHotkeys(){
-        if(Core.input.keyTap(KeyCode.e) && anyVikingCanSwitchToFighter()){
+        if(hotkeyTapped(Ability.vikingFighterMode) && anyVikingCanSwitchToFighter()){
             issueVikingModeCommand(false);
-        }else if(Core.input.keyTap(KeyCode.d) && anyVikingCanSwitchToMech()){
+        }else if(hotkeyTapped(Ability.vikingMechMode) && anyVikingCanSwitchToMech()){
             issueVikingModeCommand(true);
         }
     }
@@ -5923,7 +5955,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.n)){
+        if(hotkeyTapped(Ability.ghostNuke)){
             if(anyGhostCanUseTacticalNuke()){
                 enterCommandMode(CommandMode.GHOST_TACTICAL_NUKE);
             }else{
@@ -5932,7 +5964,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.r)){
+        if(hotkeyTapped(Ability.ghostStableAim)){
             if(anyGhostCanUseStableAim()){
                 enterCommandMode(CommandMode.GHOST_STABLE_AIM);
             }else{
@@ -5941,7 +5973,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.e)){
+        if(hotkeyTapped(Ability.ghostEmp)){
             if(anyGhostCanUseEmp()){
                 enterCommandMode(CommandMode.GHOST_EMP);
             }else{
@@ -5950,7 +5982,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.c)){
+        if(hotkeyTapped(Ability.ghostCloak)){
             if(anyGhostCanToggleCloak()){
                 issueGhostCloakCommand();
             }else if(UnitTypes.ghostCamoLevel(player.team()) <= 0){
@@ -5977,7 +6009,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.d)){
+        if(hotkeyTapped(Ability.reaperKd8)){
             if(anyReaperCanUseKd8()){
                 enterCommandMode(CommandMode.REAPER_KD8);
             }else{
@@ -5994,19 +6026,19 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.y)){
+        if(hotkeyTapped(Ability.battlecruiserYamato)){
             if(anyBattlecruiserCanUseYamato()){
                 enterCommandMode(CommandMode.BATTLECRUISER_YAMATO);
             }else if(!UnitTypes.battlecruiserHasYamatoTech(player.team())){
                 ui.hudfrag.setHudText("Requires Weapon Refit");
             }
-        }else if(Core.input.keyTap(KeyCode.t) && anyBattlecruiserCanUseWarp()){
+        }else if(hotkeyTapped(Ability.battlecruiserJump) && anyBattlecruiserCanUseWarp()){
             enterCommandMode(CommandMode.BATTLECRUISER_WARP);
         }
     }
 
     private void handleBansheeHotkeys(){
-        if(Core.input.keyTap(KeyCode.c)){
+        if(hotkeyTapped(Ability.bansheeCloak)){
             if(anyBansheeCanToggleCloak()){
                 issueBansheeCloakCommand();
             }else if(UnitTypes.bansheeCloakFieldLevel(player.team()) <= 0){
@@ -6023,11 +6055,11 @@ public class UnitAbilityPanel extends Table{
             return;
         }
 
-        if(Core.input.keyTap(KeyCode.t) && anyRavenCanDeployTurret()){
+        if(hotkeyTapped(Ability.ravenTurret) && anyRavenCanDeployTurret()){
             enterCommandMode(CommandMode.RAVEN_TURRET);
-        }else if(Core.input.keyTap(KeyCode.r) && anyRavenCanUseAntiArmor()){
+        }else if(hotkeyTapped(Ability.ravenAntiArmor) && anyRavenCanUseAntiArmor()){
             enterCommandMode(CommandMode.RAVEN_ANTI_ARMOR);
-        }else if(Core.input.keyTap(KeyCode.c)){
+        }else if(hotkeyTapped(Ability.ravenMatrix)){
             if(anyRavenCanUseMatrix()){
                 enterCommandMode(CommandMode.RAVEN_MATRIX);
             }else if(UnitTypes.ravenMatrixTechLevel(player.team()) <= 0){
@@ -6037,7 +6069,7 @@ public class UnitAbilityPanel extends Table{
     }
 
     private void handleBarracksStimpackHotkeys(){
-        if(Core.input.keyTap(KeyCode.t)){
+        if(hotkeyTapped(Ability.stimpack)){
             issueBarracksStimpackCommand();
         }
     }
@@ -6530,20 +6562,14 @@ public class UnitAbilityPanel extends Table{
 
     private void queueCoreLift(CoreBuild core){
         if(core == null) return;
-        triggerCoreLiftPrep(core);
-        Time.run(60f, () -> {
-            if(core.isValid() && core.canLift()){
-                float x = core.x, y = core.y;
-                int size = core.block.size;
-                Unit unit = core.lift();
-                if(unit != null){
-                    triggerLiftTakeoffFx(x, y, size);
-                    control.input.commandBuildings.clear();
-                    control.input.selectedUnits.clear();
-                    control.input.selectedUnits.add(unit);
-                }
-            }
-        });
+        if(!core.canLift()) return;
+
+        Unit unit = core.lift();
+        if(unit != null){
+            control.input.commandBuildings.clear();
+            control.input.selectedUnits.clear();
+            control.input.selectedUnits.add(unit);
+        }
     }
 
     private void showFactoryCannotLiftReason(UnitFactory.UnitFactoryBuild factory){
@@ -6561,39 +6587,11 @@ public class UnitAbilityPanel extends Table{
             showFactoryCannotLiftReason(factory);
             return;
         }
-        triggerFactoryLiftPrep(factory);
-        Time.run(60f, () -> {
-            if(factory.isValid() && factory.canLift()){
-                float x = factory.x, y = factory.y;
-                int size = factory.block.size;
-                Unit unit = factory.lift();
-                if(unit != null){
-                    triggerLiftTakeoffFx(x, y, size);
-                    control.input.commandBuildings.clear();
-                    control.input.selectedUnits.clear();
-                    control.input.selectedUnits.add(unit);
-                }
-            }
-        });
-    }
-
-    private void triggerCoreLiftPrep(CoreBuild core){
-        if(core == null || !core.isValid()) return;
-        core.thrusterTime = Math.max(core.thrusterTime, 1f);
-        Fx.coreLaunchConstruct.at(core.x, core.y, core.block.size);
-    }
-
-    private void triggerFactoryLiftPrep(UnitFactory.UnitFactoryBuild factory){
-        if(factory == null || !factory.isValid()) return;
-        factory.liftThrusterTime = Math.max(factory.liftThrusterTime, 1f);
-        Fx.coreLaunchConstruct.at(factory.x, factory.y, factory.block.size);
-    }
-
-    private void triggerLiftTakeoffFx(float x, float y, int size){
-        Fx.coreLaunchConstruct.at(x, y, size);
-        Effect.shake(5f, 5f, x, y);
-        if(!headless){
-            Sounds.coreLaunch.at(x, y, 1f, 1f);
+        Unit unit = factory.lift();
+        if(unit != null){
+            control.input.commandBuildings.clear();
+            control.input.selectedUnits.clear();
+            control.input.selectedUnits.add(unit);
         }
     }
 

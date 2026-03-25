@@ -108,7 +108,7 @@ public class BuildPayload implements Payload{
 
     @Override
     public void drawShadow(float alpha){
-        Drawf.squareShadow(build.x, build.y, build.block.size * tilesize * 1.85f, alpha);
+        //Lifted buildings should not draw any extra payload shadow.
     }
 
     @Override
@@ -125,11 +125,16 @@ public class BuildPayload implements Payload{
         Draw.flush();
         Tmp.m1.set(Draw.trans());
         Draw.trans().translate(build.x, build.y).rotate(build.payloadRotation).translate(-build.x, -build.y);
-        build.payloadDraw();
-        Draw.flush();
-        Draw.trans().set(Tmp.m1);
-        Draw.zTransform();
-        Draw.z(prevZ);
+        Drawf.beginBuildingShadowSuppression();
+        try{
+            build.payloadDraw();
+            Draw.flush();
+        }finally{
+            Drawf.endBuildingShadowSuppression();
+            Draw.trans().set(Tmp.m1);
+            Draw.zTransform();
+            Draw.z(prevZ);
+        }
     }
 
     @Override

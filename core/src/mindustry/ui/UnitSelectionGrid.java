@@ -12,6 +12,7 @@ import arc.struct.*;
 import arc.util.*;
 import mindustry.ai.types.HarvestAI;
 import mindustry.content.*;
+import mindustry.ctype.*;
 import mindustry.gen.*;
 import mindustry.game.*;
 import mindustry.graphics.*;
@@ -34,6 +35,12 @@ public class UnitSelectionGrid extends Table{
     private static final int ROWS = 3;
     private static final int UNITS_PER_PAGE = COLS * ROWS;
     private static final float GRID_PORTRAIT_PAD = 2f;
+    private static final String detectorTag = "[gold]\u4fa6\u6d4b\u5355\u4f4d";
+    private static final int PAYLOAD_GRID_COLS = 4;
+    private static final int PAYLOAD_GRID_ROWS = 2;
+    private static final float PAYLOAD_SLOT_SIZE = 38f;
+    private static final float PAYLOAD_SLOT_PAD = 3f;
+    private static final float QUEUE_SLOT_SIZE = 40f;
 
     private int currentPage = 0;
     private Seq<Displayable> displayedItems = new Seq<>();
@@ -57,6 +64,7 @@ public class UnitSelectionGrid extends Table{
     private int lastTechLabQueueHash = -1;
     private int lastMedivacId = -1;
     private int lastMedivacPayloadHash = -1;
+    private final GlyphLayout addonBadgeLayout = new GlyphLayout();
 
     //Interface for units and buildings
     private interface Displayable{
@@ -182,6 +190,12 @@ public class UnitSelectionGrid extends Table{
         }
     }
 
+    private static class PayloadLayoutEntry{
+        Payload payload;
+        UnlockableContent content;
+        int col, row, colSpan, rowSpan;
+    }
+
     public UnitSelectionGrid(){
         background(Styles.black6);
         margin(4f);
@@ -214,7 +228,11 @@ public class UnitSelectionGrid extends Table{
             for(int i = 0; i < 10; i++){
                 final int formationNum = i;
                 IntSeq group = control.input.controlGroups[i];
-                boolean hasUnits = group != null && !group.isEmpty();
+                boolean hasUnits = group != null;
+                if(hasUnits){
+                    control.input.sanitizeControlGroup(group);
+                    hasUnits = !group.isEmpty();
+                }
 
                 String buttonText = String.valueOf((i + 1) % 10); //1-9, then 0
 
@@ -248,6 +266,7 @@ public class UnitSelectionGrid extends Table{
                         }else{
                             //Normal click: Switch to this formation
                             if(control.input.controlGroups[formationNum] != null){
+                                control.input.sanitizeControlGroup(control.input.controlGroups[formationNum]);
                                 control.input.selectedUnits.clear();
                                 control.input.commandBuildings.clear();
 
@@ -267,9 +286,9 @@ public class UnitSelectionGrid extends Table{
                                         }
                                     }
 
-                                    if(unit != null){
+                                    if(unit != null && unit.team == player.team()){
                                         control.input.selectedUnits.add(unit);
-                                    }else if(building != null){
+                                    }else if(building != null && building.team == player.team()){
                                         control.input.commandBuildings.add(building);
                                     }
                                 });
@@ -294,6 +313,15 @@ public class UnitSelectionGrid extends Table{
             for(Building building : control.input.commandBuildings){
                 if(building.isValid()){
                     current.add(new BuildingDisplay(building));
+                }
+            }
+            if(current.isEmpty()){
+                Unit readOnlyUnit = control.input.readOnlySelectedUnit();
+                Building readOnlyBuilding = control.input.readOnlySelectedBuilding();
+                if(readOnlyUnit != null && readOnlyUnit.isValid()){
+                    current.add(new UnitDisplay(readOnlyUnit));
+                }else if(readOnlyBuilding != null && readOnlyBuilding.isValid()){
+                    current.add(new BuildingDisplay(readOnlyBuilding));
                 }
             }
             if(current.size > 1){
@@ -558,18 +586,31 @@ public class UnitSelectionGrid extends Table{
         }
         Building ba = ((BuildingDisplay)a).building;
         Building bb = ((BuildingDisplay)b).building;
+        if(isAddonSortableFactory(ba) && isAddonSortableFactory(bb)){
+            int addonCmp = Integer.compare(factoryAddonCategory(ba), factoryAddonCategory(bb));
+            if(addonCmp != 0) return addonCmp;
+        }
         int blockCmp = Integer.compare(ba.block.id, bb.block.id);
         if(blockCmp != 0) return blockCmp;
-        int addonCmp = Integer.compare(factoryAddonCategory(ba), factoryAddonCategory(bb));
-        if(addonCmp != 0) return addonCmp;
         return Integer.compare(ba.id, bb.id);
     }
 
+    private boolean isAddonSortableFactory(@Nullable Building build){
+        return build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled();
+    }
+
     private int factoryAddonCategory(@Nullable Building build){
-        if(!(build instanceof UnitFactory.UnitFactoryBuild factory) || !factory.sc2QueueEnabled()) return 0;
+        if(!(build instanceof UnitFactory.UnitFactoryBuild factory) || !factory.sc2QueueEnabled()) return 1;
         if(factory.hasDoubleAddon()) return 0;
         if(factory.hasTechAddon()) return 2;
         return 1;
+    }
+
+    private @Nullable String factoryAddonLetter(@Nullable Building build){
+        if(!(build instanceof UnitFactory.UnitFactoryBuild factory) || !factory.sc2QueueEnabled()) return null;
+        if(factory.hasDoubleAddon()) return "R";
+        if(factory.hasTechAddon()) return "T";
+        return null;
     }
 
     private int unitSelectionGroup(@Nullable UnitType type){
@@ -622,6 +663,7 @@ public class UnitSelectionGrid extends Table{
         for(int i = startIdx; i < endIdx; i++){
             Displayable item = displayedItems.get(i);
             int col = (i - startIdx) % COLS;
+            boolean readOnly = control.input.hasReadOnlySelection();
 
             //Create portrait button
             Table portrait = new Table();
@@ -639,15 +681,20 @@ public class UnitSelectionGrid extends Table{
             stack.add(iconTable);
             if(item instanceof BuildingDisplay buildingDisplay){
                 Building build = buildingDisplay.building;
-                if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
-                    stack.add(factoryQueueSlotsElement(factory));
-                }else if(build instanceof CoreBuild core){
-                    stack.add(coreQueueSlotsElement(core));
+                boolean friendlyReadOnly = readOnly && ViewerPerspective.isFriendly(build.team);
+                if(build.team == player.team() || friendlyReadOnly){
+                    if(build instanceof UnitFactory.UnitFactoryBuild factory && factory.sc2QueueEnabled()){
+                        stack.add(factoryQueueSlotsElement(factory));
+                    }else if(build instanceof CoreBuild core){
+                        stack.add(coreQueueSlotsElement(core));
+                    }
                 }
+                stack.add(factoryAddonBadgeElement(build));
             }
             portrait.add(stack).size(gridPortraitSize());
 
             portrait.clicked(() -> {
+                if(readOnly) return;
                 //Shift+click removes from selection
                 if(Core.input.keyDown(arc.input.KeyCode.shiftLeft) || Core.input.keyDown(arc.input.KeyCode.shiftRight)){
                     if(item instanceof UnitDisplay){
@@ -700,19 +747,25 @@ public class UnitSelectionGrid extends Table{
         //Show unit info when only one unit/building is selected
         if(displayedItems.size == 1){
             Displayable item = displayedItems.get(0);
+            boolean readOnly = control.input.hasReadOnlySelection();
             if(item instanceof UnitDisplay){
                 UnitDisplay unitDisplay = (UnitDisplay)item;
-                buildSingleUnitPanel(unitDisplay.unit);
+                buildSingleUnitPanel(unitDisplay.unit, readOnly);
             }else if(item instanceof BuildingDisplay){
                 BuildingDisplay buildingDisplay = (BuildingDisplay)item;
-                buildBuildingInfoPanel(buildingDisplay.building);
+                buildBuildingInfoPanel(buildingDisplay.building, readOnly);
             }
         }
     }
 
-    private void buildSingleUnitPanel(Unit unit){
+    private boolean friendlyReadOnly(@Nullable Team team, boolean readOnly){
+        return readOnly && ViewerPerspective.isFriendly(team);
+    }
+
+    private void buildSingleUnitPanel(Unit unit, boolean readOnly){
         //Clear the grid and show single unit info instead
         gridTable.clear();
+        boolean friendlyReadOnly = friendlyReadOnly(unit.team, readOnly);
 
         gridTable.table(panel -> {
             panel.background(Styles.black6);
@@ -765,16 +818,16 @@ public class UnitSelectionGrid extends Table{
             }).width(120f).padRight(16f);
 
             //Right half: Unit info (centered)
-            boolean medivacCargoOnly = UnitTypes.isMedivac(unit) && unit instanceof Payloadc pay && !pay.payloads().isEmpty();
+            boolean medivacCargoOnly = (!readOnly || friendlyReadOnly) && UnitTypes.isMedivac(unit) && unit instanceof Payloadc pay && !pay.payloads().isEmpty();
             panel.table(rightHalf -> {
                 rightHalf.defaults().center();
                 if(medivacCargoOnly){
-                    buildMedivacCargoPanel(rightHalf, unit);
+                    buildMedivacCargoPanel(rightHalf, unit, !readOnly);
                     return;
                 }
 
                 if(UnitTypes.isRaven(unit)){
-                    rightHalf.add("[gold]婵炴挻鐔梽鍕矈閹绢喖纭€闁哄洦姘ㄧ粔纰礭").style(Styles.outlineLabel).row();
+                    rightHalf.add(detectorTag).style(Styles.outlineLabel).row();
                 }
 
                 //Unit name
@@ -913,83 +966,216 @@ public class UnitSelectionGrid extends Table{
                     }
                 }).padTop(8f);
 
-                if(UnitTypes.isMedivac(unit)){
+                if((!readOnly || friendlyReadOnly) && UnitTypes.isMedivac(unit)){
                     rightHalf.row();
-                    buildMedivacCargoPanel(rightHalf, unit);
+                    buildMedivacCargoPanel(rightHalf, unit, !readOnly);
                 }
             }).grow().center();
         }).growX().height(singlePanelHeight());
     }
 
-    private void buildMedivacCargoPanel(Table rightHalf, Unit unit){
+    private void buildMedivacCargoPanel(Table rightHalf, Unit unit, boolean interactive){
         if(!(unit instanceof Payloadc payload) || payload.payloads().isEmpty()) return;
+        WidgetGroup cargoGrid = buildPayloadGrid(unit, payload.payloads());
+        if(cargoGrid == null) return;
+        rightHalf.add(cargoGrid).size(cargoGrid.getWidth(), cargoGrid.getHeight()).padTop(8f);
+    }
 
-        int totalSlots = 8;
-        int[] slotToPayload = new int[totalSlots];
-        for(int i = 0; i < totalSlots; i++) slotToPayload[i] = -1;
-        IntMap<UnitType> payloadTypes = new IntMap<>();
+    private @Nullable WidgetGroup buildPayloadGrid(Unit carrier, Seq<Payload> payloads){
+        if(payloads == null || payloads.isEmpty()) return null;
 
-        for(int payloadIndex = 0; payloadIndex < payload.payloads().size; payloadIndex++){
-            Payload p = payload.payloads().get(payloadIndex);
-            if(!(p instanceof UnitPayload up) || up.unit == null || up.unit.type == null) continue;
+        float gridWidth = PAYLOAD_GRID_COLS * PAYLOAD_SLOT_SIZE + (PAYLOAD_GRID_COLS - 1) * PAYLOAD_SLOT_PAD;
+        float gridHeight = PAYLOAD_GRID_ROWS * PAYLOAD_SLOT_SIZE + (PAYLOAD_GRID_ROWS - 1) * PAYLOAD_SLOT_PAD;
+        WidgetGroup grid = new WidgetGroup();
+        grid.setTransform(false);
+        grid.setSize(gridWidth, gridHeight);
 
-            payloadTypes.put(payloadIndex, up.unit.type);
-            int need = Math.max(1, UnitTypes.medivacUnitSlotCost(up.unit.type));
-            for(int slot = 0; slot < totalSlots && need > 0; slot++){
-                if(slotToPayload[slot] == -1){
-                    slotToPayload[slot] = payloadIndex;
-                    need--;
-                }
+        for(int col = 0; col < PAYLOAD_GRID_COLS; col++){
+            for(int row = 0; row < PAYLOAD_GRID_ROWS; row++){
+                Table cell = new Table(Styles.black6);
+                Stack stack = new Stack();
+                stack.add(portraitBorderElement());
+                cell.add(stack).size(PAYLOAD_SLOT_SIZE);
+                cell.setSize(PAYLOAD_SLOT_SIZE, PAYLOAD_SLOT_SIZE);
+                cell.setPosition(payloadGridX(col), payloadGridY(row, 1));
+                grid.addChild(cell);
             }
         }
 
-        rightHalf.table(cargo -> {
-            cargo.defaults().size(24f).pad(2f);
-            for(int row = 0; row < 2; row++){
-                for(int col = 0; col < 4; col++){
-                    int slot = row * 4 + col;
-                    int payloadIndex = slotToPayload[slot];
+        Seq<Payload> orderedPayloads = payloads.copy();
+        orderedPayloads.sort((a, b) -> Integer.compare(payloadDisplaySlots(carrier, b), payloadDisplaySlots(carrier, a)));
 
-                    cargo.table(cell -> {
-                        Stack stack = new Stack();
-                        stack.add(portraitBorderElement());
+        boolean[][] occupied = new boolean[PAYLOAD_GRID_COLS][PAYLOAD_GRID_ROWS];
+        for(int i = 0; i < orderedPayloads.size; i++){
+            PayloadLayoutEntry entry = layoutPayloadEntry(carrier, orderedPayloads.get(i), occupied);
+            if(entry == null) continue;
+            Table cell = buildPayloadEntryCell(entry);
+            cell.setPosition(payloadGridX(entry.col), payloadGridY(entry.row, entry.rowSpan));
+            grid.addChild(cell);
+        }
 
-                        if(payloadIndex >= 0){
-                            UnitType type = payloadTypes.get(payloadIndex);
-                            if(type != null){
-                                Table iconWrap = new Table();
-                                iconWrap.image(type.uiIcon).size(18f);
-                                stack.add(iconWrap);
-                            }
-                        }
-
-                        cell.add(stack).size(24f);
-                        if(payloadIndex >= 0){
-                            int dropIndex = payloadIndex;
-                            cell.clicked(() -> Call.commandMedivacDropPayload(player, unit.id, dropIndex));
-                        }
-                    });
-                }
-                cargo.row();
-            }
-        }).padTop(8f);
+        return grid;
     }
 
-    private void buildBuildingInfoPanel(Building building){
+    private @Nullable PayloadLayoutEntry layoutPayloadEntry(Unit carrier, Payload payload, boolean[][] occupied){
+        UnlockableContent content = payloadDisplayContent(payload);
+        if(content == null) return null;
+
+        int slots = Mathf.clamp(payloadDisplaySlots(carrier, payload), 1, PAYLOAD_GRID_COLS * PAYLOAD_GRID_ROWS);
+        int rowSpan = payloadDisplayRowSpan(slots);
+        int colSpan = Math.min(PAYLOAD_GRID_COLS, Math.max(1, Mathf.ceil((float)slots / rowSpan)));
+
+        if(rowSpan == 1){
+            for(int col = 0; col < PAYLOAD_GRID_COLS; col++){
+                for(int row = 0; row < PAYLOAD_GRID_ROWS; row++){
+                    if(!payloadRectFree(occupied, col, row, colSpan, rowSpan)) continue;
+                    fillPayloadRect(occupied, col, row, colSpan, rowSpan);
+                    PayloadLayoutEntry entry = new PayloadLayoutEntry();
+                    entry.payload = payload;
+                    entry.content = content;
+                    entry.col = col;
+                    entry.row = row;
+                    entry.colSpan = colSpan;
+                    entry.rowSpan = rowSpan;
+                    return entry;
+                }
+            }
+        }else{
+            for(int col = 0; col <= PAYLOAD_GRID_COLS - colSpan; col++){
+                if(!payloadRectFree(occupied, col, 0, colSpan, rowSpan)) continue;
+                fillPayloadRect(occupied, col, 0, colSpan, rowSpan);
+                PayloadLayoutEntry entry = new PayloadLayoutEntry();
+                entry.payload = payload;
+                entry.content = content;
+                entry.col = col;
+                entry.row = 0;
+                entry.colSpan = colSpan;
+                entry.rowSpan = rowSpan;
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    private boolean payloadRectFree(boolean[][] occupied, int startCol, int startRow, int colSpan, int rowSpan){
+        if(startCol < 0 || startRow < 0) return false;
+        if(startCol + colSpan > PAYLOAD_GRID_COLS) return false;
+        if(startRow + rowSpan > PAYLOAD_GRID_ROWS) return false;
+
+        for(int col = startCol; col < startCol + colSpan; col++){
+            for(int row = startRow; row < startRow + rowSpan; row++){
+                if(occupied[col][row]) return false;
+            }
+        }
+        return true;
+    }
+
+    private void fillPayloadRect(boolean[][] occupied, int startCol, int startRow, int colSpan, int rowSpan){
+        for(int col = startCol; col < startCol + colSpan; col++){
+            for(int row = startRow; row < startRow + rowSpan; row++){
+                occupied[col][row] = true;
+            }
+        }
+    }
+
+    private float payloadGridX(int col){
+        return col * (PAYLOAD_SLOT_SIZE + PAYLOAD_SLOT_PAD);
+    }
+
+    private float payloadGridY(int row, int rowSpan){
+        float height = rowSpan * PAYLOAD_SLOT_SIZE + (rowSpan - 1) * PAYLOAD_SLOT_PAD;
+        float topOffset = row * (PAYLOAD_SLOT_SIZE + PAYLOAD_SLOT_PAD);
+        float totalHeight = PAYLOAD_GRID_ROWS * PAYLOAD_SLOT_SIZE + (PAYLOAD_GRID_ROWS - 1) * PAYLOAD_SLOT_PAD;
+        return totalHeight - topOffset - height;
+    }
+
+    private int payloadDisplaySlots(Unit carrier, Payload payload){
+        if(UnitTypes.isMedivac(carrier) && payload instanceof UnitPayload up && up.unit != null){
+            return UnitTypes.medivacUnitSlotCost(up.unit.type);
+        }
+
+        float tiles = Math.max(1f, payload.size() / tilesize);
+        int area = Mathf.ceil(tiles * tiles);
+        if(area >= 8) return 8;
+        if(area >= 4) return 4;
+        if(area >= 2) return 2;
+        return 1;
+    }
+
+    private int payloadDisplayRowSpan(int slots){
+        return slots <= 1 ? 1 : 2;
+    }
+
+    private @Nullable UnlockableContent payloadDisplayContent(Payload payload){
+        if(payload instanceof UnitPayload up && up.unit != null && up.unit.type != null){
+            return up.unit.type;
+        }
+        if(payload instanceof BuildPayload bp && bp.build != null){
+            return displayBlock(bp.build);
+        }
+        return null;
+    }
+
+    private String payloadDisplayName(UnlockableContent content){
+        if(content instanceof UnitType type){
+            return unitDisplayName(type);
+        }
+        return content.localizedName;
+    }
+
+    private TextureRegion payloadDisplayIcon(UnlockableContent content){
+        if(content instanceof UnitType type){
+            return type.uiIcon;
+        }
+        if(content instanceof Block block){
+            return block.uiIcon;
+        }
+        return content.uiIcon;
+    }
+
+    private Table buildPayloadEntryCell(PayloadLayoutEntry entry){
+        float width = entry.colSpan * PAYLOAD_SLOT_SIZE + (entry.colSpan - 1) * PAYLOAD_SLOT_PAD;
+        float height = entry.rowSpan * PAYLOAD_SLOT_SIZE + (entry.rowSpan - 1) * PAYLOAD_SLOT_PAD;
+        Table cell = new Table(Styles.black6);
+        Stack stack = new Stack();
+        stack.add(portraitBorderElement());
+
+        TextureRegion iconRegion = payloadDisplayIcon(entry.content);
+        if(iconRegion != null){
+            Image icon = new Image(iconRegion);
+            icon.setScaling(Scaling.fit);
+            Table iconWrap = new Table();
+            iconWrap.add(icon).size(Math.max(0f, width - 8f), Math.max(0f, height - 8f));
+            stack.add(iconWrap);
+        }
+
+        cell.add(stack).size(width, height);
+        cell.setSize(width, height);
+        cell.addListener(new Tooltip(t -> {
+            t.background(Styles.black6);
+            t.add(payloadDisplayName(entry.content)).style(Styles.outlineLabel).color(Color.white);
+        }));
+        return cell;
+    }
+
+    private void buildBuildingInfoPanel(Building building, boolean readOnly){
         gridTable.clear();
         Block display = displayBlock(building);
         float maxHealth = displayMaxHealth(building);
         CoreBuild core = building instanceof CoreBuild ? (CoreBuild)building : null;
         ConstructBlock.ConstructBuild cons = building instanceof ConstructBlock.ConstructBuild ? (ConstructBlock.ConstructBuild)building : null;
         boolean incomplete = cons != null && cons.current != null && cons.current != Blocks.air && cons.progress < 1f;
-        boolean showCoreQueue = core != null && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.isCoreBuildPage();
+        boolean friendlyReadOnly = friendlyReadOnly(building.team, readOnly);
+        boolean queueReadable = !readOnly || friendlyReadOnly;
+        boolean showCoreQueue = core != null && ((!readOnly && ui.hudfrag.abilityPanel != null && ui.hudfrag.abilityPanel.isCoreBuildPage()) || (friendlyReadOnly && core.unitQueue != null && !core.unitQueue.isEmpty()));
         UnitFactory.UnitFactoryBuild factory = building instanceof UnitFactory.UnitFactoryBuild ? (UnitFactory.UnitFactoryBuild)building : null;
-        boolean showFactoryQueue = factory != null && factory.sc2QueueEnabled();
-        boolean showArmoryQueue = building.block == Blocks.siliconCrucible && armoryQueueActive(building.team);
-        boolean showFusionCoreQueue = building.block == Blocks.surgeCrucible && fusionCoreQueueActive(building.team);
-        boolean showEngineeringQueue = building.block == Blocks.multiPress && engineeringQueueActive(building.team);
-        boolean showGhostAcademyQueue = building.block == Blocks.launchPad && ghostAcademyQueueActive(building);
-        boolean showTechLabQueue = techLabQueueActive(building);
+        boolean showFactoryQueue = queueReadable && factory != null && factory.sc2QueueEnabled();
+        boolean showArmoryQueue = queueReadable && building.block == Blocks.siliconCrucible && armoryQueueActive(building.team);
+        boolean showFusionCoreQueue = queueReadable && building.block == Blocks.surgeCrucible && fusionCoreQueueActive(building.team);
+        boolean showEngineeringQueue = queueReadable && building.block == Blocks.multiPress && engineeringQueueActive(building.team);
+        boolean showGhostAcademyQueue = queueReadable && building.block == Blocks.launchPad && ghostAcademyQueueActive(building);
+        boolean showTechLabQueue = queueReadable && techLabQueueActive(building);
 
         gridTable.table(panel -> {
             panel.background(Styles.black6);
@@ -1054,7 +1240,7 @@ public class UnitSelectionGrid extends Table{
                     buildConstructProgressPanel(rightHalf, cons);
                 }else{
                     if(display.stealthDetectionRange > 0f){
-                        rightHalf.add("[gold]婵炴挻鐔梽鍕矈閹绢喖纭€闁哄洦姘ㄧ粔纰礭").style(Styles.outlineLabel).row();
+                        rightHalf.add(detectorTag).style(Styles.outlineLabel).row();
                     }
                     //Building name
                     rightHalf.add(display.localizedName).color(Color.white).style(Styles.outlineLabel).row();
@@ -1167,37 +1353,39 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void buildCoreQueuePanel(Table rightHalf, CoreBuild core){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             int activeSlots = Math.max(1, core.activeUnitSlots());
             int totalSlots = Math.max(activeSlots, core.queueSlots());
+            int queuedSlots = Math.max(0, totalSlots - activeSlots);
 
             Table row1 = new Table();
-            row1.defaults().size(slotSize).pad(2f);
-            row1.add(buildQueueSlot(core.queuedUnit(0), slotSize));
+            row1.left();
+            row1.add(buildQueueSlot(core.queuedUnit(0), slotSize)).size(slotSize, slotSize);
             row1.add(buildQueueProgress(core, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
 
             if(activeSlots > 1){
-                row1.add(buildQueueSlot(core.queuedUnit(1), slotSize));
+                row1.add(buildQueueSlot(core.queuedUnit(1), slotSize)).size(slotSize, slotSize);
                 row1.add(buildQueueProgress(core, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
             }
 
-            Table row2 = new Table();
-            row2.defaults().size(slotSize).pad(2f);
-            for(int i = activeSlots; i < totalSlots; i++){
-                row2.add(buildQueueSlot(core.queuedUnit(i), slotSize));
+            queueRoot.add(row1).left().row();
+            if(queuedSlots > 0){
+                float queuedSlotSize = queueBottomSlotSize(activeSlots, queuedSlots, slotSize, barWidth);
+                Table row2 = new Table();
+                row2.left();
+                for(int i = activeSlots; i < totalSlots; i++){
+                    row2.add(buildQueueSlot(core.queuedUnit(i), queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
+                }
+                queueRoot.add(row2).left();
             }
-
-            queueRoot.add(row1).row();
-            if(totalSlots > activeSlots){
-                queueRoot.add(row2);
-            }
-        });
+        }).left();
     }
 
     private Bar buildQueueProgress(CoreBuild core, int slot, float width, float height){
@@ -1212,49 +1400,51 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void buildFactoryQueuePanel(Table rightHalf, UnitFactory.UnitFactoryBuild factory){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             if(factory.isAddonBuilding()){
                 Block addon = factory.addonBuildingBlock();
                 if(addon != null){
                     Table row1 = new Table();
-                    row1.defaults().size(slotSize).pad(2f);
-                    row1.add(buildQueueSlot(addon, slotSize));
+                    row1.left();
+                    row1.add(buildQueueSlot(addon, slotSize)).size(slotSize, slotSize);
                     row1.add(buildAddonProgress(factory, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
-                    queueRoot.add(row1);
+                    queueRoot.add(row1).left();
                 }
                 return;
             }
 
             int activeSlots = Math.max(1, factory.activeUnitSlots());
             int totalSlots = Math.max(activeSlots, factory.queueSlots());
+            int queuedSlots = Math.max(0, totalSlots - activeSlots);
 
             Table row1 = new Table();
-            row1.defaults().size(slotSize).pad(2f);
-            row1.add(buildQueueSlot(factory.queuedUnit(0), slotSize));
+            row1.left();
+            row1.add(buildQueueSlot(factory.queuedUnit(0), slotSize)).size(slotSize, slotSize);
             row1.add(buildQueueProgress(factory, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
 
             if(activeSlots > 1){
-                row1.add(buildQueueSlot(factory.queuedUnit(1), slotSize));
+                row1.add(buildQueueSlot(factory.queuedUnit(1), slotSize)).size(slotSize, slotSize);
                 row1.add(buildQueueProgress(factory, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
             }
 
-            Table row2 = new Table();
-            row2.defaults().size(slotSize).pad(2f);
-            for(int i = activeSlots; i < totalSlots; i++){
-                row2.add(buildQueueSlot(factory.queuedUnit(i), slotSize));
+            queueRoot.add(row1).left().row();
+            if(queuedSlots > 0){
+                float queuedSlotSize = queueBottomSlotSize(activeSlots, queuedSlots, slotSize, barWidth);
+                Table row2 = new Table();
+                row2.left();
+                for(int i = activeSlots; i < totalSlots; i++){
+                    row2.add(buildQueueSlot(factory.queuedUnit(i), queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
+                }
+                queueRoot.add(row2).left();
             }
-
-            queueRoot.add(row1).row();
-            if(totalSlots > activeSlots){
-                queueRoot.add(row2);
-            }
-        });
+        }).left();
     }
 
     private Bar buildQueueProgress(UnitFactory.UnitFactoryBuild factory, int slot, float width, float height){
@@ -1288,93 +1478,81 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void buildArmoryQueuePanel(Table rightHalf, Team team){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
+        int queuedSlots = 4;
+        float queuedSlotSize = queueBottomSlotSize(1, queuedSlots, slotSize, barWidth);
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
-            boolean added = false;
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             Block activeBlock = ResearchQueueService.armoryActiveResearchBlock(team);
             Floatp activeProgress = () -> ResearchQueueService.armoryActiveResearchProgress(team);
             float activeTotal = ResearchQueueService.armoryActiveResearchDuration(team) / 60f;
 
-            if(activeBlock != null){
-                Table row1 = new Table();
-                row1.defaults().size(slotSize).pad(2f);
-                Floatp progress = activeProgress;
-                float total = activeTotal;
-                row1.add(buildQueueSlot(activeBlock, slotSize));
-                row1.add(buildQueueProgress(
-                    progress,
-                    () -> progress.get() * total,
-                    () -> total,
-                    barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
-                queueRoot.add(row1).row();
-                added = true;
-            }
+            Table row1 = new Table();
+            row1.left();
+            Floatp progress = activeProgress;
+            float total = activeTotal;
+            row1.add(buildQueueSlot(activeBlock, slotSize)).size(slotSize, slotSize);
+            row1.add(buildQueueProgress(
+                progress,
+                () -> progress.get() * total,
+                () -> total,
+                barWidth, barHeight
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
 
+            Table row2 = new Table();
+            row2.left();
             int queued = ResearchQueueService.armoryQueuedCount(team);
-            if(queued > 0){
-                Table row2 = new Table();
-                row2.defaults().size(slotSize).pad(2f);
-                for(int i = 0; i < queued; i++){
-                    row2.add(buildQueueSlot(ResearchQueueService.armoryQueuedBlock(team, i), slotSize));
-                }
-                queueRoot.add(row2);
-                added = true;
+            for(int i = 0; i < queuedSlots; i++){
+                Block queuedBlock = i < queued ? ResearchQueueService.armoryQueuedBlock(team, i) : null;
+                row2.add(buildQueueSlot(queuedBlock, queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
             }
 
-            if(!added){
-                queueRoot.add();
-            }
-        });
+            queueRoot.add(row1).left().row();
+            queueRoot.add(row2).left();
+        }).left();
     }
 
     private void buildFusionCoreQueuePanel(Table rightHalf, Team team){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
+        int queuedSlots = 4;
+        float queuedSlotSize = queueBottomSlotSize(1, queuedSlots, slotSize, barWidth);
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
-            boolean added = false;
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             Sc2ResearchSpec activeSpec = ResearchQueueService.fusionCoreActiveResearch(team);
-            if(activeSpec != null){
-                Table row1 = new Table();
-                row1.defaults().size(slotSize).pad(2f);
-                Floatp progress = () -> activeSpec.progress(team);
-                float total = activeSpec.duration(team) / 60f;
-                row1.add(buildQueueSlot(activeSpec.iconUnit(), slotSize));
-                row1.add(buildQueueProgress(
-                    progress,
-                    () -> progress.get() * total,
-                    () -> total,
-                    barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
-                queueRoot.add(row1).row();
-                added = true;
-            }
+            Floatp progress = activeSpec == null ? () -> 0f : () -> activeSpec.progress(team);
+            float total = activeSpec == null ? 0f : activeSpec.duration(team) / 60f;
 
+            Table row1 = new Table();
+            row1.left();
+            row1.add(buildQueueSlot(activeSpec == null ? null : activeSpec.iconUnit(), slotSize)).size(slotSize, slotSize);
+            row1.add(buildQueueProgress(
+                progress,
+                () -> progress.get() * total,
+                () -> total,
+                barWidth, barHeight
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+
+            Table row2 = new Table();
+            row2.left();
             int queued = ResearchQueueService.fusionCoreQueuedCount(team);
-            if(queued > 0){
-                Table row2 = new Table();
-                row2.defaults().size(slotSize).pad(2f);
-                for(int i = 0; i < queued; i++){
-                    UnitType queuedType = ResearchQueueService.fusionCoreQueuedUnit(team, i);
-                    row2.add(buildQueueSlot(queuedType, slotSize));
-                }
-                queueRoot.add(row2);
-                added = true;
+            for(int i = 0; i < queuedSlots; i++){
+                UnitType queuedType = i < queued ? ResearchQueueService.fusionCoreQueuedUnit(team, i) : null;
+                row2.add(buildQueueSlot(queuedType, queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
             }
 
-            if(!added){
-                queueRoot.add();
-            }
-        });
+            queueRoot.add(row1).left().row();
+            queueRoot.add(row2).left();
+        }).left();
     }
 
     private boolean engineeringQueueActive(@Nullable Team team){
@@ -1388,49 +1566,43 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void buildEngineeringQueuePanel(Table rightHalf, Team team){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
+        int queuedSlots = 4;
+        float queuedSlotSize = queueBottomSlotSize(1, queuedSlots, slotSize, barWidth);
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
-            boolean added = false;
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             Block activeBlock = ResearchQueueService.engineeringActiveResearchBlock(team);
             Floatp activeProgress = () -> ResearchQueueService.engineeringActiveResearchProgress(team);
             float activeTotal = ResearchQueueService.engineeringActiveResearchDuration(team) / 60f;
 
-            if(activeBlock != null){
-                Table row1 = new Table();
-                row1.defaults().size(slotSize).pad(2f);
-                Floatp progress = activeProgress;
-                float total = activeTotal;
-                row1.add(buildQueueSlot(activeBlock, slotSize));
-                row1.add(buildQueueProgress(
-                    progress,
-                    () -> progress.get() * total,
-                    () -> total,
-                    barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
-                queueRoot.add(row1).row();
-                added = true;
-            }
+            Table row1 = new Table();
+            row1.left();
+            Floatp progress = activeProgress;
+            float total = activeTotal;
+            row1.add(buildQueueSlot(activeBlock, slotSize)).size(slotSize, slotSize);
+            row1.add(buildQueueProgress(
+                progress,
+                () -> progress.get() * total,
+                () -> total,
+                barWidth, barHeight
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
 
+            Table row2 = new Table();
+            row2.left();
             int queued = ResearchQueueService.engineeringQueuedCount(team);
-            if(queued > 0){
-                Table row2 = new Table();
-                row2.defaults().size(slotSize).pad(2f);
-                for(int i = 0; i < queued; i++){
-                    row2.add(buildQueueSlot(ResearchQueueService.engineeringQueuedBlock(team, i), slotSize));
-                }
-                queueRoot.add(row2);
-                added = true;
+            for(int i = 0; i < queuedSlots; i++){
+                Block queuedBlock = i < queued ? ResearchQueueService.engineeringQueuedBlock(team, i) : null;
+                row2.add(buildQueueSlot(queuedBlock, queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
             }
 
-            if(!added){
-                queueRoot.add();
-            }
-        });
+            queueRoot.add(row1).left().row();
+            queueRoot.add(row2).left();
+        }).left();
     }
 
     private boolean techLabQueueActive(@Nullable Building build){
@@ -1461,56 +1633,50 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void buildTechLabQueuePanel(Table rightHalf, Building build){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
+        int queuedSlots = 4;
+        float queuedSlotSize = queueBottomSlotSize(1, queuedSlots, slotSize, barWidth);
         Team team = build.team;
         UnitFactory.UnitFactoryBuild attached = attachedFactoryForTechLab(build);
         Block attachedFactory = attached == null ? null : attached.block;
 
         rightHalf.table(queueRoot -> {
-            queueRoot.defaults().center();
-            boolean added = false;
+            queueRoot.left();
+            queueRoot.defaults().left();
 
             Sc2ResearchSpec activeSpec = ResearchQueueService.techLabActiveResearch(team, attachedFactory);
-            if(activeSpec != null){
-                Table row1 = new Table();
-                row1.defaults().size(slotSize).pad(2f);
-                Floatp progress = () -> activeSpec.progress(team);
-                float total = activeSpec.duration(team) / 60f;
-                row1.add(buildQueueSlot(activeSpec.iconUnit(), slotSize));
-                row1.add(buildQueueProgress(
-                    progress,
-                    () -> progress.get() * total,
-                    () -> total,
-                    barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
-                queueRoot.add(row1).row();
-                added = true;
-            }
+            Floatp progress = activeSpec == null ? () -> 0f : () -> activeSpec.progress(team);
+            float total = activeSpec == null ? 0f : activeSpec.duration(team) / 60f;
 
+            Table row1 = new Table();
+            row1.left();
+            row1.add(buildQueueSlot(activeSpec == null ? null : activeSpec.iconUnit(), slotSize)).size(slotSize, slotSize);
+            row1.add(buildQueueProgress(
+                progress,
+                () -> progress.get() * total,
+                () -> total,
+                barWidth, barHeight
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+
+            Table row2 = new Table();
+            row2.left();
             int queued = ResearchQueueService.techLabQueuedCount(team, attachedFactory);
-            if(queued > 0){
-                Table row2 = new Table();
-                row2.defaults().size(slotSize).pad(2f);
-                for(int i = 0; i < queued; i++){
-                    UnitType queuedType = ResearchQueueService.techLabQueuedUnit(team, attachedFactory, i);
-                    row2.add(buildQueueSlot(queuedType, slotSize));
-                }
-                queueRoot.add(row2);
-                added = true;
+            for(int i = 0; i < queuedSlots; i++){
+                UnitType queuedType = i < queued ? ResearchQueueService.techLabQueuedUnit(team, attachedFactory, i) : null;
+                row2.add(buildQueueSlot(queuedType, queuedSlotSize)).size(queuedSlotSize, queuedSlotSize);
             }
 
-            if(!added){
-                queueRoot.add();
-            }
-        });
+            queueRoot.add(row1).left().row();
+            queueRoot.add(row2).left();
+        }).left();
     }
 
     private void buildGhostAcademyQueuePanel(Table rightHalf, Building build){
-        float slotSize = 34f;
-        float barWidth = 180f;
-        float barHeight = 3f;
+        float slotSize = queueTopSlotSize();
+        float barWidth = queueBarWidth(slotSize);
+        float barHeight = queueBarHeight();
 
         rightHalf.table(queueRoot -> {
             queueRoot.defaults().center();
@@ -1561,7 +1727,27 @@ public class UnitSelectionGrid extends Table{
         return progress;
     }
 
+    private float queueTopSlotSize(){
+        return QUEUE_SLOT_SIZE;
+    }
+
+    private float queueBarWidth(float slotSize){
+        return slotSize * 2f;
+    }
+
+    private float queueBarHeight(){
+        return 3f;
+    }
+
+    private float queueBottomSlotSize(int activeSlots, int queuedSlots, float slotSize, float barWidth){
+        return slotSize;
+    }
+
     private Table buildQueueSlot(UnitType type, float size){
+        return buildQueueSlot(type, size, size);
+    }
+
+    private Table buildQueueSlot(@Nullable UnitType type, float width, float height){
         Table slot = new Table(Styles.black6);
         Stack stack = new Stack();
         stack.add(portraitBorderElement());
@@ -1569,19 +1755,23 @@ public class UnitSelectionGrid extends Table{
             Image icon = new Image(type.uiIcon);
             icon.setScaling(Scaling.fit);
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(size - 8f);
+            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - 8f));
             stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
                 t.add(unitDisplayName(type)).style(Styles.outlineLabel).color(Color.white);
             }));
         }
-        slot.add(stack).size(size);
-        slot.setSize(size, size);
+        slot.add(stack).size(width, height);
+        slot.setSize(width, height);
         return slot;
     }
 
     private Table buildQueueSlot(Block block, float size){
+        return buildQueueSlot(block, size, size);
+    }
+
+    private Table buildQueueSlot(@Nullable Block block, float width, float height){
         Table slot = new Table(Styles.black6);
         Stack stack = new Stack();
         stack.add(portraitBorderElement());
@@ -1589,15 +1779,15 @@ public class UnitSelectionGrid extends Table{
             Image icon = new Image(block.uiIcon);
             icon.setScaling(Scaling.fit);
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(size - 8f);
+            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - 8f));
             stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
                 t.add(block.localizedName).style(Styles.outlineLabel).color(Color.white);
             }));
         }
-        slot.add(stack).size(size);
-        slot.setSize(size, size);
+        slot.add(stack).size(width, height);
+        slot.setSize(width, height);
         return slot;
     }
 
@@ -1985,6 +2175,39 @@ public class UnitSelectionGrid extends Table{
         };
     }
 
+    private Element factoryAddonBadgeElement(@Nullable Building build){
+        return new Element(){
+            @Override
+            public void draw(){
+                String letter = factoryAddonLetter(build);
+                if(letter == null) return;
+
+                Fonts.outline.getData().setScale(0.45f);
+                addonBadgeLayout.setText(Fonts.outline, letter);
+
+                float pad = 2f;
+                float textPadX = 2f;
+                float textPadY = 1f;
+                float badgeWidth = addonBadgeLayout.width + textPadX * 2f;
+                float badgeHeight = addonBadgeLayout.height + textPadY * 2f;
+                float badgeX = x + width - badgeWidth - pad;
+                float badgeY = y + pad;
+
+                Draw.color(Color.black, 0.8f);
+                Fill.crect(badgeX, badgeY, badgeWidth, badgeHeight);
+                Draw.color(Color.white, 0.9f);
+                Lines.stroke(1f);
+                Lines.rect(badgeX, badgeY, badgeWidth, badgeHeight);
+                Draw.reset();
+
+                Fonts.outline.setColor(Color.white);
+                Fonts.outline.draw(letter, badgeX + badgeWidth - textPadX, badgeY + textPadY + addonBadgeLayout.height, Align.right);
+                Fonts.outline.setColor(Color.white);
+                Fonts.outline.getData().setScale(1f);
+            }
+        };
+    }
+
     private Element factoryQueueSlotsElement(UnitFactory.UnitFactoryBuild factory){
         final Color empty = Color.valueOf("6a6a6a");
         final Color border = Color.black;
@@ -1996,33 +2219,8 @@ public class UnitSelectionGrid extends Table{
                 int slots = Math.min(8, factory.queueSlots());
                 if(slots <= 0) return;
                 int queued = Mathf.clamp(factory.queued, 0, slots);
-
-                float margin = 5f;
-                float gap = 1f;
-                float avail = Math.max(0f, width - margin * 2f);
-                float box = (avail - gap * (slots - 1f)) / slots;
-                box = Mathf.clamp(box, 2.5f, 5f);
-
-                float totalWidth = slots * box + (slots - 1f) * gap;
-                float startX = x + margin;
-                //ensure it never goes out of bounds if the portrait is narrow
-                if(totalWidth > avail && slots > 0){
-                    float scale = avail / totalWidth;
-                    box *= scale;
-                    gap *= scale;
-                    totalWidth = slots * box + (slots - 1f) * gap;
-                }
-
-                float baseY = y + 2.5f;
-                Lines.stroke(1f);
-                for(int i = 0; i < slots; i++){
-                    float bx = startX + i * (box + gap);
-                    Draw.color(i < queued ? filled : empty);
-                    Fill.crect(bx, baseY, box, box);
-                    Draw.color(border);
-                    Lines.rect(bx, baseY, box, box);
-                }
-                Draw.reset();
+                float badgeReserve = factoryAddonLetter(factory) == null ? 0f : 12f;
+                drawBottomQueueSlots(slots, queued, badgeReserve, empty, border, filled);
             }
         };
     }
@@ -2038,34 +2236,38 @@ public class UnitSelectionGrid extends Table{
                 int slots = Math.min(8, core.queueSlots());
                 if(slots <= 0) return;
                 int queued = core.unitQueue == null ? 0 : Mathf.clamp(core.unitQueue.size, 0, slots);
-
-                float margin = 5f;
-                float gap = 1f;
-                float avail = Math.max(0f, width - margin * 2f);
-                float box = (avail - gap * (slots - 1f)) / slots;
-                box = Mathf.clamp(box, 2.5f, 5f);
-
-                float totalWidth = slots * box + (slots - 1f) * gap;
-                float startX = x + margin;
-                if(totalWidth > avail && slots > 0){
-                    float scale = avail / totalWidth;
-                    box *= scale;
-                    gap *= scale;
-                    totalWidth = slots * box + (slots - 1f) * gap;
-                }
-
-                float baseY = y + 2.5f;
-                Lines.stroke(1f);
-                for(int i = 0; i < slots; i++){
-                    float bx = startX + i * (box + gap);
-                    Draw.color(i < queued ? filled : empty);
-                    Fill.crect(bx, baseY, box, box);
-                    Draw.color(border);
-                    Lines.rect(bx, baseY, box, box);
-                }
-                Draw.reset();
+                drawBottomQueueSlots(slots, queued, 0f, empty, border, filled);
             }
         };
+    }
+
+    private void drawBottomQueueSlots(int slots, int queued, float rightReserve, Color empty, Color border, Color filled){
+        float leftMargin = 2f;
+        float rightMargin = 2f + rightReserve;
+        float avail = Math.max(0f, width - leftMargin - rightMargin);
+        if(avail <= 0f) return;
+
+        float box = avail / slots;
+        box = Mathf.clamp(box, 3.5f, 6.5f);
+
+        float totalWidth = box * slots;
+        if(totalWidth > avail){
+            box = avail / slots;
+            totalWidth = box * slots;
+        }
+
+        float startX = x + leftMargin + Math.max(0f, (avail - totalWidth) / 2f);
+        float baseY = y + 1.5f;
+
+        Lines.stroke(1f);
+        for(int i = 0; i < slots; i++){
+            float bx = startX + i * box;
+            Draw.color(i < queued ? filled : empty);
+            Fill.crect(bx, baseY, box, box);
+            Draw.color(border);
+            Lines.rect(bx, baseY, box, box);
+        }
+        Draw.reset();
     }
 
     private int coreQueueHash(CoreBuild core){

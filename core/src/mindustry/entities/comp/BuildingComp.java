@@ -26,6 +26,7 @@ import mindustry.game.*;
 import mindustry.game.Teams.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.io.*;
 import mindustry.logic.*;
 import mindustry.type.*;
 import mindustry.ui.*;
@@ -68,6 +69,7 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
     transient int rotation;
     transient float payloadRotation;
     transient String lastAccessed;
+    String ownerName;
     transient boolean wasDamaged; //used only by the indexer
     transient float visualLiquid;
 
@@ -180,7 +182,7 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
         write.f(health);
         write.b(rotation | 0b10000000);
         write.b(team.id);
-        write.b(writeVisibility ? 4 : 3); //version
+        write.b(writeVisibility ? 6 : 5); //version
         write.b(enabled ? 1 : 0);
         //write presence of items/power/liquids/cons, so removing/adding them does not corrupt future saves.
         write.b(moduleBitmask());
@@ -201,6 +203,8 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
         //efficiency is written as two bytes to save space
         write.b((byte)(Mathf.clamp(efficiency) * 255f));
         write.b((byte)(Mathf.clamp(optionalEfficiency) * 255f));
+
+        TypeIO.writeString(write, ownerName);
 
         //only write visibility when necessary, saving 8 bytes - implies new version
         if(writeVisibility){
@@ -256,8 +260,14 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
             optionalEfficiency = read.ub() / 255f;
         }
 
-        //version 4 has visibility flags
-        if(version == 4){
+        if(version >= 5){
+            ownerName = TypeIO.readString(read);
+        }else{
+            ownerName = null;
+        }
+
+        //version 4/6 has visibility flags
+        if(version == 4 || version == 6){
             visibleFlags = read.l();
         }
     }
@@ -1272,8 +1282,9 @@ abstract class BuildingComp implements Posc, Teamc, Healthc, Buildingc, Timerc, 
 
     public void drawTeamTop(){
         if(block.teamRegion.found()){
-            if(block.teamRegions[team.id] == block.teamRegion) Draw.color(team.color);
-            Draw.rect(block.teamRegions[team.id], x, y);
+            TextureRegion region = team.hasPalette ? block.teamRegions[team.id] : block.teamRegion;
+            if(region == block.teamRegion) Draw.color(team.color);
+            Draw.rect(region, x, y);
             Draw.color();
         }
     }

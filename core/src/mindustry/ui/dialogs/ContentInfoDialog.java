@@ -11,6 +11,7 @@ import mindustry.ctype.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.input.*;
+import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.meta.*;
 
@@ -75,6 +76,13 @@ public class ContentInfoDialog extends BaseDialog{
 
         Stats stats = content.stats;
 
+        if(content instanceof UnitType unit && Sc2UnitDatabasePanel.supports(unit)){
+            table.add("[accent]" + (Core.bundle.getLocale() != null && Core.bundle.getLocale().getLanguage() != null && Core.bundle.getLocale().getLanguage().startsWith("zh") ? "星际争霸 II 能力面板" : "StarCraft II Ability Panel")).fillX().padTop(10f).left();
+            table.row();
+            table.add(new Sc2UnitDatabasePanel(unit)).left().padTop(4f);
+            table.row();
+        }
+
         for(StatCat cat : stats.toMap().keys()){
             OrderedMap<Stat, Seq<StatValue>> map = stats.toMap().get(cat);
 
@@ -99,8 +107,10 @@ public class ContentInfoDialog extends BaseDialog{
             }
         }
 
+        boolean showingFromDatabase = ui != null && ui.database != null && ui.database.isShown();
+
         if(content.details != null){
-            table.add("[gray]" + (content.unlocked() || !content.hideDetails ? content.details : Iconc.lock + " " + Core.bundle.get("unlock.incampaign"))).pad(6).padTop(20).width(400f).wrap().fillX();
+            table.add("[gray]" + (showingFromDatabase || content.unlocked() || !content.hideDetails ? content.details : Iconc.lock + " " + Core.bundle.get("unlock.incampaign"))).pad(6).padTop(20).width(400f).wrap().fillX();
             table.row();
         }
 

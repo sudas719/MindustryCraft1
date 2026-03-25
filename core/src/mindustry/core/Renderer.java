@@ -16,6 +16,7 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
+import mindustry.game.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
@@ -224,6 +225,7 @@ public class Renderer implements ApplicationListener{
         float minZoomMultiplier = Math.max(settings.getFloat("minzoomingamemultiplier", 1f), 0.01f);
         maxZoomInGame = maxZoomInGameBase * maxZoomMultiplier;
         minZoomInGame = minZoomInGameBase / minZoomMultiplier;
+        TeamDisplayColors.applyLocalOverrides();
         drawLight = settings.getBool("drawlight", true);
         pixelate = settings.getBool("pixelate");
 
@@ -565,7 +567,8 @@ public class Renderer implements ApplicationListener{
         Draw.reset();
 
         Draw.draw(Layer.overlayUI, overlays::drawTop);
-        boolean spectatorView = net.active() && player != null && player.team() != null && (player.team() == mindustry.game.Team.derelict || !player.team().data().isAlive());
+        Team viewer = ViewerPerspective.team();
+        boolean spectatorView = net.active() && ViewerPerspective.isSpectatorTeam(viewer);
         boolean clipForFog = clipWorld;
         if(clipForFog){
             popWorldClip();
@@ -591,6 +594,7 @@ public class Renderer implements ApplicationListener{
         blocks.drawBlocks();
 
         Groups.draw.draw(Drawc::draw);
+        overlays.drawWorldProgressBars();
 
         if(drawDebugHitboxes){
             DebugCollisionRenderer.draw();
@@ -801,7 +805,7 @@ public class Renderer implements ApplicationListener{
 
     public float getUiBottomInsetPx(){
         if(state == null || !state.isGame() || Core.scene == null) return 0f;
-        float panelHeight = Core.settings.getInt("controlpanelheight", 200);
+        float panelHeight = Core.settings.getInt("controlpanelheight", 700);
         float inset = panelHeight + Core.scene.marginBottom;
         if(inset < 0f) inset = 0f;
         return Math.min(inset, Core.graphics.getHeight());

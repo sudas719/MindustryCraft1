@@ -1,6 +1,7 @@
 import arc.*;
 import arc.backend.headless.*;
 import arc.files.*;
+import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
@@ -16,6 +17,7 @@ import mindustry.entities.units.*;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.io.*;
+import mindustry.input.*;
 import mindustry.maps.*;
 import mindustry.mod.*;
 import mindustry.mod.Mods.*;
@@ -815,6 +817,158 @@ public class ApplicationTests{
     }
 
     @Test
+    void scvQueuedBuildCommandsKeepExistingPlans(){
+        initBuilding();
+
+        Unit scv = UnitTypes.nova.create(Team.sharded);
+        scv.set(40f, 40f);
+        scv.add();
+
+        Player commander = Player.create();
+        commander.team(Team.sharded);
+
+        BuildPlan first = new BuildPlan(8, 8, 0, Blocks.radar);
+        first.requireClose = true;
+        scv.addBuild(first);
+
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(first.drawx(), first.drawy()), true, true, false);
+
+        BuildPlan second = new BuildPlan(10, 8, 0, Blocks.swarmer);
+        second.requireClose = true;
+        scv.addBuild(second);
+
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(second.drawx(), second.drawy()), true, true, false);
+
+        assertEquals(2, scv.plans().size);
+        assertEquals(first.x, scv.plans().first().x);
+        assertEquals(first.y, scv.plans().first().y);
+        assertEquals(second.x, scv.plans().get(1).x);
+        assertEquals(second.y, scv.plans().get(1).y);
+    }
+
+    @Test
+    void scvDirectCommandStillClearsUnstartedBuildPlans(){
+        initBuilding();
+
+        Unit scv = UnitTypes.nova.create(Team.sharded);
+        scv.set(40f, 40f);
+        scv.add();
+
+        Player commander = Player.create();
+        commander.team(Team.sharded);
+
+        BuildPlan build = new BuildPlan(8, 8, 0, Blocks.radar);
+        build.requireClose = true;
+        scv.addBuild(build);
+
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(build.drawx() + tilesize * 3f, build.drawy()), false, true, false);
+
+        assertEquals(0, scv.plans().size);
+    }
+
+    @Test
+    void scvQueuedBuildCommandsAdvanceAfterCurrentBuildCompletes(){
+        initBuilding();
+
+        Unit scv = UnitTypes.nova.create(Team.sharded);
+        BuildPlan first = new BuildPlan(10, 10, 0, Blocks.copperWall);
+        BuildPlan second = new BuildPlan(45, 10, 0, Blocks.copperWall);
+        first.requireClose = true;
+        second.requireClose = true;
+
+        float edge = first.block.size * tilesize / 2f + scv.hitSize / 2f + 0.1f;
+        scv.set(first.drawx() - tilesize * 2f, first.drawy());
+        scv.add();
+
+        Player commander = Player.create();
+        commander.team(Team.sharded);
+
+        scv.addBuild(first);
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(first.drawx(), first.drawy()), true, true, false);
+
+        scv.addBuild(second);
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(second.drawx(), second.drawy()), true, true, false);
+
+        assertTrue(scv.controller() instanceof mindustry.ai.types.CommandAI);
+        mindustry.ai.types.CommandAI ai = (mindustry.ai.types.CommandAI)scv.controller();
+
+        assertNotNull(ai.targetPos);
+        assertTrue(Mathf.equal(ai.targetPos.x, first.drawx()));
+        assertTrue(Mathf.equal(ai.targetPos.y, first.drawy()));
+        assertEquals(1, ai.commandQueue.size);
+
+        scv.set(first.drawx() - edge, first.drawy());
+        ai.updateUnit();
+        assertNotNull(ai.targetPos);
+        assertTrue(Mathf.equal(ai.targetPos.x, first.drawx()));
+        assertTrue(Mathf.equal(ai.targetPos.y, first.drawy()));
+        assertEquals(1, ai.commandQueue.size);
+
+        world.tile(first.x, first.y).setBlock(Blocks.copperWall, Team.sharded, 0);
+        scv.update();
+
+        assertEquals(second.x, scv.buildPlan().x);
+        assertEquals(second.y, scv.buildPlan().y);
+        assertNotNull(ai.targetPos);
+        assertTrue(Mathf.equal(ai.targetPos.x, second.drawx()));
+        assertTrue(Mathf.equal(ai.targetPos.y, second.drawy()));
+        assertEquals(0, ai.commandQueue.size);
+    }
+
+    @Test
+    void scvQueuedBuildCommandsWhileAlreadyBuildingPreserveFullOrder(){
+        initBuilding();
+
+        Unit scv = UnitTypes.nova.create(Team.sharded);
+        BuildPlan first = new BuildPlan(10, 10, 0, Blocks.copperWall);
+        BuildPlan second = new BuildPlan(25, 10, 0, Blocks.copperWall);
+        BuildPlan third = new BuildPlan(45, 10, 0, Blocks.copperWall);
+        first.requireClose = true;
+        second.requireClose = true;
+        third.requireClose = true;
+
+        float edge = first.block.size * tilesize / 2f + scv.hitSize / 2f + 0.1f;
+        scv.set(first.drawx() - edge, first.drawy());
+        scv.add();
+
+        Player commander = Player.create();
+        commander.team(Team.sharded);
+
+        scv.addBuild(first);
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(first.drawx(), first.drawy()), true, true, false);
+
+        scv.addBuild(second);
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(second.drawx(), second.drawy()), true, true, false);
+
+        scv.addBuild(third);
+        InputHandler.commandUnits(commander, new int[]{scv.id}, null, null, new Vec2(third.drawx(), third.drawy()), true, true, false);
+
+        assertTrue(scv.controller() instanceof mindustry.ai.types.CommandAI);
+        mindustry.ai.types.CommandAI ai = (mindustry.ai.types.CommandAI)scv.controller();
+        assertEquals(3, ai.commandQueue.size);
+
+        world.tile(first.x, first.y).setBlock(Blocks.copperWall, Team.sharded, 0);
+        scv.update();
+
+        assertEquals(second.x, scv.buildPlan().x);
+        assertEquals(second.y, scv.buildPlan().y);
+        assertNotNull(ai.targetPos);
+        assertTrue(Mathf.equal(ai.targetPos.x, second.drawx()));
+        assertTrue(Mathf.equal(ai.targetPos.y, second.drawy()));
+        assertEquals(1, ai.commandQueue.size);
+
+        world.tile(second.x, second.y).setBlock(Blocks.copperWall, Team.sharded, 0);
+        scv.update();
+
+        assertEquals(third.x, scv.buildPlan().x);
+        assertEquals(third.y, scv.buildPlan().y);
+        assertNotNull(ai.targetPos);
+        assertTrue(Mathf.equal(ai.targetPos.x, third.drawx()));
+        assertTrue(Mathf.equal(ai.targetPos.y, third.drawy()));
+        assertEquals(0, ai.commandQueue.size);
+    }
+
+    @Test
     void allBlockTest(){
         Tiles tiles = world.resize(80, 80);
 
@@ -992,7 +1146,11 @@ public class ApplicationTests{
     }
 
     void initBuilding(){
-        createMap();
+        Tiles tiles = world.resize(64, 64);
+
+        world.beginMapLoad();
+        tiles.fill();
+        world.endMapLoad();
 
         Tile core = world.tile(5, 5);
         core.setBlock(Blocks.coreShard, Team.sharded, 0);

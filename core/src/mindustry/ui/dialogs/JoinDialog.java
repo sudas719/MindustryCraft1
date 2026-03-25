@@ -108,8 +108,6 @@ public class JoinDialog extends BaseDialog{
             }
         });
 
-        keyDown(KeyCode.f5, this::refreshAll);
-
         shown(() -> {
             setup();
             refreshAll();

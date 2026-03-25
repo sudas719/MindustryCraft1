@@ -54,6 +54,8 @@ public class Net{
         //keep custom extensions after generated packets to preserve base packet IDs.
         registerPacket(ServerInfoRequest::new);
         registerPacket(ServerInfoResponse::new);
+        registerPacket(SpectatorCameraTargetPacket::new);
+        registerPacket(SpectatorCameraStatePacket::new);
     }
 
     /** Registers a new packet type for serialization. */

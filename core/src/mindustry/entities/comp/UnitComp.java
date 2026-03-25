@@ -57,6 +57,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     boolean spawnedByCore;
     double flag;
     float energy;
+    @Nullable String ownerName;
 
     transient @Nullable Trail trail;
     //TODO could be better represented as a unit
@@ -1196,23 +1197,29 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     public void destroy(){
         if(!isAdded() || !killable()) return;
 
+        boolean simpleAirDeath = UnitTypes.usesFlyingRules(self());
+
         float explosiveness = 2f + item().explosiveness * stack().amount * 1.53f;
         float flammability = item().flammability * stack().amount / 1.9f;
         float power = item().charge * Mathf.pow(stack().amount, 1.11f) * 160f;
 
-        if(!spawnedByCore){
+        if(simpleAirDeath){
+            Fx.blastExplosion.at(x, y);
+        }else if(!spawnedByCore){
             Damage.dynamicExplosion(x, y, flammability, explosiveness, power, (bounds() + type.legLength/1.7f) / 2f, state.rules.damageExplosions && state.rules.unitCrashDamage(team) > 0, item().flammability > 1, team, type.deathExplosionEffect);
         }else{
             type.deathExplosionEffect.at(x, y, bounds() / 2f / 8f);
         }
 
-        float shake = type.deathShake < 0 ? hitSize / 3f : type.deathShake;
+        if(!simpleAirDeath){
+            float shake = type.deathShake < 0 ? hitSize / 3f : type.deathShake;
 
-        if(type.createScorch){
-            Effect.scorch(x, y, (int)(hitSize / 5));
+            if(type.createScorch){
+                Effect.scorch(x, y, (int)(hitSize / 5));
+            }
+            Effect.shake(shake, shake, this);
+            type.deathSound.at(this, 1f, type.deathSoundVolume);
         }
-        Effect.shake(shake, shake, this);
-        type.deathSound.at(this, 1f, type.deathSoundVolume);
 
         Events.fire(new UnitDestroyEvent(self()));
 
@@ -1229,7 +1236,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         }
 
         //if this unit crash landed (was flying), damage stuff in a radius
-        if(UnitTypes.usesFlyingRules(self()) && !spawnedByCore && type.createWreck && state.rules.unitCrashDamage(team) > 0){
+        if(!simpleAirDeath && UnitTypes.usesFlyingRules(self()) && !spawnedByCore && type.createWreck && state.rules.unitCrashDamage(team) > 0){
             var shields = indexer.getEnemy(team, BlockFlag.shield);
             float crashDamage = Mathf.pow(hitSize, 0.75f) * type.crashDamageMultiplier * 2.5f * state.rules.unitCrashDamage(team);
             if(shields.isEmpty() || !shields.contains(b -> b instanceof ExplosionShield s && s.absorbExplosion(x, y, crashDamage))){
@@ -1237,7 +1244,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
             }
         }
 
-        if(!headless && type.createScorch){
+        if(!simpleAirDeath && !headless && type.createScorch){
             for(int i = 0; i < type.wreckRegions.length; i++){
                 if(type.wreckRegions[i].found()){
                     float range = type.hitSize /4f;
@@ -1290,6 +1297,11 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         wasPlayer = isLocal();
         health = Math.min(health, 0);
         dead = true;
+
+        if(UnitTypes.usesFlyingRules(self())){
+            destroy();
+            return;
+        }
 
         //don't waste time when the unit is already on the ground, just destroy it
         if(!UnitTypes.usesFlyingRules(self()) || !type.createWreck){

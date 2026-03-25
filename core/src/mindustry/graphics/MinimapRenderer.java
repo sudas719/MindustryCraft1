@@ -12,6 +12,7 @@ import arc.util.*;
 import arc.util.pooling.*;
 import mindustry.content.*;
 import mindustry.entities.*;
+import mindustry.game.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.io.*;
@@ -158,8 +159,10 @@ public class MinimapRenderer{
 
         scaleFactor = 1f / scaleFactor;
 
+        Team viewer = ViewerPerspective.team();
+
         for(Unit unit : units){
-            if(unit.inFogTo(player.team()) || !unit.type.drawMinimap) continue;
+            if(viewer != null && unit.inFogTo(viewer) || !unit.type.drawMinimap) continue;
 
             float scale = Scl.scl(1f) * tilesize * 3;
             var region = unit.icon();
@@ -189,7 +192,7 @@ public class MinimapRenderer{
 
         Draw.reset();
 
-        boolean spectatorView = net.active() && player != null && player.team() != null && (player.team() == mindustry.game.Team.derelict || !player.team().data().isAlive());
+        boolean spectatorView = net.active() && ViewerPerspective.isSpectatorTeam(viewer);
         if(state.rules.fog && !spectatorView){
             if(fullView){
                 float z = zoom;

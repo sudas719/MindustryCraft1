@@ -93,7 +93,8 @@ public class BlockRenderer{
         });
 
         Events.on(TileChangeEvent.class, event -> {
-            boolean visible = event.tile.build == null || !event.tile.build.inFogTo(Vars.player.team());
+            Team viewer = ViewerPerspective.team();
+            boolean visible = event.tile.build == null || viewer == null || !event.tile.build.inFogTo(viewer);
             if(event.tile.build != null){
                 event.tile.build.wasVisible = visible;
             }
@@ -170,7 +171,8 @@ public class BlockRenderer{
                 updateFloors.add(new UpdateRenderState(tile, tile.overlay()));
             }
 
-            if(tile.build != null && (tile.team() == player.team() || !state.rules.fog || (tile.build.visibleFlags & (1L << player.team().id)) != 0)){
+            Team viewer = ViewerPerspective.team();
+            if(tile.build != null && (tile.team() == viewer || !state.rules.fog || (viewer != null && (tile.build.visibleFlags & (1L << viewer.id)) != 0))){
                 tile.build.wasVisible = true;
             }
 
@@ -354,7 +356,10 @@ public class BlockRenderer{
         }
 
         if(brokenFade > 0.001f){
-            for(BlockPlan plan : player.team().data().plans){
+            Team viewer = ViewerPerspective.team();
+            if(viewer == null) return;
+
+            for(BlockPlan plan : viewer.data().plans){
                 Block b = plan.block;
                 if(!camera.bounds(Tmp.r1).grow(tilesize * 2f).overlaps(Tmp.r2.setSize(b.size * tilesize).setCenter(plan.x * tilesize + b.offset, plan.y * tilesize + b.offset))) continue;
 
@@ -492,7 +497,8 @@ public class BlockRenderer{
     }
 
     public void drawBlocks(){
-        Team pteam = player.team();
+        Team pteam = ViewerPerspective.team();
+        if(pteam == null) return;
 
         drawDestroyed();
         Drawf.beginBuildingShadowSuppression();

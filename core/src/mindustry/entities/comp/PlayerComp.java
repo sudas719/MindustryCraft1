@@ -244,6 +244,7 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         if(unit != null){
             unit.team(team);
             unit.controller(this);
+            unit.ownerName = coloredName();
 
             //this player just became remote, snap the interpolation so it doesn't go wild
             if(unit.isRemote()){

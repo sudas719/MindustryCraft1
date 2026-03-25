@@ -1081,7 +1081,7 @@ public class Blocks{
 
                 @Override
                 public boolean shouldConsume(){
-                    return enabled && !researchActive();
+                    return !researchActive() && super.shouldConsume();
                 }
 
                 @Override
@@ -1105,6 +1105,22 @@ public class Blocks{
                         return;
                     }
                     super.craft();
+                }
+
+                @Override
+                public boolean acceptItem(Building source, Item item){
+                    return !researchActive() && super.acceptItem(source, item);
+                }
+
+                @Override
+                public boolean acceptLiquid(Building source, Liquid liquid){
+                    return !researchActive() && super.acceptLiquid(source, liquid);
+                }
+
+                @Override
+                public void dumpOutputs(){
+                    if(researchActive()) return;
+                    super.dumpOutputs();
                 }
 
                 @Override
@@ -1164,7 +1180,7 @@ public class Blocks{
 
                 @Override
                 public boolean shouldConsume(){
-                    return enabled && !researchActive();
+                    return !researchActive() && super.shouldConsume();
                 }
 
                 @Override
@@ -1188,6 +1204,22 @@ public class Blocks{
                         return;
                     }
                     super.craft();
+                }
+
+                @Override
+                public boolean acceptItem(Building source, Item item){
+                    return !researchActive() && super.acceptItem(source, item);
+                }
+
+                @Override
+                public boolean acceptLiquid(Building source, Liquid liquid){
+                    return !researchActive() && super.acceptLiquid(source, liquid);
+                }
+
+                @Override
+                public void dumpOutputs(){
+                    if(researchActive()) return;
+                    super.dumpOutputs();
                 }
 
                 @Override
@@ -1755,6 +1787,22 @@ public class Blocks{
                         return;
                     }
                     super.craft();
+                }
+
+                @Override
+                public boolean acceptItem(Building source, Item item){
+                    return !researchActive() && super.acceptItem(source, item);
+                }
+
+                @Override
+                public boolean acceptLiquid(Building source, Liquid liquid){
+                    return !researchActive() && super.acceptLiquid(source, liquid);
+                }
+
+                @Override
+                public void dumpOutputs(){
+                    if(researchActive()) return;
+                    super.dumpOutputs();
                 }
 
                 @Override

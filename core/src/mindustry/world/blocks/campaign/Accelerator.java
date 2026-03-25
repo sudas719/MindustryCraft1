@@ -600,9 +600,10 @@ public class Accelerator extends Block{
             drawLandingThrusters(x, y, rotation, thrusterFrame);
             Draw.alpha(1f);
 
-            if(launchBlock.teamRegions[team.id] == launchBlock.teamRegion) Draw.color(team.color);
+            TextureRegion region = team.hasPalette ? launchBlock.teamRegions[team.id] : launchBlock.teamRegion;
+            if(region == launchBlock.teamRegion) Draw.color(team.color);
 
-            Drawf.spinSprite(launchBlock.teamRegions[team.id], x, y, rotation);
+            Drawf.spinSprite(region, x, y, rotation);
 
             Draw.color();
             Draw.scl();

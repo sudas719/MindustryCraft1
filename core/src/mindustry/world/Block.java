@@ -821,8 +821,9 @@ public class Block extends UnlockableContent implements Senseable{
         Draw.rect(reg, plan.drawx(), plan.drawy(), !rotate || !rotateDraw ? 0 : plan.rotation * 90);
 
         if(plan.worldContext && player != null && teamRegion != null && teamRegion.found()){
-            if(teamRegions[player.team().id] == teamRegion) Draw.color(player.team().color);
-            Draw.rect(teamRegions[player.team().id], plan.drawx(), plan.drawy());
+            TextureRegion region = player.team().hasPalette ? teamRegions[player.team().id] : teamRegion;
+            if(region == teamRegion) Draw.color(player.team().color);
+            Draw.rect(region, plan.drawx(), plan.drawy());
             Draw.color();
         }
 

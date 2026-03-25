@@ -24,6 +24,7 @@ import mindustry.io.*;
 import mindustry.logic.*;
 import mindustry.type.*;
 import mindustry.ui.*;
+import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.consumers.*;
 import mindustry.world.meta.*;
@@ -335,7 +336,10 @@ public class Reconstructor extends UnitBlock{
 
                         //upgrade the unit
                         if(progress >= constructTime){
+                            String owner = payload.unit == null ? null : (payload.unit.getControllerName() != null ? payload.unit.getControllerName() : payload.unit.ownerName);
+                            if(owner == null) owner = Build.ownerName(this);
                             payload.unit = upgrade(payload.unit.type).create(payload.unit.team());
+                            if(owner != null) payload.unit.ownerName = owner;
 
                             if(payload.unit.isCommandable()){
                                 //this already checks if it is a valid command for the unit type

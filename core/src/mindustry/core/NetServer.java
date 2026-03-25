@@ -476,6 +476,128 @@ public class NetServer implements ApplicationListener{
         registerCommands();
     }
 
+    private boolean isSpectatorCameraViewer(Player player){
+        Team team = player == null ? null : player.team();
+        return team == Team.derelict || (team != null && !team.data().isAlive());
+    }
+
+    private boolean canFollowSpectatorCamera(@Nullable Player viewer, @Nullable Player target){
+        if(viewer == null || target == null || !target.isAdded() || target.team() == null) return false;
+        Team viewerTeam = viewer.team();
+        return viewerTeam != null && (isSpectatorCameraViewer(viewer) || target.team() == viewerTeam);
+    }
+
+    private boolean fillSpectatorCameraState(Player target, SpectatorCameraStatePacket packet){
+        packet.targetPlayerId = target.id;
+        packet.active = false;
+        packet.viewX = 0f;
+        packet.viewY = 0f;
+        packet.viewWidth = 0f;
+        packet.viewHeight = 0f;
+
+        if(target.con != null && target.con.viewWidth > 0f && target.con.viewHeight > 0f){
+            packet.active = true;
+            packet.viewX = target.con.viewX;
+            packet.viewY = target.con.viewY;
+            packet.viewWidth = target.con.viewWidth;
+            packet.viewHeight = target.con.viewHeight;
+            return true;
+        }
+
+        if(!headless && target.isLocal()){
+            packet.active = true;
+            packet.viewX = Core.camera.position.x;
+            packet.viewY = Core.camera.position.y;
+            packet.viewWidth = Core.camera.width;
+            packet.viewHeight = Core.camera.height;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void sendSpectatorCameraClear(NetConnection con, int targetPlayerId){
+        SpectatorCameraStatePacket packet = new SpectatorCameraStatePacket();
+        packet.targetPlayerId = targetPlayerId;
+        con.send(packet, true);
+    }
+
+    private void clearSpectatorCameraTarget(NetConnection con, boolean notifyClient){
+        int previousTarget = con.spectatorCameraTarget;
+        con.spectatorCameraTarget = -1;
+        if(notifyClient){
+            sendSpectatorCameraClear(con, previousTarget);
+        }
+    }
+
+    private void sendSpectatorCameraState(NetConnection con, Player target){
+        SpectatorCameraStatePacket packet = new SpectatorCameraStatePacket();
+        if(fillSpectatorCameraState(target, packet)){
+            con.send(packet, false);
+        }else{
+            sendSpectatorCameraClear(con, target.id);
+        }
+    }
+
+    public void handleSpectatorCameraTarget(NetConnection con, int targetPlayerId){
+        if(con == null || !con.isConnected()) return;
+
+        if(targetPlayerId < 0){
+            clearSpectatorCameraTarget(con, true);
+            return;
+        }
+
+        Player target = Groups.player.getByID(targetPlayerId);
+        if(!canFollowSpectatorCamera(con.player, target)){
+            clearSpectatorCameraTarget(con, true);
+            return;
+        }
+
+        con.spectatorCameraTarget = targetPlayerId;
+        sendSpectatorCameraState(con, target);
+    }
+
+    public void relaySpectatorCameraState(Player target){
+        if(target == null) return;
+
+        for(NetConnection con : net.getConnections()){
+            if(con == null || !con.isConnected() || con.spectatorCameraTarget != target.id) continue;
+
+            if(!canFollowSpectatorCamera(con.player, target)){
+                clearSpectatorCameraTarget(con, true);
+                continue;
+            }
+
+            sendSpectatorCameraState(con, target);
+        }
+    }
+
+    public void clearSpectatorCameraFollowers(int targetPlayerId){
+        for(NetConnection con : net.getConnections()){
+            if(con != null && con.spectatorCameraTarget == targetPlayerId){
+                clearSpectatorCameraTarget(con, true);
+            }
+        }
+    }
+
+    private void updateLocalSpectatorCameraFollowers(){
+        if(headless) return;
+
+        for(NetConnection con : net.getConnections()){
+            if(con == null || !con.isConnected() || con.spectatorCameraTarget < 0) continue;
+
+            Player target = Groups.player.getByID(con.spectatorCameraTarget);
+            if(!canFollowSpectatorCamera(con.player, target)){
+                clearSpectatorCameraTarget(con, true);
+                continue;
+            }
+
+            if(target != null && target.isLocal()){
+                sendSpectatorCameraState(con, target);
+            }
+        }
+    }
+
     @Override
     public void init(){
         mods.eachClass(mod -> mod.registerClientCommands(clientCommands));
@@ -2225,6 +2347,7 @@ public class NetServer implements ApplicationListener{
             if(Config.showConnectMessages.bool()) info(message);
         }
 
+        netServer.clearSpectatorCameraFollowers(player.id);
         player.remove();
         player.con.hasDisconnected = true;
         netServer.helpMenuPageByPlayer.remove(player.uuid(), 0);
@@ -2897,6 +3020,10 @@ public class NetServer implements ApplicationListener{
         if(invalid(pointerY)) pointerY = 0f;
         if(invalid(rotation)) rotation = 0f;
         if(invalid(baseRotation)) baseRotation = 0f;
+        if(invalid(viewX)) viewX = x;
+        if(invalid(viewY)) viewY = y;
+        if(invalid(viewWidth) || viewWidth <= 0f) viewWidth = 0f;
+        if(invalid(viewHeight) || viewHeight <= 0f) viewHeight = 0f;
 
         boolean verifyPosition = netServer.admins.isStrict() && headless;
 
@@ -2906,6 +3033,7 @@ public class NetServer implements ApplicationListener{
         con.viewY = viewY;
         con.viewWidth = viewWidth;
         con.viewHeight = viewHeight;
+        netServer.relaySpectatorCameraState(player);
 
         //disable shooting when a mech flies
         if(!player.dead() && player.unit().isFlying() && player.unit() instanceof Mechc){
@@ -3160,6 +3288,7 @@ public class NetServer implements ApplicationListener{
             }
 
             sync();
+            updateLocalSpectatorCameraFollowers();
 
             if(timer.get(2, identityPingInterval)){
                 Groups.player.each(p -> !p.isLocal(), this::sendIdentityPing);

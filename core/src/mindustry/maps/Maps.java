@@ -37,8 +37,7 @@ public class Maps{
     };
 
     /** List of all built-in maps. Filenames only. */
-    private static String[] defaultMapNames = {"SCtester"};
-    private static String onlyBuiltinMap = "SCtester";
+    private static String[] defaultMapNames = {"LightShade", "SCtester"};
     /** Maps tagged as PvP */
     private static String[] pvpMaps = {"veins", "glacier", "passage"};
     /** If true, the defaultMapNames are prefixed with default/ */
@@ -124,25 +123,30 @@ public class Maps{
         }
     }
 
+    private boolean isDefaultBuiltinMap(Fi file, boolean custom){
+        if(custom || file == null) return false;
+        String folder = useDefaultFolder ? "default" : "maps";
+        Fi parent = file.parent();
+        return parent != null && parent.name().equalsIgnoreCase(folder);
+    }
+
     /** Load all maps. Should be called at application start. */
     public void load(){
         //defaults; must work
         try{
-            boolean loadedDefault = false;
+            ObjectSet<String> loadedDefault = new ObjectSet<>();
             for(String name : defaultMapNames){
                 Fi file = Core.files.internal((useDefaultFolder ? "maps/default/" : "maps/") + name + "." + mapExtension);
                 if(!file.exists()) continue;
                 loadMap(file, false);
-                loadedDefault = true;
+                loadedDefault.add(file.nameWithoutExtension());
             }
 
-            if(!loadedDefault){
-                Fi folder = Core.files.internal(useDefaultFolder ? "maps/default" : "maps");
-                if(folder.exists()){
-                    for(Fi file : folder.list()){
-                        if(file.extension().equalsIgnoreCase(mapExtension)){
-                            loadMap(file, false);
-                        }
+            Fi folder = Core.files.internal(useDefaultFolder ? "maps/default" : "maps");
+            if(folder.exists()){
+                for(Fi file : folder.list()){
+                    if(file.extension().equalsIgnoreCase(mapExtension) && loadedDefault.add(file.nameWithoutExtension())){
+                        loadMap(file, false);
                     }
                 }
             }
@@ -187,13 +191,6 @@ public class Maps{
             }
         });
 
-        //keep only one built-in map; custom/workshop/mod maps are unaffected
-        maps.removeAll(map ->
-            !map.custom &&
-            !map.workshop &&
-            map.mod == null &&
-            !map.file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)
-        );
     }
 
     public void reload(){
@@ -397,7 +394,7 @@ public class Maps{
     public void loadPreviews(){
 
         for(Map map : maps){
-            if(!map.custom && map.file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)){
+            if(isDefaultBuiltinMap(map.file, map.custom)){
                 queueNewPreview(map);
                 continue;
             }
@@ -496,9 +493,8 @@ public class Maps{
     private Map loadMap(Fi file, boolean custom) throws IOException{
         Map map = MapIO.createMap(file, custom);
 
-        if(!custom && file.nameWithoutExtension().equalsIgnoreCase(onlyBuiltinMap)){
-            //force canonical display name for this built-in map
-            map.tags.put("name", onlyBuiltinMap);
+        if(isDefaultBuiltinMap(file, custom) && (map.name() == null || Strings.stripColors(map.name()).equalsIgnoreCase("oh no"))){
+            map.tags.put("name", file.nameWithoutExtension());
         }else if(!custom && Strings.stripColors(map.name()).equalsIgnoreCase("oh no")){
             //fallback for broken/default metadata names
             map.tags.put("name", file.nameWithoutExtension());

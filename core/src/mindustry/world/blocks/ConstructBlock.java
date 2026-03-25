@@ -111,6 +111,7 @@ public class ConstructBlock extends Block{
 
         float healthf = tile.build == null ? 1f : tile.build.healthf();
         Seq<Building> prev = tile.build instanceof ConstructBuild co ? co.prevBuild : null;
+        String previousOwner = tile.build == null ? null : tile.build.ownerName;
 
         if(block instanceof OverlayFloor overlay){
             tile.setOverlay(overlay);
@@ -134,8 +135,11 @@ public class ConstructBlock extends Block{
                 tile.build.overwrote(prev);
             }
 
-            if(builder != null && builder.getControllerName() != null){
-                tile.build.lastAccessed = builder.getControllerName();
+            String owner = Build.ownerName(builder);
+            if(owner == null) owner = previousOwner;
+            if(owner != null){
+                tile.build.lastAccessed = owner;
+                tile.build.ownerName = owner;
             }
 
             //make sure block indexer knows it's damaged
