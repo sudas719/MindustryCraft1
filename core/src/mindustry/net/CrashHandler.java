@@ -81,12 +81,17 @@ public class CrashHandler{
                     Version.type = map.get("type");
                     Version.number = Integer.parseInt(map.get("number"));
                     Version.modifier = map.get("modifier");
-                    if(map.get("build").contains(".")){
-                        String[] split = map.get("build").split("\\.");
+                    Version.commitHash = map.get("commitHash", "unknown");
+                    Version.buildDate = map.get("buildDate", "unknown");
+                    Version.displayBuild = map.get("displayBuild", map.get("build", "0"));
+                    String rawBuild = map.get("build", Version.displayBuild);
+                    if(rawBuild.contains(".")){
+                        String[] split = rawBuild.split("\\.");
                         Version.build = Integer.parseInt(split[0]);
-                        Version.revision = Integer.parseInt(split[1]);
+                        Version.revision = split.length > 1 ? Integer.parseInt(split[1]) : 0;
                     }else{
-                        Version.build = Strings.canParseInt(map.get("build")) ? Integer.parseInt(map.get("build")) : -1;
+                        Version.build = Strings.canParseInt(rawBuild) ? Integer.parseInt(rawBuild) : -1;
+                        Version.revision = 0;
                     }
                 }catch(Throwable e){
                     e.printStackTrace();

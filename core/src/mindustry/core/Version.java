@@ -16,6 +16,8 @@ public class Version{
     public static String commitHash = "unknown";
     /** Date that this version was built. */
     public static String buildDate = "unknown";
+    /** Full build label shown in UI/logs, e.g. '146.2' or '0.6.2'. */
+    public static String displayBuild = "0";
     /** Number specifying the major version, e.g. '4' */
     public static int number;
     /** Build number, e.g. '43'. set to '-1' for custom builds. */
@@ -38,47 +40,75 @@ public class Version{
         modifier = map.get("modifier");
         commitHash = map.get("commitHash", "unknown");
         buildDate = map.get("buildDate", "unknown");
-        if(map.get("build").contains(".")){
-            String[] split = map.get("build").split("\\.");
+        displayBuild = map.get("displayBuild", map.get("build", "0"));
+        String rawBuild = map.get("build", displayBuild);
+        if(rawBuild.contains(".")){
+            String[] split = rawBuild.split("\\.");
             try{
                 build = Integer.parseInt(split[0]);
-                revision = Integer.parseInt(split[1]);
+                revision = split.length > 1 ? Integer.parseInt(split[1]) : 0;
             }catch(Throwable e){
                 e.printStackTrace();
                 build = -1;
+                revision = 0;
             }
         }else{
-            build = Strings.canParseInt(map.get("build")) ? Integer.parseInt(map.get("build")) : -1;
+            build = Strings.canParseInt(rawBuild) ? Integer.parseInt(rawBuild) : -1;
+            revision = 0;
         }
     }
 
     /** @return whether the current game version is greater than the specified version string, e.g. "120.1"*/
     public static boolean isAtLeast(String str){
-        return isAtLeast(build, revision, str);
+        if(str == null || str.isEmpty()) return true;
+        return isAtLeast(buildString(), str);
     }
 
     /** @return whether the version numbers are greater than the specified version string, e.g. "120.1"*/
     public static boolean isAtLeast(int build, int revision, String str){
-        if(build <= 0 || str == null || str.isEmpty()) return true;
-
-        int dot = str.indexOf('.');
-        if(dot != -1){
-            int major = Strings.parseInt(str.substring(0, dot), 0), minor = Strings.parseInt(str.substring(dot + 1), 0);
-            return build > major || (build == major && revision >= minor);
-        }else{
-            return build >= Strings.parseInt(str, 0);
-        }
+        if(str == null || str.isEmpty() || build < 0) return true;
+        return isAtLeast(build + (revision == 0 ? "" : "." + revision), str);
     }
 
     public static String buildString(){
+        if(displayBuild != null && !displayBuild.isEmpty()) return displayBuild;
         return build < 0 ? "custom" : build + (revision == 0 ? "" : "." + revision);
+    }
+
+    public static boolean isInit(){
+        return build == 0 && revision == 0 && (displayBuild == null || displayBuild.isEmpty() || displayBuild.equals("0"));
     }
 
     /** get menu version without colors */
     public static String combined(){
         if(build == -1){
-            return "custom build";
+            return buildString().equals("custom") ? "custom build" : buildString();
         }
-        return (type.equals("official") ? modifier : type) + " build " + build + (revision == 0 ? "" : "." + revision) + (commitHash.equals("unknown") ? "" : " (" + commitHash + ")");
+        return (type.equals("official") ? modifier : type) + " build " + buildString() + (commitHash.equals("unknown") ? "" : " (" + commitHash + ")");
+    }
+
+    private static boolean isAtLeast(String current, String required){
+        IntSeq currentParts = versionParts(current), requiredParts = versionParts(required);
+        if(currentParts.size == 0 || requiredParts.size == 0) return true;
+
+        int max = Math.max(currentParts.size, requiredParts.size);
+        for(int i = 0; i < max; i++){
+            int cur = i < currentParts.size ? currentParts.get(i) : 0;
+            int req = i < requiredParts.size ? requiredParts.get(i) : 0;
+            if(cur != req) return cur > req;
+        }
+        return true;
+    }
+
+    private static IntSeq versionParts(String version){
+        IntSeq parts = new IntSeq();
+        if(version == null || version.isEmpty()) return parts;
+
+        for(String part : version.split("\\.")){
+            if(!Strings.canParseInt(part)) return new IntSeq();
+            parts.add(Integer.parseInt(part));
+        }
+
+        return parts;
     }
 }

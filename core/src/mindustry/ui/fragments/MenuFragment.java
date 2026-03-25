@@ -105,7 +105,7 @@ public class MenuFragment{
         }
 
         String[] versionLines = {
-            "v0.6",
+            "v" + (Version.isInit() ? "[init]" : Version.buildString()),
             "MindustryCraft1",
             "Love From StarCraft2"
         };

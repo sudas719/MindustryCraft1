@@ -367,7 +367,7 @@ public class ServerControl implements ApplicationListener{
         });
 
         handler.register("version", "Displays server version info.", arg -> {
-            info("Version: Mindustry @-@ @ / build @", Version.number, Version.modifier, Version.type, Version.build + (Version.revision == 0 ? "" : "." + Version.revision));
+            info("Version: Mindustry @-@ @ / build @", Version.number, Version.modifier, Version.type, Version.buildString());
             info("Java Version: @", OS.javaVersion);
         });
 

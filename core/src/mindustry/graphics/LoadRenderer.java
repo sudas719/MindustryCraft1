@@ -479,7 +479,7 @@ public class LoadRenderer implements Disposable{
             font.getData().markupEnabled = true;
             font.setColor(Pal.accent);
             Draw.color(Color.black);
-            font.draw(red + "[[[[ " + key + " ]]\n" + orange + "<" + Version.modifier + "  " + (Version.build == 0 ? "[init]" : Version.buildString()) + ">", w/2f, h/2f + 110*s, Align.center);
+            font.draw(red + "[[[[ " + key + " ]]\n" + orange + "<" + Version.modifier + "  " + (Version.isInit() ? "[init]" : Version.buildString()) + ">", w/2f, h/2f + 110*s, Align.center);
         }
 
         Draw.flush();
