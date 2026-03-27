@@ -121,6 +121,10 @@ public class BlockRenderer{
         return tile != null && tile.block().isStatic();
     }
 
+    private boolean renderDerelictScrapWallInFog(Building build){
+        return build != null && build.block == Blocks.scrapWall && build.team == Team.derelict;
+    }
+
     private void drawProjectedBuildingShadow(Building build){
         float size = build.block.size * tilesize;
         float half = size / 2f;
@@ -513,20 +517,25 @@ public class BlockRenderer{
                 Draw.z(Layer.block);
 
                 boolean visible = (build == null || !build.inFogTo(pteam));
+                boolean renderInFog = renderDerelictScrapWallInFog(build);
+                boolean foggedDerelict = renderInFog && !visible;
 
                 //comment wasVisible part for hiding?
-                if(block != Blocks.air && (visible || build.wasVisible)){
-                    if(build != null){
+                if(block != Blocks.air && (visible || renderInFog || build.wasVisible)){
+                    if(build != null && !foggedDerelict){
                         Draw.z(Layer.block - 1f);
                         drawProjectedBuildingShadow(build);
                         Draw.z(Layer.block);
                     }
 
+                    if(foggedDerelict){
+                        Draw.mixcol(Color.black, 0.45f);
+                    }
                     block.drawBase(tile);
                     Draw.reset();
                     Draw.z(Layer.block);
 
-                    if(block.customShadow && (build == null || block.isStatic())){
+                    if(!foggedDerelict && block.customShadow && (build == null || block.isStatic())){
                         Draw.z(Layer.block - 1);
                         block.drawShadow(tile);
                         Draw.z(Layer.block);
@@ -542,18 +551,18 @@ public class BlockRenderer{
                             }
                         }
 
-                        if(build.damaged()){
+                        if(!foggedDerelict && build.damaged()){
                             Draw.z(Layer.blockCracks);
                             build.drawCracks();
                             Draw.z(Layer.block);
                         }
 
-                        if(build.team != pteam){
+                        if(!foggedDerelict && build.team != pteam){
                             if(build.block.drawTeamOverlay){
                                 build.drawTeam();
                                 Draw.z(Layer.block);
                             }
-                        }else if(renderer.drawStatus && block.hasConsumers){
+                        }else if(!foggedDerelict && renderer.drawStatus && block.hasConsumers){
                             build.drawStatus();
                         }
                     }

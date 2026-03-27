@@ -513,8 +513,9 @@ public class UnitFactory extends UnitBlock{
             }
 
             if(efficiency > 0 && currentPlan != -1){
-                time += edelta() * speedScl * Vars.state.rules.unitBuildSpeed(team);
-                progress += edelta() * Vars.state.rules.unitBuildSpeed(team);
+                // SC2 factory training should use the authored plan time directly.
+                time += edelta() * speedScl;
+                progress += edelta();
                 speedScl = Mathf.lerpDelta(speedScl, 1f, 0.05f);
             }else{
                 speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
@@ -1026,12 +1027,14 @@ public class UnitFactory extends UnitBlock{
             }
             if(tile != null && tile.build instanceof ConstructBlock.ConstructBuild cons && addon != null){
                 if(cons.current != null && cons.current.id == addonBuildBlock && cons.progress < 1f){
+                    ItemStack[] refundStacks = refund ? addonRefundStacks() : ItemStack.empty;
                     ConstructBlock.consumePrepaid(tile.pos());
                     ConstructBlock.clearForceBuildTime(tile.pos());
                     if(refund){
                         refundAddonCost();
                         refunded = true;
                     }
+                    ConstructBlock.showCancelRefundFeedback(team, addon, tile.drawx(), tile.drawy(), refundStacks);
                     ConstructBlock.deconstructFinish(tile, addon, null);
                 }
             }
@@ -1150,7 +1153,6 @@ public class UnitFactory extends UnitBlock{
             }
 
             boolean canBuild = efficiency > 0 && payload == null;
-            float speed = Vars.state.rules.unitBuildSpeed(team);
             int activeSlots = activeUnitSlots();
 
             boolean slot1Active = currentPlan != -1;
@@ -1158,15 +1160,16 @@ public class UnitFactory extends UnitBlock{
 
             if(canBuild){
                 if(slot1Active){
-                    time += edelta() * speedScl * speed;
-                    progress += edelta() * speed;
+                    // SC2 factory training should use the authored plan time directly.
+                    time += edelta() * speedScl;
+                    progress += edelta();
                     speedScl = Mathf.lerpDelta(speedScl, 1f, 0.05f);
                 }else{
                     speedScl = Mathf.lerpDelta(speedScl, 0f, 0.05f);
                 }
 
                 if(slot2Active){
-                    progress2 += edelta() * speed;
+                    progress2 += edelta();
                     speedScl2 = Mathf.lerpDelta(speedScl2, 1f, 0.05f);
                 }else{
                     speedScl2 = Mathf.lerpDelta(speedScl2, 0f, 0.05f);
@@ -1316,10 +1319,20 @@ public class UnitFactory extends UnitBlock{
         private void refundAddonCost(){
             CoreBuild core = team.core();
             if(core == null) return;
+            for(ItemStack stack : addonRefundStacks()){
+                if(stack.amount > 0){
+                    core.items.add(stack.item, stack.amount);
+                }
+            }
+        }
+
+        private ItemStack[] addonRefundStacks(){
+            Seq<ItemStack> refunds = new Seq<>(2);
             int refundCrystal = (int)Mathf.ceil(addonCrystalCost * 0.75f);
             int refundGas = (int)Mathf.ceil(addonGasCost * 0.75f);
-            if(refundCrystal > 0) core.items.add(Items.graphite, refundCrystal);
-            if(refundGas > 0) core.items.add(Items.highEnergyGas, refundGas);
+            if(refundCrystal > 0) refunds.add(new ItemStack(Items.graphite, refundCrystal));
+            if(refundGas > 0) refunds.add(new ItemStack(Items.highEnergyGas, refundGas));
+            return refunds.isEmpty() ? ItemStack.empty : refunds.toArray(ItemStack.class);
         }
 
         private void clearAddonBuildState(){

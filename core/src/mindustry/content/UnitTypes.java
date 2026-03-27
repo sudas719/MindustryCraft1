@@ -9707,7 +9707,8 @@ public class UnitTypes{
 
         nova = new UnitType("nova"){{
             speed = 3.94f;
-            accel = 10f;
+            accel = 0.1f;
+            drag = 0.11f;
             hitSizeFromRegion = false;
             spriteHitSizeRatio = 1.5f;
             hitSize = 0.875f * tilesize;

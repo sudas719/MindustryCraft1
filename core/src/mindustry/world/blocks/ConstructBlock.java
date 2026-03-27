@@ -3,8 +3,10 @@ package mindustry.world.blocks;
 import arc.*;
 import arc.Graphics.*;
 import arc.Graphics.Cursor.*;
+import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
+import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.util.io.*;
@@ -17,8 +19,10 @@ import mindustry.game.EventType.*;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.io.*;
 import mindustry.logic.*;
 import mindustry.type.*;
+import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
@@ -30,6 +34,7 @@ import static mindustry.Vars.*;
 
 /** A block in the process of construction. */
 public class ConstructBlock extends Block{
+    private static final float minConstructHealthf = 0.05f;
     private static final ConstructBlock[] consBlocks = new ConstructBlock[maxBlockSize];
 
     private static long lastTime = 0;
@@ -90,6 +95,32 @@ public class ConstructBlock extends Block{
         forceBuildTime.remove(pos);
     }
 
+    @Remote(called = Loc.server, targets = Loc.both, forward = true)
+    public static void cancelConstruct(Player player, int buildPos){
+        if(player == null) return;
+
+        Building build = world.build(buildPos);
+        if(!(build instanceof ConstructBuild cons) || build.team() != player.team()) return;
+        if(!cons.wasConstructing || cons.current == null || cons.current == Blocks.air || cons.progress >= 1f) return;
+
+        CoreBuild core = cons.team.core();
+        boolean canRefund = core != null && !state.rules.infiniteResources && !cons.team.rules().infiniteResources;
+        ItemStack[] refunds = canRefund ? cancelRefundStacks(cons.current) : ItemStack.empty;
+
+        consumePrepaid(cons.tile.pos());
+        clearForceBuildTime(cons.tile.pos());
+
+        if(canRefund){
+            for(ItemStack stack : refunds){
+                core.items.add(stack.item, stack.amount);
+            }
+        }
+
+        showCancelRefundFeedback(cons.team, cons.current, cons.x, cons.y, refunds);
+        Fx.blockExplosionSmoke.at(cons.x, cons.y);
+        cons.tile.remove();
+    }
+
     @Remote(called = Loc.server)
     public static void deconstructFinish(Tile tile, Block block, Unit builder){
         if(tile == null) return;
@@ -111,6 +142,7 @@ public class ConstructBlock extends Block{
 
         float healthf = tile.build == null ? 1f : tile.build.healthf();
         Seq<Building> prev = tile.build instanceof ConstructBuild co ? co.prevBuild : null;
+        Vec2 pendingCommand = tile.build instanceof ConstructBuild co && co.commandPos != null ? co.commandPos.cpy() : null;
         String previousOwner = tile.build == null ? null : tile.build.ownerName;
 
         if(block instanceof OverlayFloor overlay){
@@ -129,6 +161,10 @@ public class ConstructBlock extends Block{
 
             if(config != null){
                 tile.build.configured(builder, config);
+            }
+
+            if(pendingCommand != null && tile.build.isCommandable()){
+                tile.build.onCommand(pendingCommand);
             }
 
             if(prev != null && prev.size > 0){
@@ -196,6 +232,73 @@ public class ConstructBlock extends Block{
         }
     }
 
+    private static ItemStack[] cancelRefundStacks(Block block){
+        if(block == null || block.requirements.length == 0) return ItemStack.empty;
+
+        Seq<ItemStack> refunds = new Seq<>();
+        for(ItemStack requirement : block.requirements){
+            int amount = Mathf.round(requirement.amount * state.rules.buildCostMultiplier);
+            int refund = Mathf.ceil(amount * 0.75f);
+            if(refund > 0){
+                refunds.add(new ItemStack(requirement.item, refund));
+            }
+        }
+        return refunds.isEmpty() ? ItemStack.empty : refunds.toArray(ItemStack.class);
+    }
+
+    public static void showCancelRefundFeedback(Team team, Block block, float x, float y, ItemStack[] refunds){
+        float offset = block == null ? 0f : block.size * tilesize * 0.42f;
+        float cancelY = y + offset + 8f;
+        float refundY = cancelY - 14f;
+        float duration = 1f;
+
+        String refundText = buildRefundText(refunds);
+
+        if(net.server()){
+            for(Player other : Groups.player){
+                if(other == null) continue;
+                showCancelFeedbackTo(other, team, refundText, x, cancelY, refundY, duration);
+            }
+        }else if(!net.client() && player != null){
+            showLocalCancelFeedback(player.team(), team, refundText, x, cancelY, refundY, duration);
+        }
+    }
+
+    private static void showCancelFeedbackTo(Player viewer, Team owner, @Nullable String refundText, float x, float cancelY, float refundY, float duration){
+        if(viewer == null) return;
+
+        if(viewer.isLocal() && !headless){
+            showLocalCancelFeedback(viewer.team(), owner, refundText, x, cancelY, refundY, duration);
+            return;
+        }
+
+        if(viewer.con == null) return;
+
+        Call.labelReliable(viewer.con, "[white]\u5df2\u53d6\u6d88![]", duration, x, cancelY);
+        if(refundText != null && viewer.team() == owner){
+            Call.labelReliable(viewer.con, refundText, duration, x, refundY);
+        }
+    }
+
+    private static void showLocalCancelFeedback(Team viewer, Team owner, @Nullable String refundText, float x, float cancelY, float refundY, float duration){
+        Menus.labelReliable("[white]\u5df2\u53d6\u6d88![]", duration, x, cancelY);
+        if(refundText != null && viewer == owner){
+            Menus.labelReliable(refundText, duration, x, refundY);
+        }
+    }
+
+    private static @Nullable String buildRefundText(ItemStack[] refunds){
+        if(refunds == null || refunds.length == 0) return null;
+
+        StringBuilder builder = new StringBuilder();
+        for(ItemStack stack : refunds){
+            if(stack == null || stack.amount <= 0) continue;
+            if(builder.length() > 0) builder.append('\n');
+            builder.append(stack.item.emoji()).append(' ').append(stack.amount);
+        }
+        return builder.length() == 0 ? null : builder.toString();
+    }
+
     @Override
     public boolean isHidden(){
         return true;
@@ -212,6 +315,7 @@ public class ConstructBlock extends Block{
         public float progress = 0;
         public float buildCost;
         public @Nullable Object lastConfig;
+        public @Nullable Vec2 commandPos;
         public @Nullable Unit lastBuilder;
         public boolean wasConstructing, activeDeconstruct;
         public float constructColor;
@@ -251,6 +355,27 @@ public class ConstructBlock extends Block{
         @Override
         public Cursor getCursor(){
             return interactable(player.team()) ? SystemCursor.hand : SystemCursor.arrow;
+        }
+
+        @Override
+        public boolean isCommandable(){
+            return canCommandIncomplete();
+        }
+
+        @Override
+        public @Nullable Vec2 getCommandPosition(){
+            return canCommandIncomplete() ? commandPos : null;
+        }
+
+        @Override
+        public void onCommand(Vec2 target){
+            if(target == null || !canCommandIncomplete()) return;
+
+            if(commandPos == null){
+                commandPos = new Vec2(target);
+            }else{
+                commandPos.set(target);
+            }
         }
 
         @Override
@@ -358,8 +483,7 @@ public class ConstructBlock extends Block{
 
             progress = Mathf.clamp(progress + maxProgress);
 
-            //Update health based on construction progress
-            health = current.health * progress;
+            health = current.health * constructHealthf(progress);
 
             if(progress >= 1f || (state.rules.infiniteResources && !ConstructBlock.isForceBuildTime(tile.pos()))){
                 boolean canFinish = true;
@@ -499,6 +623,10 @@ public class ConstructBlock extends Block{
             return progress;
         }
 
+        public boolean canCommandIncomplete(){
+            return wasConstructing && progress < 1f && current != null && current != Blocks.air && current.commandable;
+        }
+
         public void setConstruct(Block previous, Block block){
             if(block == null) return;
 
@@ -521,7 +649,7 @@ public class ConstructBlock extends Block{
 
             //Initialize health based on current progress
             maxHealth(current.health);
-            health = current.health * progress;
+            health = current.health * constructHealthf(progress);
 
             pathfinder.updateTile(tile);
         }
@@ -542,9 +670,13 @@ public class ConstructBlock extends Block{
             pathfinder.updateTile(tile);
         }
 
+        private float constructHealthf(float progress){
+            return minConstructHealthf + (1f - minConstructHealthf) * Mathf.clamp(progress);
+        }
+
         @Override
         public byte version(){
-            return 1;
+            return 2;
         }
 
         @Override
@@ -564,6 +696,8 @@ public class ConstructBlock extends Block{
                     write.i(itemsLeft[i]);
                 }
             }
+
+            TypeIO.writeVecNullable(write, commandPos);
         }
 
         @Override
@@ -592,6 +726,10 @@ public class ConstructBlock extends Block{
 
             if(previous == null) previous = Blocks.air;
             if(current == null) current = Blocks.air;
+
+            if(revision >= 2){
+                commandPos = TypeIO.readVecNullable(read);
+            }
 
             buildCost = current.buildTime * state.rules.buildCostMultiplier;
         }

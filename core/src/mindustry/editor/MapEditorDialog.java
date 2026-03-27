@@ -794,6 +794,7 @@ public class MapEditorDialog extends Dialog implements Disposable{
 
         Table[] configTable = {null};
         Block[] lastBlock = {null};
+        int[] lastPickRevision = {-1};
 
         cont.table(search -> {
             search.image(Icon.zoom).padRight(8);
@@ -807,13 +808,14 @@ public class MapEditorDialog extends Dialog implements Disposable{
             configTable[0] = t;
         }, () -> editor.drawBlock != null && editor.drawBlock.editorConfigurable).with(c -> c.setEnforceMinSize(true)).update(col -> {
 
-            if(lastBlock[0] != editor.drawBlock){
+            if(lastBlock[0] != editor.drawBlock || lastPickRevision[0] != editor.pickRevision){
                 configTable[0].clear();
                 if(editor.drawBlock != null){
                     editor.drawBlock.buildEditorConfig(configTable[0]);
                     col.invalidateHierarchy();
                 }
                 lastBlock[0] = editor.drawBlock;
+                lastPickRevision[0] = editor.pickRevision;
             }
         }).growX().row();
         cont.add(pane).expandY().growX().top().left();

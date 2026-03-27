@@ -88,7 +88,7 @@ allprojects{
         }
 
         getBuildVersion = {
-            if(!project.hasProperty("buildversion")) return "0.6.2"
+            if(!project.hasProperty("buildversion")) return "0.6.3"
             return project.getProperties()["buildversion"]
         }
 

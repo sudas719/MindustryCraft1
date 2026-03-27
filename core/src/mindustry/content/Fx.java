@@ -135,19 +135,7 @@ public class Fx{
         Fill.square(x, y, size, 45f);
     }),
 
-    itemTransfer = new Effect(12f, e -> {
-        if(!(e.data instanceof Position to)) return;
-        Tmp.v1.set(e.x, e.y).interpolate(Tmp.v2.set(to), e.fin(), Interp.pow3)
-        .add(Tmp.v2.sub(e.x, e.y).nor().rotate90(1).scl(Mathf.randomSeedRange(e.id, 1f) * e.fslope() * 10f));
-        float x = Tmp.v1.x, y = Tmp.v1.y;
-        float size = 1f;
-
-        color(Pal.accent);
-        Fill.circle(x, y, e.fslope() * 3f * size);
-
-        color(e.color);
-        Fill.circle(x, y, e.fslope() * 1.5f * size);
-    }),
+    itemTransfer = new Effect(12f, e -> {}),
 
     pointBeam = new Effect(25f, 300f, e -> {
         if(!(e.data instanceof Position pos)) return;

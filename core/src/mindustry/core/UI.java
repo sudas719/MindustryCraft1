@@ -422,6 +422,11 @@ public class UI implements ApplicationListener, Loadable{
 
     /** Shows a label in the world. This label is behind everything. Does not fade. */
     public void showLabel(String info, float duration, float worldx, float worldy){
+        showLabel(info, duration, worldx, worldy, 1f, Color.white.rgba8888());
+    }
+
+    /** Shows a styled label in the world. This label is behind everything. Does not fade. */
+    public void showLabel(String info, float duration, float worldx, float worldy, float fontScale, int color){
         var table = new Table(Styles.black3).margin(4);
         table.touchable = Touchable.disabled;
         table.update(() -> {
@@ -430,7 +435,10 @@ public class UI implements ApplicationListener, Loadable{
             table.setPosition(v.x, v.y, Align.center);
         });
         table.actions(Actions.delay(duration), Actions.remove());
-        table.add(info).style(Styles.outlineLabel);
+        Label label = table.add(info).style(Styles.outlineLabel).get();
+        label.setAlignment(Align.center);
+        label.setFontScale(fontScale);
+        label.setColor(Tmp.c1.set(color));
         table.pack();
         table.act(0f);
         //make sure it's at the back

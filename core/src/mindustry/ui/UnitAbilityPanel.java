@@ -44,13 +44,14 @@ import static mindustry.Vars.*;
 public class UnitAbilityPanel extends Table{
     private static final int COLS = 5;
     private static final int ROWS = 3;
-    public static float abilityButtonSize = 64f;
-    public static float abilityIconSize = 40f;
-    public static float abilityKeyScale = 0.6f;
+    private static final float ABILITY_PANEL_SCALE = 1.32f;
+    public static float abilityButtonSize = 64f * ABILITY_PANEL_SCALE;
+    public static float abilityIconSize = 40f * ABILITY_PANEL_SCALE;
+    public static float abilityKeyScale = 0.6f * ABILITY_PANEL_SCALE;
     public static final Color abilityBorderColor = Color.valueOf("2f5f2f");
-    private static final float ABILITY_BUTTON_PAD = 2f;
+    private static final float ABILITY_BUTTON_PAD = 2f * ABILITY_PANEL_SCALE;
     private static final float PANEL_MARGIN = 0f;
-    private static final float HOVER_INFO_GAP = 6f;
+    private static final float HOVER_INFO_GAP = 6f * ABILITY_PANEL_SCALE;
 
     //RTS command mode state
     public enum CommandMode{
@@ -110,6 +111,7 @@ public class UnitAbilityPanel extends Table{
     private @Nullable Block placingBlock;
     private @Nullable BuildInfo hoverBuildInfo;
     private @Nullable AbilityInfo hoverAbilityInfo;
+    private final Seq<String> hoverRequirementNames = new Seq<>();
     private final GlyphLayout hoverInfoLayout = new GlyphLayout();
     private final AbilityInfo targetHintInfo = new AbilityInfo();
     private Table mainPanel;
@@ -176,6 +178,7 @@ public class UnitAbilityPanel extends Table{
 
     private static class AbilityInfo{
         String key = "";
+        @Nullable Ability ability;
         String name = "";
         String description = "";
         @Nullable String costLineOverride;
@@ -1458,6 +1461,12 @@ public class UnitAbilityPanel extends Table{
 
         ConstructBuild cons = (ConstructBuild)build;
         boolean incomplete = cons.current != null && cons.current != Blocks.air && cons.progress < 1f;
+        boolean canRallyIncomplete = incomplete && cons.canCommandIncomplete();
+
+        if(canRallyIncomplete && activeCommand == CommandMode.RALLY){
+            buildCoreRallyPanel();
+            return;
+        }
 
         Table grid = new Table();
         for(int r = 0; r < ROWS; r++){
@@ -1476,6 +1485,8 @@ public class UnitAbilityPanel extends Table{
                     }else{
                         addEmpty(grid);
                     }
+                }else if(r == 1 && c == 4 && canRallyIncomplete){
+                    addIconButton(grid, "y", Icon.commandRally, () -> true, () -> enterCommandMode(CommandMode.RALLY));
                 }else if(r == 2 && c == 4 && incomplete){
                     addIconButton(grid, "Esc", Icon.cancel, () -> true, () -> cancelConstruct(cons));
                 }else{
@@ -2691,6 +2702,7 @@ public class UnitAbilityPanel extends Table{
         appendHoverLine(text, hoverTitle(info));
         appendHoverLine(text, hoverCostLine(info));
         appendHoverLine(text, hoverDescription(info));
+        appendHoverLine(text, hoverTechRequirement(info));
         appendHoverLine(text, hoverDetailLine(info));
         return text.toString();
     }
@@ -2772,6 +2784,53 @@ public class UnitAbilityPanel extends Table{
         }
 
         return tr("左键点击等同于快捷键。", "Left-click acts as the hotkey.");
+    }
+
+    private @Nullable String hoverTechRequirement(AbilityInfo info){
+        Seq<String> missing = collectMissingTechRequirements(info);
+        if(missing.isEmpty()) return null;
+
+        StringBuilder text = new StringBuilder();
+        text.append(tr("科技需求:", "Tech Requirements:"));
+        for(int i = 0; i < missing.size; i++){
+            text.append('\n')
+            .append("[red]")
+            .append(localizeDisplayName(missing.get(i)))
+            .append("[]");
+        }
+        return text.toString();
+    }
+
+    private Seq<String> collectMissingTechRequirements(AbilityInfo info){
+        hoverRequirementNames.clear();
+        if(info == null || player == null || player.team() == null) return hoverRequirementNames;
+
+        if(info.block != null){
+            Build.addMissingPrerequisites(info.block, player.team(), hoverRequirementNames);
+            return hoverRequirementNames;
+        }
+
+        addMissingAbilityTechRequirements(info.ability, player.team(), hoverRequirementNames);
+        return hoverRequirementNames;
+    }
+
+    private void addMissingAbilityTechRequirements(@Nullable Ability ability, @Nullable Team team, Seq<String> missing){
+        if(ability == null || team == null || missing == null) return;
+
+        switch(ability){
+            case stimpack -> addMissingRequirement(missing, UnitTypes.barracksStimpackLevel(team) > 0, "Stimpack");
+            case hellionToHellbat, hellbatToHellion -> addMissingRequirement(missing, UnitTypes.infantryWeaponHasArmory(team), "Armory");
+            case ghostCloak -> addMissingRequirement(missing, UnitTypes.ghostCamoLevel(team) > 0, "Ghost Camouflage");
+            case bansheeCloak -> addMissingRequirement(missing, UnitTypes.bansheeCloakFieldLevel(team) > 0, "Cloaking Field");
+            case ravenMatrix -> addMissingRequirement(missing, UnitTypes.ravenMatrixTechLevel(team) > 0, "Interference Matrix");
+            case battlecruiserYamato -> addMissingRequirement(missing, UnitTypes.battlecruiserHasYamatoTech(team), "Weapon Refit");
+        }
+    }
+
+    private void addMissingRequirement(Seq<String> missing, boolean met, String name){
+        if(!met && !missing.contains(name, false)){
+            missing.add(name);
+        }
     }
 
     private @Nullable String hoverDetailLine(AbilityInfo info){
@@ -3127,7 +3186,9 @@ public class UnitAbilityPanel extends Table{
     }
 
     private AbilityInfo makeAbilityInfo(Ability key, String name, String description){
-        return makeAbilityInfo(hotkey(key), name, description);
+        AbilityInfo info = makeAbilityInfo(hotkey(key), name, description);
+        info.ability = key;
+        return info;
     }
 
     private String hotkey(Ability key){
@@ -3154,8 +3215,7 @@ public class UnitAbilityPanel extends Table{
     private void bindAbilityHover(Button button, @Nullable AbilityInfo info, @Nullable Boolp enabled){
         if(button == null || info == null) return;
         button.update(() -> {
-            boolean active = enabled == null || enabled.get();
-            if(active && button.visible && button.isOver()){
+            if(button.visible && button.isOver()){
                 hoverAbilityInfo = info;
             }else if(hoverAbilityInfo == info){
                 hoverAbilityInfo = null;
@@ -3228,7 +3288,7 @@ public class UnitAbilityPanel extends Table{
         }
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
@@ -3280,7 +3340,7 @@ public class UnitAbilityPanel extends Table{
         }
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
@@ -3319,7 +3379,7 @@ public class UnitAbilityPanel extends Table{
         stack.add(yamatoCooldownOverlay(cooldownValue, cooldownTotal));
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, info == null ? makeAbilityInfo(key, "Skill Cooldown", "Left-click acts as hotkey.") : info, allowed);
         return button;
     }
@@ -3356,7 +3416,7 @@ public class UnitAbilityPanel extends Table{
         stack.add(yamatoCooldownOverlay(cooldownValue, cooldownTotal));
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, info == null ? defaultAbilityInfo(key) : info, allowed);
         return button;
     }
@@ -3458,7 +3518,7 @@ public class UnitAbilityPanel extends Table{
         stack.add(yamatoCooldownOverlay(this::selectedHurricaneLockCooldown, UnitTypes::hurricaneLockCooldownDuration));
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, makeAbilityInfo(Ability.hurricaneLock, "Hurricane Lock", "Left-click locks target, right-click toggles auto-cast."), enabled);
         return button;
     }
@@ -3492,7 +3552,7 @@ public class UnitAbilityPanel extends Table{
         }
 
         button.add(stack).size(abilityButtonSize);
-        grid.add(button).size(abilityButtonSize).pad(2f);
+        grid.add(button).size(abilityButtonSize).pad(ABILITY_BUTTON_PAD);
         bindAbilityHover(button, defaultAbilityInfo(key), allowed);
         return button;
     }
@@ -6503,6 +6563,11 @@ public class UnitAbilityPanel extends Table{
         boolean incomplete = cons.current != null && cons.current != Blocks.air && cons.progress < 1f;
         if(!incomplete) return;
 
+        if(Core.input.keyTap(KeyCode.y) && cons.canCommandIncomplete()){
+            enterCommandMode(CommandMode.RALLY);
+            return;
+        }
+
         Unit builder = findActiveBuilder(cons);
         if(builder != null){
             if(Core.input.keyTap(KeyCode.q)){
@@ -6659,21 +6724,7 @@ public class UnitAbilityPanel extends Table{
 
     private void cancelConstruct(ConstructBuild cons){
         if(cons == null) return;
-        mindustry.world.blocks.ConstructBlock.consumePrepaid(cons.tile.pos());
-        mindustry.world.blocks.ConstructBlock.clearForceBuildTime(cons.tile.pos());
-        Block block = cons.current;
-        Building core = cons.team.core();
-        if(core != null && block != null){
-            for(ItemStack stack : block.requirements){
-                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-                int refund = Mathf.ceil(amount * 0.75f);
-                if(refund > 0){
-                    core.items.add(stack.item, refund);
-                }
-            }
-        }
-        Fx.blockExplosionSmoke.at(cons.x, cons.y);
-        cons.tile.remove();
+        Call.cancelConstruct(player, cons.pos());
         control.input.commandBuildings.clear();
     }
 
@@ -6769,5 +6820,3 @@ public class UnitAbilityPanel extends Table{
         exitCommandMode();
     }
 }
-
-

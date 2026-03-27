@@ -28,6 +28,8 @@ import mindustry.world.blocks.defense.Radar;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.blocks.storage.CoreBlock.*;
+import mindustry.world.blocks.units.Reconstructor.*;
+import mindustry.world.blocks.units.UnitAssembler.*;
 import mindustry.world.blocks.units.UnitFactory.*;
 
 import static mindustry.Vars.*;
@@ -527,7 +529,7 @@ public class OverlayRenderer{
         }
 
         if(build instanceof UnitFactoryBuild factory){
-            if(factory.currentPlan != -1){
+            if(factory.unit() != null && factory.queued > 0){
                 colorOut.set(overheadProgressColor);
                 return Mathf.clamp(factory.fraction());
             }
@@ -538,6 +540,18 @@ public class OverlayRenderer{
                     colorOut.set(overheadProgressColor);
                     return Mathf.clamp(spec.progress(build.team));
                 }
+            }
+        }
+
+        if(build instanceof ReconstructorBuild reconstructor && reconstructor.payload != null && reconstructor.constructing()){
+            colorOut.set(overheadProgressColor);
+            return Mathf.clamp(reconstructor.fraction());
+        }
+
+        if(build instanceof UnitAssemblerBuild assembler){
+            if(assembler.plan() != null && Units.canCreate(build.team, assembler.unit())){
+                colorOut.set(overheadProgressColor);
+                return Mathf.clamp(assembler.progress);
             }
         }
 

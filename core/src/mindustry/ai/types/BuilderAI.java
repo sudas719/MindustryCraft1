@@ -101,7 +101,7 @@ public class BuilderAI extends AIController{
                 float range = Math.min(unit.type.buildRange - unit.type.hitSize * 2f, buildRadius);
                 if(req.requireClose && req.block != null){
                     float unitRadius = unit.hitSize / 2f;
-                    float closeRange = req.block.size * tilesize / 2f + unitRadius + 0.1f;
+                    float closeRange = req.block.size * tilesize / 2f + unitRadius + 0.1f + tilesize * 0.05f;
                     range = Math.min(range, closeRange);
                 }
                 //move toward the plan

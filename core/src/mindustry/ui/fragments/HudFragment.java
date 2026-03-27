@@ -460,7 +460,7 @@ public class HudFragment{
             cont.update(() -> {
                 if(Core.input.keyTap(Binding.toggleMenus) && !ui.chatfrag.shown() && !Core.scene.hasDialog() && !Core.scene.hasField()){
                     Core.settings.getBoolOnce("ui-hidden", () -> {
-                        ui.announce(Core.bundle.format("showui",  Binding.toggleMenus.value.key.toString(), 11));
+                        ui.announce(Core.bundle.format("showui",  KeyNames.get(Binding.toggleMenus.value.key), 11));
                     });
                     toggleMenus();
                 }
@@ -958,7 +958,7 @@ public class HudFragment{
                     control.input.hasReadOnlySelection() ||
                     (control.input.selectedResource != null && (control.input.selectedResource.block() instanceof CrystalMineralWall
                         || control.input.selectedResource.floor() instanceof SteamVent)));
-                unitTable.add(new UnitSelectionGrid()).maxWidth(600f).pad(4f);
+                unitTable.add(new UnitSelectionGrid()).maxWidth(600f * 1.2f).pad(4f * 1.2f);
             }).bottom().growX();
 
             //Right: Ability panel

@@ -46,6 +46,7 @@ import static mindustry.Vars.*;
 public class NetServer implements ApplicationListener{
     /** note that snapshots are compressed, so the max snapshot size here is above the typical UDP safe limit */
     private static final int maxSnapshotSize = 800;
+    public static final String pvpSingleplayerTag = "pvp-singleplayer";
     private static final int timerBlockSync = 0, timerHealthSync = 1;
     private static final float blockSyncTime = 60 * 6, healthSyncTime = 30;
     private static final int defaultStartCountdownSeconds = 10;
@@ -122,6 +123,7 @@ public class NetServer implements ApplicationListener{
     private final ObjectIntMap<String> helpMenuPageByPlayer = new ObjectIntMap<>();
     private final ObjectMap<String, String> mapsMenuFilterByPlayer = new ObjectMap<>();
     private final ObjectIntMap<String> mapsMenuPageByPlayer = new ObjectIntMap<>();
+    private final ObjectMap<String, String> mapsMenuVoteTokenByPlayer = new ObjectMap<>();
     private final ObjectMap<String, String> siteMapsSearchByPlayer = new ObjectMap<>();
     private final ObjectIntMap<String> siteMapsPageByPlayer = new ObjectIntMap<>();
     private final ObjectMap<String, Seq<ResourceMapInfo>> siteMapsCacheByPlayer = new ObjectMap<>();
@@ -160,6 +162,7 @@ public class NetServer implements ApplicationListener{
     private boolean startCountdownActive = false;
     private final int helpMenuId;
     private final int mapsMenuId;
+    private final int mapVoteConfirmMenuId;
     private final int siteMapsMenuId;
     private final int handicapMenuId;
 
@@ -192,6 +195,7 @@ public class NetServer implements ApplicationListener{
     public NetServer(){
         helpMenuId = Menus.registerMenu(this::handleHelpMenu);
         mapsMenuId = Menus.registerMenu(this::handleMapsMenu);
+        mapVoteConfirmMenuId = Menus.registerMenu(this::handleMapVoteConfirmMenu);
         siteMapsMenuId = Menus.registerMenu(this::handleSiteMapsMenu);
         handicapMenuId = Menus.registerMenu(this::handleHandicapMenu);
 
@@ -206,6 +210,9 @@ public class NetServer implements ApplicationListener{
         // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/ext/welcomeMsg.kts
         Events.on(PlayerJoin.class, event -> {
+            if(!event.player.isLocal()){
+                state.rules.tags.remove(pvpSingleplayerTag);
+            }
             event.player.sendMessage(formatWelcomeTemplate(welcomeTemplate, event.player));
             if(customWelcomeEnabled){
                 Call.sendJoinLeaveMessage(formatWelcomeTemplate(welcomeJoinTemplate, event.player));
@@ -702,6 +709,18 @@ public class NetServer implements ApplicationListener{
         return builtin;
     }
 
+    private int builtinMapNumber(@Nullable Map target){
+        if(target == null) return -1;
+
+        Seq<Map> builtin = maps.defaultMaps();
+        for(int i = 0; i < builtin.size; i++){
+            if(builtin.get(i) == target){
+                return i + 1;
+            }
+        }
+        return -1;
+    }
+
     private void sendMapsText(Player player, @Nullable String filter, int requestedPage){
         Seq<Map> builtin = filterBuiltinMaps(filter);
         if(builtin.isEmpty()){
@@ -722,7 +741,12 @@ public class NetServer implements ApplicationListener{
         out.append(Strings.format("[orange]-- Built-in Maps [lightgray]@[gray]/[lightgray]@[orange] --\n\n", page + 1, totalPages));
         for(int i = start; i < end; i++){
             Map map = builtin.get(i);
-            out.append("[lightgray] ").append(i + 1).append(". [accent]").append(map.plainName()).append('\n');
+            int number = builtinMapNumber(map);
+            out.append("[lightgray] ").append(number < 0 ? i + 1 : number).append(". [accent]").append(map.plainName()).append('\n');
+        }
+        out.append("\n[lightgray]Use [accent]/vote map <number>[] to vote-switch.");
+        if(player.admin){
+            out.append("\n[lightgray]Admin can use [accent]/host <number>[] to switch immediately.");
         }
         out.append("\n[lightgray]< [accent]").append(page + 1).append("[lightgray]/[accent]").append(totalPages).append("[lightgray] >");
         player.sendMessage(out.toString());
@@ -762,7 +786,8 @@ public class NetServer implements ApplicationListener{
             String[] line = new String[cols];
             for(int col = 0; col < cols; col++){
                 Map map = builtin.get(start + cursor);
-                String label = (start + cursor + 1) + "." + Strings.truncate(map.plainName(), 20);
+                int number = builtinMapNumber(map);
+                String label = (number < 0 ? start + cursor + 1 : number) + "." + Strings.truncate(map.plainName(), 20);
                 line[col] = label;
                 cursor++;
             }
@@ -777,11 +802,33 @@ public class NetServer implements ApplicationListener{
         if(filter != null && !filter.trim().isEmpty()){
             message.append(" [accent](filter: ").append(filter.trim()).append(")[]");
         }
-        message.append("\n[lightgray]Click an item to show map details.\n");
+        message.append("\n[lightgray]Click a map to open the vote confirmation menu.\n");
+        message.append("[lightgray]Chat: [accent]/vote map <number>[]");
+        if(player.admin){
+            message.append("[lightgray] | Admin: [accent]/host <number>[]");
+        }
 
         mapsMenuFilterByPlayer.put(player.uuid(), filter == null ? "" : filter.trim());
         mapsMenuPageByPlayer.put(player.uuid(), page);
         Call.menu(player.con, mapsMenuId, "Built-in Maps", message.toString(), options);
+    }
+
+    private void openMapVoteConfirmMenu(Player player, Map map, String token){
+        if(player == null || map == null) return;
+        if(player.con == null){
+            startVoteMap(player, token);
+            return;
+        }
+
+        mapsMenuVoteTokenByPlayer.put(player.uuid(), token);
+
+        StringBuilder message = new StringBuilder();
+        message.append("[orange]Map: [accent]").append(map.plainName()).append('\n');
+        message.append("[lightgray]Start a vote to change to this map?");
+
+        Call.menu(player.con, mapVoteConfirmMenuId, "Vote Map", message.toString(), new String[][]{
+        {"[green]Yes[]", "[red]No[]"}
+        });
     }
 
     private void sendSiteMapsText(Player player, String search, Seq<ResourceMapInfo> infos, int requestedPage){
@@ -807,7 +854,7 @@ public class NetServer implements ApplicationListener{
             .append("[lightgray] | by ").append(info.author)
             .append('\n');
         }
-        out.append("\n[lightgray]Use [accent]/votemap <id>[] or [accent]/host <id>[] to switch.");
+        out.append("\n[lightgray]Use [accent]/vote map <id>[] or [accent]/host <id>[] to switch.");
         player.sendMessage(out.toString());
     }
 
@@ -886,7 +933,7 @@ public class NetServer implements ApplicationListener{
 
         // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/cmds/mapsCmd.kts (partial, built-in map source only)
-        clientCommands.<Player>register("maps", "[filter/page] [page]", "List built-in server maps, 10 per page.", (args, player) -> {
+        clientCommands.<Player>register("maps", "[filter/page] [page]", "List built-in server maps, 10 per page. Menu clicks start map votes.", (args, player) -> {
             String filter = null;
             int page = 1;
 
@@ -1003,7 +1050,7 @@ public class NetServer implements ApplicationListener{
 
         // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/maps.kts + scripts/wayzer/map/resourceHelper.kts (partial)
-        clientCommands.<Player>register("host", "<map/id>", "Admin: immediately change map (local map name/index or resource-site id).", (args, player) -> {
+        clientCommands.<Player>register("host", "<map/id>", "Admin: immediately change map (built-in number/local map name/resource-site id).", (args, player) -> {
             if(!player.admin){
                 player.sendMessage("[scarlet]Admin required.");
                 return;
@@ -1922,12 +1969,6 @@ public class NetServer implements ApplicationListener{
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
-        // scripts/wayzer/cmds/voteMap.kts + scripts/wayzer/map/resourceHelper.kts (partial)
-        clientCommands.<Player>register("votemap", "<map...>", "Vote to change current map.", (args, player) -> {
-            startVoteMap(player, args[0]);
-        });
-
-        // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/cmds/voteMap.kts (partial, rollback vote)
         clientCommands.<Player>register("votesaves", "List available save slots for /voterollback.", (args, player) -> {
             Seq<Fi> slots = saveDirectory.findAll(file -> file.extension().equals(saveExtension));
@@ -2136,7 +2177,7 @@ public class NetServer implements ApplicationListener{
             }
         });
 
-        clientCommands.<Player>register("vote", "<y/n/c/start/map> [map...]", "Vote on current session. Also supports '/vote map <map/id>'.", (arg, player) -> {
+        clientCommands.<Player>register("vote", "<y/n/c/start/map> [map...]", "Vote on current session. Also supports '/vote map <number/name>'.", (arg, player) -> {
             if(arg[0].equalsIgnoreCase("map")){
                 if(arg.length < 2 || arg[1] == null || arg[1].trim().isEmpty()){
                     player.sendMessage("[scarlet]Usage: /vote map <map/id>");
@@ -2867,15 +2908,16 @@ public class NetServer implements ApplicationListener{
         String clean = Strings.stripColors(token).trim();
         if(clean.isEmpty()) return null;
 
-        Seq<Map> allMaps = maps.all();
-        if(allMaps.isEmpty()) return null;
-
         if(Strings.canParseInt(clean)){
+            Seq<Map> builtin = maps.defaultMaps();
             int index = Strings.parseInt(clean) - 1;
-            if(index >= 0 && index < allMaps.size){
-                return allMaps.get(index);
+            if(index >= 0 && index < builtin.size){
+                return builtin.get(index);
             }
         }
+
+        Seq<Map> allMaps = maps.all();
+        if(allMaps.isEmpty()) return null;
 
         String normalized = clean.replace('_', ' ').toLowerCase();
         Map exact = allMaps.find(map -> map.plainName().replace('_', ' ').equalsIgnoreCase(normalized));
@@ -3235,6 +3277,7 @@ public class NetServer implements ApplicationListener{
 
     public boolean isWaitingForPlayers(){
         if(state.rules.pvp && !state.gameOver){
+            if(state.rules.tags.containsKey(pvpSingleplayerTag)) return false;
             int used = 0;
             for(TeamData t : state.teams.getActive()){
                 if(Groups.player.count(p -> p.team() == t.team) > 0){
@@ -3244,6 +3287,10 @@ public class NetServer implements ApplicationListener{
             return used < 2;
         }
         return false;
+    }
+
+    public boolean isMatchPreviewActive(){
+        return matchPreviewActive;
     }
 
     @Override
@@ -3592,6 +3639,7 @@ public class NetServer implements ApplicationListener{
         if(option < 0){
             mapsMenuFilterByPlayer.remove(id);
             mapsMenuPageByPlayer.remove(id, 0);
+            mapsMenuVoteTokenByPlayer.remove(id);
             return;
         }
 
@@ -3616,20 +3664,8 @@ public class NetServer implements ApplicationListener{
 
         if(option < itemCount){
             Map map = builtin.get(start + option);
-            StringBuilder info = new StringBuilder();
-            info.append("[orange]Map: [accent]").append(map.plainName()).append('\n');
-            if(map.author() != null && !map.author().trim().isEmpty()){
-                info.append("[orange]Author: [lightgray]").append(map.author()).append('\n');
-            }
-            if(map.description() != null && !map.description().trim().isEmpty()){
-                info.append("[orange]Desc: [lightgray]").append(Strings.truncate(map.description().trim(), 140)).append('\n');
-            }
-            info.append("[lightgray]Use [accent]/votemap ").append(map.plainName()).append("[]");
-            if(player.admin){
-                info.append("\n[lightgray]Admin: [accent]/host ").append(map.plainName()).append("[]");
-            }
-            player.sendMessage(info.toString());
-            openMapsMenu(player, filter, page);
+            int number = builtinMapNumber(map);
+            openMapVoteConfirmMenu(player, map, number < 0 ? map.plainName() : String.valueOf(number));
             return;
         }
 
@@ -3642,6 +3678,30 @@ public class NetServer implements ApplicationListener{
         }else if(option == closeIndex){
             mapsMenuFilterByPlayer.remove(id);
             mapsMenuPageByPlayer.remove(id, 0);
+            mapsMenuVoteTokenByPlayer.remove(id);
+        }
+    }
+
+    private void handleMapVoteConfirmMenu(Player player, int option){
+        if(player == null) return;
+
+        String id = player.uuid();
+        String token = mapsMenuVoteTokenByPlayer.get(id);
+        String filter = mapsMenuFilterByPlayer.get(id, "");
+        int page = mapsMenuPageByPlayer.get(id, 0);
+        mapsMenuVoteTokenByPlayer.remove(id);
+
+        if(option == 0){
+            mapsMenuFilterByPlayer.remove(id);
+            mapsMenuPageByPlayer.remove(id, 0);
+            if(token != null && !token.isEmpty()){
+                startVoteMap(player, token);
+            }
+            return;
+        }
+
+        if(option == 1 || option < 0){
+            openMapsMenu(player, filter, page);
         }
     }
 
@@ -3684,7 +3744,7 @@ public class NetServer implements ApplicationListener{
             if(info.description != null && !info.description.trim().isEmpty()){
                 msg.append("[orange]Desc: [lightgray]").append(Strings.truncate(info.description.trim(), 160)).append('\n');
             }
-            msg.append("[lightgray]Use [accent]/votemap ").append(info.id).append("[]");
+            msg.append("[lightgray]Use [accent]/vote map ").append(info.id).append("[]");
             if(player.admin){
                 msg.append("\n[lightgray]Admin: [accent]/host ").append(info.id).append("[]");
             }

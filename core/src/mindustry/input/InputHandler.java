@@ -39,7 +39,10 @@ import mindustry.world.*;
 import mindustry.world.blocks.ConstructBlock.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.distribution.*;
+import mindustry.world.blocks.environment.BorderAreaFloor;
 import mindustry.world.blocks.environment.CrystalMineralWall;
+import mindustry.world.blocks.environment.Floor;
+import mindustry.world.blocks.environment.OverlayFloor;
 import mindustry.world.blocks.environment.SteamVent;
 import mindustry.world.blocks.defense.BunkerBlock;
 import mindustry.world.blocks.payloads.*;
@@ -65,6 +68,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     final static IntSet intSet = new IntSet();
     final static Color placementGridLine = Color.valueOf("ffffff");
     final static Color placementGridInvalid = Color.valueOf("ff9a2f");
+    final static Color placementGridValid = Color.valueOf("76e67a");
+    final static Color placementGridBlocked = Color.valueOf("e55454");
     public static final float selectionRingStroke = 0.5f;
     public static final float selectionRingRadiusStep = 0.35f;
     public static final float selectionSolidRadiusOffset = 0f;
@@ -392,6 +397,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
         Teamc teamTarget = buildTarget == null ? unitTarget : buildTarget;
         Vec2 safePosTarget = sanitizeRemoteCommandTarget(posTarget);
+        if(teamTarget != null && teamTarget.team() != player.team() && teamTarget.inFogTo(player.team())){
+            teamTarget = null;
+        }
         if(teamTarget == null && safePosTarget == null) return;
         Vec2 targetAsVec = teamTarget != null ? new Vec2(teamTarget.getX(), teamTarget.getY()) : safePosTarget.cpy();
         Seq<Unit> toAdd = queuedCommands.get(targetAsVec, Seq::new);
@@ -2065,7 +2073,6 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
 
     public void selectUnitsRect(){
         if(commandMode && commandRect){
-            clearReadOnlySelection(false);
             boolean useScreen = useScreenRectSelection();
             float dx;
             float dy;
@@ -2081,6 +2088,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             }
             boolean dragged = dx * dx + dy * dy > dragThreshold * dragThreshold;
             if(!tappedOne || dragged){
+                clearReadOnlySelection(false);
                 var units = useScreen ? selectedCommandUnitsScreen(commandRectScreenX, commandRectScreenY, getMouseX(), getMouseY()) :
                     selectedCommandUnits(commandRectX, commandRectY, mouseWorldX() - commandRectX, mouseWorldY() - commandRectY);
                 boolean multi = multiUnitSelect();
@@ -2173,7 +2181,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
             if(!unit.isValid() || unit.team == player.team() || (viewer != null && unit.inFogTo(viewer))) return false;
             build = null;
         }else if(build != null){
-            if(!build.isValid() || build.team == player.team() || (viewer != null && build.inFogTo(viewer)) || build.block == Blocks.ventSpout) return false;
+            if(!build.isValid() || build.team == player.team() || !canInspectBuilding(build, viewer) || build.block == Blocks.ventSpout) return false;
         }else{
             return false;
         }
@@ -2192,11 +2200,27 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         return true;
     }
 
+    protected boolean isInspectOnlyDerelictScrapWall(@Nullable Building build){
+        return build != null && build.isValid() && build.block == Blocks.scrapWall && build.team == Team.derelict;
+    }
+
+    protected boolean canInspectBuilding(@Nullable Building build, @Nullable Team viewer){
+        return build != null && (viewer == null || !build.inFogTo(viewer));
+    }
+
+    protected boolean isTileVisibleToViewer(@Nullable Tile tile, @Nullable Team viewer){
+        return tile != null && (!state.rules.fog || viewer == null || fogControl.isVisibleTile(viewer, tile.x, tile.y));
+    }
+
+    protected boolean inspectDerelictScrapWall(@Nullable Tile tile){
+        return tile != null && isInspectOnlyDerelictScrapWall(tile.build) && inspectReadOnlyTarget(null, tile.build);
+    }
+
     protected void sanitizeReadOnlySelection(){
         Team viewer = ViewerPerspective.team();
         boolean invalid =
             (readOnlyUnit != null && (!readOnlyUnit.isValid() || readOnlyUnit.team == player.team() || (viewer != null && readOnlyUnit.inFogTo(viewer)))) ||
-            (readOnlyBuilding != null && (!readOnlyBuilding.isValid() || readOnlyBuilding.team == player.team() || (viewer != null && readOnlyBuilding.inFogTo(viewer))));
+            (readOnlyBuilding != null && (!readOnlyBuilding.isValid() || readOnlyBuilding.team == player.team() || !canInspectBuilding(readOnlyBuilding, viewer)));
 
         boolean overridden = hasReadOnlySelection() && (!selectedUnits.isEmpty() || !commandBuildings.isEmpty() || selectedResource != null);
 
@@ -2522,7 +2546,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                     }
                 }else{
                     Team viewer = ViewerPerspective.team();
-                    if(build != null && build.team != player.team() && (viewer == null || !build.inFogTo(viewer)) && build.block != Blocks.ventSpout){
+                    if(build != null && build.team != player.team() && canInspectBuilding(build, viewer) && build.block != Blocks.ventSpout){
                         inspectReadOnlyTarget(null, build);
                         return;
                     }
@@ -2646,6 +2670,13 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 if(buildAtPos == null){
                     buildAtPos = world.buildWorld(target.x, target.y);
                 }
+                Building visibleBuildAtPos = buildAt(target.x, target.y);
+                if(visibleBuildAtPos == null){
+                    Tile visibleTile = world.tileWorld(target.x, target.y);
+                    if(visibleTile != null && canInspectBuilding(visibleTile.build, ViewerPerspective.team())){
+                        visibleBuildAtPos = visibleTile.build;
+                    }
+                }
 
                 if(hasNova && buildAtPos != null && buildAtPos.team() == player.team() && buildAtPos.block == Blocks.ventCondenser){
                     Tile ventTile = findVentTile(buildAtPos);
@@ -2746,9 +2777,9 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                         }
                     }
                 }
-                boolean attackableAnyTeamBuild = buildAtPos != null && Units.targetableAllTeams(buildAtPos);
-                if(buildAtPos != null && (buildAtPos.team() != player.team() || attackableAnyTeamBuild)){
-                    teamTarget = buildAtPos;
+                boolean attackableAnyTeamBuild = visibleBuildAtPos != null && Units.targetableAllTeams(visibleBuildAtPos);
+                if(visibleBuildAtPos != null && (visibleBuildAtPos.team() != player.team() || attackableAnyTeamBuild)){
+                    teamTarget = visibleBuildAtPos;
                 }else{
                     Unit enemyUnit = selectedEnemyUnit(target.x, target.y);
                     if(enemyUnit != null){
@@ -3410,9 +3441,18 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         boolean valid = panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.RAVEN_TURRET
             ? Build.validPlaceIgnoreUnits(block, player.team(), tx, ty, placeRotation, false, false) && Build.checkNoUnitOverlap(block, tx, ty)
             : validPlace(tx, ty, block, placeRotation, null, true);
-        block.drawPlan(bplan, allPlans(), valid, 0.5f);
         if(panel.activeCommand == mindustry.ui.UnitAbilityPanel.CommandMode.BUILD_PLACE){
+            Draw.reset();
+            Draw.mixcol(valid ? Pal.heal : Pal.breakInvalid, 1f);
+            Draw.alpha(0.2f);
+            float prevScale = Draw.scl;
+            Draw.scl *= bplan.animScale;
+            block.drawPlanRegion(bplan, allPlans());
+            Draw.scl = prevScale;
+            Draw.reset();
             drawPlacementConstraintGrid(block, player.team(), tx, ty, placeRotation);
+        }else{
+            block.drawPlan(bplan, allPlans(), valid, 0.5f);
         }
     }
 
@@ -4000,14 +4040,16 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     public @Nullable Tile resolveResourceTile(Tile tile){
+        Team viewer = ViewerPerspective.team();
+        if(!isTileVisibleToViewer(tile, viewer)) return null;
         if(tile == null) return null;
         if(tile.block() instanceof CrystalMineralWall) return tile;
         if(tile.floor() instanceof SteamVent){
             SteamVent vent = (SteamVent)tile.floor();
             Tile dataTile = vent.dataTile(tile);
-            if(dataTile == null || !vent.checkAdjacent(dataTile)) return null;
+            if(dataTile == null || !vent.checkAdjacent(dataTile) || !isTileVisibleToViewer(dataTile, viewer)) return null;
             Tile center = dataTile.nearby(-1, -1);
-            if(center != null && center.floor() == vent) return center;
+            if(center != null && center.floor() == vent && isTileVisibleToViewer(center, viewer)) return center;
             return dataTile;
         }
         return null;
@@ -4185,7 +4227,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     boolean tryRepairDerelict(Tile selected){
-        if(!player.dead() && selected != null && !state.rules.editor && player.team() != Team.derelict && selected.build != null && selected.build.block.unlockedNow() && selected.build.team == Team.derelict &&
+        Team viewer = ViewerPerspective.team();
+        if(!player.dead() && selected != null && isTileVisibleToViewer(selected, viewer) && !state.rules.editor && player.team() != Team.derelict && selected.build != null && selected.build.block.unlockedNow() && selected.build.team == Team.derelict &&
             Build.validPlace(selected.block(), player.team(), selected.build.tileX(), selected.build.tileY(), selected.build.rotation)){
 
             player.unit().addBuild(new BuildPlan(selected.build.tileX(), selected.build.tileY(), selected.build.rotation, selected.block(), selected.build.config()));
@@ -4195,13 +4238,16 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     }
 
     boolean canRepairDerelict(Tile tile){
-        return tile != null && tile.build != null && !player.dead() && !state.rules.editor && player.team() != Team.derelict && tile.build.team == Team.derelict && tile.build.block.unlockedNowHost() &&
+        Team viewer = ViewerPerspective.team();
+        return tile != null && isTileVisibleToViewer(tile, viewer) && tile.build != null && !player.dead() && !state.rules.editor && player.team() != Team.derelict && tile.build.team == Team.derelict && tile.build.block.unlockedNowHost() &&
             Build.validPlace(tile.block(), player.team(), tile.build.tileX(), tile.build.tileY(), tile.build.rotation);
     }
 
     boolean canMine(Tile tile){
+        Team viewer = ViewerPerspective.team();
         return !Core.scene.hasMouse()
         && !player.dead()
+        && isTileVisibleToViewer(tile, viewer)
         && player.unit().validMine(tile)
         && player.unit().acceptsItem(player.unit().getMineResult(tile))
         && !((!Core.settings.getBool("doubletapmine") && tile.floor().playerUnmineable) && tile.overlay().itemDrop == null)
@@ -4327,6 +4373,8 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
     protected @Nullable Building buildAt(float x, float y){
         Building build = world.buildWorld(x, y);
         if(build == null) return null;
+        Team viewer = ViewerPerspective.team();
+        if(viewer != null && build.inFogTo(viewer)) return null;
         return build.within(x, y, build.hitSize() / 2f) ? build : null;
     }
 
@@ -4370,7 +4418,7 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         if(build != null && build.block == Blocks.ventSpout){
             build = null;
         }
-        if(build != null && (viewer == null || !build.inFogTo(viewer))){
+        if(canInspectBuilding(build, viewer) && build.block != Blocks.ventSpout){
             hover.build = build;
             hover.team = build.team;
             hover.x = build.x;
@@ -4418,6 +4466,71 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         }
     }
 
+    protected boolean isPlacementFootprintTile(Block block, int centerTileX, int centerTileY, int tx, int ty){
+        int offsetx = -(block.size - 1) / 2;
+        int offsety = -(block.size - 1) / 2;
+        return tx >= centerTileX + offsetx && tx < centerTileX + offsetx + block.size
+            && ty >= centerTileY + offsety && ty < centerTileY + offsety + block.size;
+    }
+
+    protected boolean isPlacementFootprintTileValid(Block block, Team team, int centerTileX, int centerTileY, int tx, int ty, int rotation){
+        Tile center = world.tile(centerTileX, centerTileY);
+        Tile check = world.tile(tx, ty);
+        if(center == null || check == null) return false;
+
+        boolean sameConstruct = check.build instanceof ConstructBuild build && build.current == block && check.centerX() == centerTileX && check.centerY() == centerTileY;
+        boolean replaceable = block.canReplace(check.block())
+            || (check.build != null && check.build.canBeReplaced(block))
+            || (block == check.block() && team != Team.derelict && check.team() == Team.derelict)
+            || sameConstruct;
+
+        return !HeightLayerData.slope(check)
+            && (block.size != 2 || world.getDarkness(tx, ty) < 3)
+            && (!isPlacementDeep(check) || block.floating || block.requiresWater || block.placeableLiquid)
+            && (state.rules.derelictRepair || check.team() != Team.derelict || check.build == null)
+            && check.interactable(team)
+            && (isPlacementPlaceable(check) || block.ignoreBuildDarkness)
+            && (!block.requiresWater || hasPlacementWater(check))
+            && replaceable
+            && block.bounds(center.x, center.y, Tmp.r1).grow(0.01f).contains(check.block().bounds(check.centerX(), check.centerY(), Tmp.r2));
+    }
+
+    protected boolean isPlacementConstraintTile(Block block, Team team, int tx, int ty, int rotation){
+        Tile check = world.tile(tx, ty);
+        if(check == null) return false;
+        if(!block.canPlaceOn(check, team, rotation)) return true;
+
+        boolean occupied = check.build != null || (check.block() != Blocks.air && !check.block().alwaysReplace && !block.canReplace(check.block()));
+
+        return HeightLayerData.slope(check)
+            || (block.size == 2 && world.getDarkness(tx, ty) >= 3)
+            || (isPlacementDeep(check) && !block.floating && !block.requiresWater && !block.placeableLiquid)
+            || (!state.rules.derelictRepair && check.team() == Team.derelict && check.build != null)
+            || !check.interactable(team)
+            || (!isPlacementPlaceable(check) && !block.ignoreBuildDarkness)
+            || (block.requiresWater && !hasPlacementWater(check))
+            || occupied;
+    }
+
+    protected boolean isPlacementDeep(Tile tile){
+        if(tile == null) return true;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedDeep(tile) : floor.isDeep();
+    }
+
+    protected boolean isPlacementPlaceable(Tile tile){
+        if(tile == null) return false;
+        if(tile.overlay() instanceof OverlayFloor overlay && !overlay.placeableOn) return false;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedPlaceableOn(tile) : floor.placeableOn;
+    }
+
+    protected boolean hasPlacementWater(Tile tile){
+        if(tile == null) return false;
+        Floor floor = tile.floor();
+        return floor instanceof BorderAreaFloor border ? border.mixedHasWater(tile) : floor.liquidDrop == Liquids.water;
+    }
+
     protected void drawPlacementConstraintGrid(Block block, Team team, int centerTileX, int centerTileY, int rotation){
         if(block == null || team == null) return;
 
@@ -4429,6 +4542,26 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
         float radiusWorld2 = radiusWorld * radiusWorld;
         float half = tilesize / 2f;
         boolean coreLike = block instanceof CoreBlock;
+        boolean footprintHasInvalid = false;
+        boolean forceBlockedFootprint = false;
+        boolean placementValid = true;
+
+        if(!coreLike){
+            placementValid = Build.validPlace(block, team, centerTileX, centerTileY, rotation, false);
+
+            int offsetx = -(block.size - 1) / 2;
+            int offsety = -(block.size - 1) / 2;
+            for(int dx = 0; dx < block.size && !footprintHasInvalid; dx++){
+                for(int dy = 0; dy < block.size; dy++){
+                    if(!isPlacementFootprintTileValid(block, team, centerTileX, centerTileY, centerTileX + offsetx + dx, centerTileY + offsety + dy, rotation)){
+                        footprintHasInvalid = true;
+                        break;
+                    }
+                }
+            }
+
+            forceBlockedFootprint = !placementValid && !footprintHasInvalid;
+        }
 
         Draw.z(Layer.overlayUI + 1.2f);
         Lines.stroke(0.6f);
@@ -4444,14 +4577,18 @@ public abstract class InputHandler implements InputProcessor, GestureListener{
                 float wy = tile.worldy();
                 if(Mathf.dst2(centerX, centerY, wx, wy) > radiusWorld2) continue;
 
-                boolean markInvalid;
                 if(coreLike){
-                    markInvalid = CoreBlock.inResourceExclusion(wx + half, wy + half) || Build.hasSlopeInPlacementArea(block, tx, ty);
-                }else{
-                    markInvalid = !Build.validPlace(block, team, tx, ty, rotation, false);
-                }
-
-                if(markInvalid){
+                    if(CoreBlock.inResourceExclusion(wx + half, wy + half) || Build.hasSlopeInPlacementArea(block, tx, ty)){
+                        Draw.color(placementGridInvalid, 0.25f);
+                        Fill.crect(wx - half, wy - half, tilesize, tilesize);
+                    }
+                }else if(isPlacementFootprintTile(block, centerTileX, centerTileY, tx, ty)){
+                    boolean tileValid = !forceBlockedFootprint && (!footprintHasInvalid && placementValid
+                        ? true
+                        : isPlacementFootprintTileValid(block, team, centerTileX, centerTileY, tx, ty, rotation));
+                    Draw.color(tileValid ? placementGridValid : placementGridBlocked, 0.32f);
+                    Fill.crect(wx - half, wy - half, tilesize, tilesize);
+                }else if(isPlacementConstraintTile(block, team, tx, ty, rotation)){
                     Draw.color(placementGridInvalid, 0.25f);
                     Fill.crect(wx - half, wy - half, tilesize, tilesize);
                 }

@@ -29,6 +29,7 @@ public class MapEditor{
     private DrawOperation currentOp;
     private boolean loading;
 
+    public int pickRevision;
     public float brushSize = 1;
     public int rotation;
     public Block drawBlock = Blocks.stone;
@@ -114,7 +115,16 @@ public class MapEditor{
         clearOp();
         brushSize = 1;
         drawBlock = Blocks.stone;
+        pickRevision = 0;
         tags = new StringMap();
+    }
+
+    public void pickDrawBlock(Tile tile, Block block){
+        if(block == null || tile == null) return;
+        drawBlock = block;
+        block.onPicked(tile);
+        block.editorPicked(tile);
+        pickRevision++;
     }
 
     public Tiles tiles(){

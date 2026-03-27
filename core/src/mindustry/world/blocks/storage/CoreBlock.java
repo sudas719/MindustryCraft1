@@ -14,6 +14,7 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.util.io.*;
+import arc.util.pooling.*;
 import mindustry.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.ai.types.*;
@@ -56,6 +57,8 @@ public class CoreBlock extends StorageBlock{
     public static final float fortressUpgradeTime = 36f * 60f;
     public static final int resourceExclusionRadiusTiles = 3;
     public static final int defaultRallyCrystalRangeTiles = 5;
+    public static final int displayCrystalInfoRangeTiles = 8;
+    public static final int refineryIdealScvCount = 3;
 
     public int unitQueueSlots = maxUnitQueue;
     public int activeUnitSlots = 1;
@@ -287,8 +290,12 @@ public class CoreBlock extends StorageBlock{
             return true;
         }
 
-        //must have all requirements (unless infinite)
-        if(core == null || (!state.rules.infiniteResources && !core.items.has(requirements, state.rules.buildCostMultiplier))){
+        //SCV build placement prepays core costs before the worker reaches the site.
+        //Allow prepaid core plans to stay placeable after the cost has already been deducted.
+        boolean prepaid = ConstructBlock.isPrepaid(tile.pos());
+
+        //must have all requirements (unless infinite or already prepaid)
+        if(core == null || (!state.rules.infiniteResources && !prepaid && !core.items.has(requirements, state.rules.buildCostMultiplier))){
             return false;
         }
 
@@ -480,6 +487,10 @@ public class CoreBlock extends StorageBlock{
                 drawTeamTop();
             }else{
                 super.draw();
+            }
+
+            if(block == Blocks.coreNucleus){
+                drawScvWorkerText(this, crystalWorkerText(this));
             }
         }
 
@@ -886,7 +897,8 @@ public class CoreBlock extends StorageBlock{
                 return;
             }
 
-            unitProgress += edelta() * Vars.state.rules.unitBuildSpeed(team);
+            // Core SCV training uses its own fixed SC2 timing and should not inherit factory build speed rules.
+            unitProgress += edelta();
             float time = unitBuildTime(type);
 
             if(unitProgress >= time){
@@ -1645,7 +1657,97 @@ public class CoreBlock extends StorageBlock{
         }
     }
 
-    static @Nullable Tile findVentTile(Building build){
+    public static int nearbyCrystalCount(@Nullable Building build, int rangeTiles){
+        if(build == null || build.tile == null) return 0;
+
+        int bx = build.tile.x;
+        int by = build.tile.y;
+        int maxx = bx + build.block.size - 1;
+        int maxy = by + build.block.size - 1;
+        int count = 0;
+
+        for(int x = bx - rangeTiles; x <= maxx + rangeTiles; x++){
+            for(int y = by - rangeTiles; y <= maxy + rangeTiles; y++){
+                Tile other = world.tile(x, y);
+                if(other == null || !(other.block() instanceof CrystalMineralWall crystal)) continue;
+                if(!crystal.isInfinite(other) && crystal.getReserves(other) <= 0) continue;
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static int nearbyCrystalScvCount(@Nullable Building build, int rangeTiles){
+        if(build == null || build.tile == null) return 0;
+
+        int bx = build.tile.x;
+        int by = build.tile.y;
+        int maxx = bx + build.block.size - 1;
+        int maxy = by + build.block.size - 1;
+        int count = 0;
+
+        for(int x = bx - rangeTiles; x <= maxx + rangeTiles; x++){
+            for(int y = by - rangeTiles; y <= maxy + rangeTiles; y++){
+                Tile other = world.tile(x, y);
+                if(other == null || !(other.block() instanceof CrystalMineralWall crystal)) continue;
+                if(!crystal.isInfinite(other) && crystal.getReserves(other) <= 0) continue;
+                count += HarvestAI.getActiveNovaCount(other, build.team);
+            }
+        }
+
+        return count;
+    }
+
+    public static @Nullable String crystalWorkerText(@Nullable Building build){
+        int nearbyCrystals = nearbyCrystalCount(build, displayCrystalInfoRangeTiles);
+        if(nearbyCrystals <= 0) return null;
+        return nearbyCrystalScvCount(build, displayCrystalInfoRangeTiles) + "/" + nearbyCrystals * 2;
+    }
+
+    public static @Nullable String refineryWorkerText(@Nullable Building build){
+        Tile ventTile = findVentTile(build);
+        if(ventTile == null || !(ventTile.floor() instanceof SteamVent vent)) return null;
+
+        Tile data = vent.dataTile(ventTile);
+        if(data == null || !vent.checkAdjacent(data)) return null;
+        if(!vent.isInfinite(data) && vent.getReserves(data) <= 0) return null;
+
+        return HarvestAI.getActiveNovaCount(ventTile, build.team) + "/" + refineryIdealScvCount;
+    }
+
+    public static void drawScvWorkerText(@Nullable Building build, @Nullable String text){
+        if(build == null || text == null || text.isEmpty()) return;
+
+        float prevZ = Draw.z();
+        Draw.z(Layer.blockOver + 0.01f);
+
+        Font font = Fonts.outline;
+        GlyphLayout layout = Pools.obtain(GlyphLayout.class, GlyphLayout::new);
+        boolean ints = font.usesIntegerPositions();
+
+        font.setUseIntegerPositions(false);
+        font.getData().setScale(0.25f / Scl.scl(1f));
+        font.setColor(Color.white);
+        layout.setText(font, text);
+
+        float pad = 2f;
+        float dy = build.y - layout.height / 2f;
+
+        Draw.color(0f, 0f, 0f, 0.35f);
+        Fill.rect(build.x, dy + layout.height / 2f, layout.width + pad * 2f, layout.height + pad);
+        Draw.color();
+
+        font.draw(text, build.x, dy + layout.height + 1f, Align.center);
+
+        font.getData().setScale(1f);
+        font.setUseIntegerPositions(ints);
+        font.setColor(Color.white);
+        Draw.z(prevZ);
+        Pools.free(layout);
+    }
+
+    public static @Nullable Tile findVentTile(Building build){
         if(build == null || build.tile == null) return null;
         int size = build.block.size;
         int bx = build.tile.x;

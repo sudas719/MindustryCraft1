@@ -18,6 +18,7 @@ import mindustry.gen.*;
 import mindustry.io.*;
 import mindustry.ui.*;
 import mindustry.world.*;
+import mindustry.world.blocks.environment.*;
 
 import static mindustry.Vars.*;
 
@@ -25,8 +26,20 @@ public class MinimapRenderer{
     private static final float baseSize = 16f, updateInterval = 2f;
     private static final float radarIntelRange = 23f * tilesize;
     private static final float radarCircleStroke = 1.15f;
+    private static final float minimapFogOpacity = 0.5f;
+    private static final float minimapDynamicFogAlpha = 0.2f;
+    private static final float minimapStaticFogAlpha = (minimapFogOpacity - minimapDynamicFogAlpha) / (1f - minimapDynamicFogAlpha);
+    private static final Color sc2ResourceMarkerColor = Color.valueOf("87cefa");
+    private static final float sc2ResourceMarkerStroke = 1.1f;
+    private static final float sc2MineralMarkerSize = tilesize * 0.82f;
+    private static final float sc2GasMarkerSize = tilesize * 3f;
+    private static final Color sc2DerelictLogoColor = Color.valueOf("d6d6d6");
+    private static final float sc2DerelictLogoSize = tilesize * 2.1f;
 
     private final Seq<Unit> units = new Seq<>();
+    private final IntSeq sc2MineralMarkers = new IntSeq();
+    private final IntSeq sc2GasMarkers = new IntSeq();
+    private final FloatSeq sc2DerelictScrapCenters = new FloatSeq();
     private Pixmap pixmap;
     private Texture texture;
     private TextureRegion region;
@@ -35,11 +48,13 @@ public class MinimapRenderer{
 
     private IntSet updates = new IntSet();
     private float updateCounter = 0f;
+    private boolean sc2ResourceMarkersDirty = true;
 
     public MinimapRenderer(){
         Events.on(WorldLoadEvent.class, event -> {
             reset();
             updateAll();
+            markSc2ResourceMarkersDirty();
         });
 
         Events.on(TileChangeEvent.class, event -> {
@@ -68,7 +83,12 @@ public class MinimapRenderer{
             }
         });
 
-        Events.on(BuildTeamChangeEvent.class, event -> update(event.build.tile));
+        Events.on(TileFloorChangeEvent.class, event -> markSc2ResourceMarkersDirty());
+        Events.on(TileChangeEvent.class, event -> markSc2ResourceMarkersDirty());
+        Events.on(BuildTeamChangeEvent.class, event -> {
+            update(event.build.tile);
+            markSc2ResourceMarkersDirty();
+        });
     }
 
     public void update(){
@@ -114,6 +134,10 @@ public class MinimapRenderer{
 
     public void reset(){
         updates.clear();
+        sc2MineralMarkers.clear();
+        sc2GasMarkers.clear();
+        sc2DerelictScrapCenters.clear();
+        sc2ResourceMarkersDirty = true;
         if(pixmap != null){
             pixmap.dispose();
             texture.dispose();
@@ -158,6 +182,7 @@ public class MinimapRenderer{
         Draw.trans(trans);
 
         scaleFactor = 1f / scaleFactor;
+        ensureSc2ResourceMarkers();
 
         Team viewer = ViewerPerspective.team();
 
@@ -213,7 +238,7 @@ public class MinimapRenderer{
             float wf = world.width() * tilesize;
             float hf = world.height() * tilesize;
 
-            Draw.color(state.rules.dynamicColor, Float.isNaN(state.rules.dynamicColor.a) ? 0.5f : Math.max(0.5f, state.rules.dynamicColor.a));
+            Draw.color(state.rules.dynamicColor, minimapDynamicFogAlpha);
             Draw.rect(Tmp.tr1, wf / 2, hf / 2, wf, hf);
 
             if(state.rules.staticFog){
@@ -221,13 +246,15 @@ public class MinimapRenderer{
 
                 Tmp.tr1.texture = staticTex;
                 //must be black to fit with borders
-                Draw.color(0f, 0f, 0f, 1f);
+                Draw.color(0f, 0f, 0f, minimapStaticFogAlpha);
                 Draw.rect(Tmp.tr1, wf / 2, hf / 2, wf, hf);
             }
 
             Draw.color();
             Draw.shader();
         }
+
+        drawSc2ResourceMarkers(scaleFactor);
 
         //TODO might be useful in the standard minimap too
         if(fullView){
@@ -285,6 +312,103 @@ public class MinimapRenderer{
         }
 
         Draw.trans(Tmp.m2);
+    }
+
+    private void markSc2ResourceMarkersDirty(){
+        sc2ResourceMarkersDirty = true;
+    }
+
+    private void ensureSc2ResourceMarkers(){
+        if(!sc2ResourceMarkersDirty || world.tiles == null) return;
+
+        sc2ResourceMarkersDirty = false;
+        sc2MineralMarkers.clear();
+        sc2GasMarkers.clear();
+        sc2DerelictScrapCenters.clear();
+
+        IntSet derelictVisited = new IntSet();
+        IntSeq derelictQueue = new IntSeq();
+
+        for(Tile tile : world.tiles){
+            if(tile == null) continue;
+
+            if(tile.block() instanceof CrystalMineralWall){
+                sc2MineralMarkers.add(tile.pos());
+            }
+
+            if(tile.floor() instanceof SteamVent vent && vent.isCenterVent(tile)){
+                sc2GasMarkers.add(tile.pos());
+            }
+
+            if(tile.block() == Blocks.scrapWall && tile.team() == Team.derelict && derelictVisited.add(tile.pos())){
+                derelictQueue.clear();
+                derelictQueue.add(tile.pos());
+
+                float sumx = 0f, sumy = 0f;
+                int count = 0;
+
+                while(derelictQueue.size > 0){
+                    Tile next = world.tile(derelictQueue.pop());
+                    if(next == null || next.block() != Blocks.scrapWall || next.team() != Team.derelict) continue;
+
+                    sumx += next.worldx();
+                    sumy += next.worldy();
+                    count++;
+
+                    for(Point2 point : Geometry.d4){
+                        Tile nearby = world.tile(next.x + point.x, next.y + point.y);
+                        if(nearby != null && nearby.block() == Blocks.scrapWall && nearby.team() == Team.derelict && derelictVisited.add(nearby.pos())){
+                            derelictQueue.add(nearby.pos());
+                        }
+                    }
+                }
+
+                if(count > 0){
+                    sc2DerelictScrapCenters.add(sumx / count, sumy / count);
+                }
+            }
+        }
+    }
+
+    private void drawSc2ResourceMarkers(float scaleFactor){
+        if(sc2MineralMarkers.isEmpty() && sc2GasMarkers.isEmpty() && sc2DerelictScrapCenters.isEmpty()) return;
+
+        float stroke = Scl.scl(sc2ResourceMarkerStroke) * scaleFactor;
+        float mineralHalf = sc2MineralMarkerSize / 2f;
+        float gasHalf = sc2GasMarkerSize / 2f;
+
+        Draw.color(sc2ResourceMarkerColor, 0.18f);
+        for(int i = 0; i < sc2MineralMarkers.size; i++){
+            Tile tile = world.tile(sc2MineralMarkers.get(i));
+            if(tile == null) continue;
+            Fill.crect(tile.worldx() - mineralHalf, tile.worldy() - mineralHalf, sc2MineralMarkerSize, sc2MineralMarkerSize);
+        }
+        for(int i = 0; i < sc2GasMarkers.size; i++){
+            Tile tile = world.tile(sc2GasMarkers.get(i));
+            if(tile == null) continue;
+            Fill.crect(tile.worldx() - gasHalf, tile.worldy() - gasHalf, sc2GasMarkerSize, sc2GasMarkerSize);
+        }
+
+        Draw.color(sc2ResourceMarkerColor);
+        Lines.stroke(stroke);
+        for(int i = 0; i < sc2MineralMarkers.size; i++){
+            Tile tile = world.tile(sc2MineralMarkers.get(i));
+            if(tile == null) continue;
+            Lines.rect(tile.worldx() - mineralHalf, tile.worldy() - mineralHalf, sc2MineralMarkerSize, sc2MineralMarkerSize);
+        }
+        for(int i = 0; i < sc2GasMarkers.size; i++){
+            Tile tile = world.tile(sc2GasMarkers.get(i));
+            if(tile == null) continue;
+            Lines.rect(tile.worldx() - gasHalf, tile.worldy() - gasHalf, sc2GasMarkerSize, sc2GasMarkerSize);
+        }
+
+        TextureRegion derelictLogo = Core.atlas.find("team-derelict", Icon.warning.getRegion());
+        float derelictLogoHeight = sc2DerelictLogoSize * (float)derelictLogo.height / Math.max(1f, derelictLogo.width);
+        Draw.color(sc2DerelictLogoColor);
+        for(int i = 0; i < sc2DerelictScrapCenters.size; i += 2){
+            Draw.rect(derelictLogo, sc2DerelictScrapCenters.get(i), sc2DerelictScrapCenters.get(i + 1), sc2DerelictLogoSize, derelictLogoHeight);
+        }
+        Draw.reset();
     }
 
     public void drawSpawns(){

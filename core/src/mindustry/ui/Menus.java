@@ -135,6 +135,13 @@ public class Menus{
         ui.showLabel(message, duration, worldx, worldy);
     }
 
+    @Remote(variants = Variant.both, unreliable = true)
+    public static void styledLabel(String message, float duration, float worldx, float worldy, float fontScale, int color){
+        if(message == null) return;
+
+        ui.showLabel(message, duration, worldx, worldy, fontScale, color);
+    }
+
     @Remote(variants = Variant.both)
     public static void infoPopupReliable(String message, float duration, int align, int top, int left, int bottom, int right){
         if(message == null) return;
@@ -145,6 +152,11 @@ public class Menus{
     @Remote(variants = Variant.both)
     public static void labelReliable(String message, float duration, float worldx, float worldy){
         label(message, duration, worldx, worldy);
+    }
+
+    @Remote(variants = Variant.both)
+    public static void styledLabelReliable(String message, float duration, float worldx, float worldy, float fontScale, int color){
+        styledLabel(message, duration, worldx, worldy, fontScale, color);
     }
 
     @Remote(variants = Variant.both)

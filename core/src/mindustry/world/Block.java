@@ -1018,7 +1018,9 @@ public class Block extends UnlockableContent implements Senseable{
 
     /** Called when pick blocked in the editor. */
     public void editorPicked(Tile tile){
-
+        if(saveConfig){
+            lastConfig = getConfig(tile);
+        }
     }
 
     public boolean isFloor(){

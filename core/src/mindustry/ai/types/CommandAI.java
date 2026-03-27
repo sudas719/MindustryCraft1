@@ -487,6 +487,7 @@ public class CommandAI extends AIController{
             vecMovePos.set(targetPos);
             Vec2 pathTarget = targetPos;
             float buildFinishRange = -1f;
+            boolean hasFallbackFinish = false;
 
             //the enter payload command requires an exact position
             if(group != null && group.valid && groupIndex < group.units.size && command != UnitCommand.enterPayloadCommand){
@@ -499,7 +500,7 @@ public class CommandAI extends AIController{
                 float cx = plan.drawx(), cy = plan.drawy();
                 float half = plan.block.size * tilesize / 2f;
                 float unitRadius = unit.hitSize / 2f;
-                float edge = half + unitRadius + 0.1f;
+                float edge = half + unitRadius + 0.1f + tilesize * 0.05f;
                 float bestX = cx + edge, bestY = cy;
                 float dx = unit.x - bestX, dy = unit.y - bestY;
                 float bestDst = dx * dx + dy * dy;
@@ -545,7 +546,7 @@ public class CommandAI extends AIController{
                 float cx = targetBuild.x, cy = targetBuild.y;
                 float half = targetBuild.block.size * tilesize / 2f;
                 float unitRadius = unit.hitSize / 2f;
-                float edge = half + unitRadius + 0.1f;
+                float edge = half + unitRadius + 0.1f + tilesize * 0.05f;
                 float bestX = cx + edge, bestY = cy;
                 float dx = unit.x - bestX, dy = unit.y - bestY;
                 float bestDst = dx * dx + dy * dy;
@@ -640,6 +641,7 @@ public class CommandAI extends AIController{
                     }
                 }else{
                     move &= controlPath.getPathPosition(unit, vecMovePos, pathTarget, vecOut, noFound) && (!blockingUnit || timeSpentBlocked > maxBlockTime);
+                    hasFallbackFinish = controlPath.getFallbackPosition(unit, pathTarget, Tmp.v4);
 
                     //TODO: what to do when there's a target and it can't be reached?
                     /*
@@ -655,6 +657,10 @@ public class CommandAI extends AIController{
                 isFinalPoint &= vecMovePos.epsilonEquals(vecOut, 4.1f);
 
                 //if the path is invalid, stop trying and record the end as unreachable
+                if(attackTarget == null && noFound[0]){
+                    finishPath();
+                    return;
+                }
                 if(unit.team.isAI() && (noFound[0] || unit.isPathImpassable(World.toTile(vecMovePos.x), World.toTile(vecMovePos.y)))){
                     if(attackTarget instanceof Building){
                         Building build = (Building)attackTarget;
@@ -760,6 +766,9 @@ public class CommandAI extends AIController{
                     if(buildFinishRange > 0f && targetPos != null){
                         finishRange = buildFinishRange;
                         finishPos = targetPos;
+                    }else if(hasFallbackFinish){
+                        finishPos = Tmp.v4;
+                        finishRange = groupedMove ? (command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f)) : centerArrivalThreshold;
                     }else{
                         finishRange = groupedMove ? (command.exactArrival && commandQueue.size == 0 ? 1f : Math.max(5f, unit.hitSize / 2f)) : centerArrivalThreshold;
                     }

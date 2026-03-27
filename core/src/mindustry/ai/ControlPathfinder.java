@@ -1045,9 +1045,22 @@ public class ControlPathfinder implements Runnable{
         int dest = findClosestNode(team, costId, goalX, goalY);
 
         if(dest == Integer.MAX_VALUE){
-            request.notFound = true;
-            //no node found (TODO: invalid state??)
-            return;
+            int fallback = findClosestReachableTile(team, pcost, unitX, unitY, goalX, goalY);
+            if(fallback != -1){
+                int fallbackX = fallback % wwidth, fallbackY = fallback / wwidth;
+                request.usingFallback = true;
+                request.fallbackPos = fallback;
+                goalPos = fallback;
+                goalX = fallbackX;
+                goalY = fallbackY;
+                dest = findClosestNode(team, costId, fallbackX, fallbackY);
+            }
+
+            if(dest == Integer.MAX_VALUE){
+                request.notFound = true;
+                //no node found (TODO: invalid state??)
+                return;
+            }
         }
 
         var nodePath = clusterAstar(request, costId, node, dest);
@@ -1134,25 +1147,18 @@ public class ControlPathfinder implements Runnable{
         int startPos = startX + startY * wwidth;
         if(!passable(team, cost, startPos)) return -1;
 
+        goalX = Mathf.clamp(goalX, 0, wwidth - 1);
+        goalY = Mathf.clamp(goalY, 0, wheight - 1);
+
         fallbackFrontier.clear();
         fallbackVisited.clear();
 
         fallbackFrontier.addLast(startPos);
         fallbackVisited.add(startPos);
 
-        int best = startPos;
-        int dx0 = startX - goalX, dy0 = startY - goalY;
-        float bestDst = dx0 * dx0 + dy0 * dy0;
-
         while(fallbackFrontier.size > 0){
             int pos = fallbackFrontier.removeFirst();
             int x = pos % wwidth, y = pos / wwidth;
-            int dx = x - goalX, dy = y - goalY;
-            float dst = dx * dx + dy * dy;
-            if(dst < bestDst){
-                bestDst = dst;
-                best = pos;
-            }
 
             for(int i = 0; i < 4; i++){
                 int nx = x + Geometry.d4[i].x, ny = y + Geometry.d4[i].y;
@@ -1165,7 +1171,65 @@ public class ControlPathfinder implements Runnable{
             }
         }
 
-        return best;
+        int goalPos = goalX + goalY * wwidth;
+        if(fallbackVisited.contains(goalPos)) return goalPos;
+
+        int best = -1;
+        float bestDst = Float.MAX_VALUE;
+        int maxRadius = Math.max(Math.max(goalX, wwidth - 1 - goalX), Math.max(goalY, wheight - 1 - goalY));
+
+        for(int radius = 1; radius <= maxRadius; radius++){
+            int minX = Math.max(0, goalX - radius), maxX = Math.min(wwidth - 1, goalX + radius);
+            int minY = Math.max(0, goalY - radius), maxY = Math.min(wheight - 1, goalY + radius);
+            best = -1;
+            bestDst = Float.MAX_VALUE;
+
+            for(int x = minX; x <= maxX; x++){
+                best = closestReachableRingTile(goalX, goalY, x, minY, best, bestDst);
+                if(best != -1){
+                    bestDst = ringDst2(goalX, goalY, best);
+                }
+                if(maxY != minY){
+                    best = closestReachableRingTile(goalX, goalY, x, maxY, best, bestDst);
+                    if(best != -1){
+                        bestDst = ringDst2(goalX, goalY, best);
+                    }
+                }
+            }
+
+            for(int y = minY + 1; y < maxY; y++){
+                best = closestReachableRingTile(goalX, goalY, minX, y, best, bestDst);
+                if(best != -1){
+                    bestDst = ringDst2(goalX, goalY, best);
+                }
+                if(maxX != minX){
+                    best = closestReachableRingTile(goalX, goalY, maxX, y, best, bestDst);
+                    if(best != -1){
+                        bestDst = ringDst2(goalX, goalY, best);
+                    }
+                }
+            }
+
+            if(best != -1){
+                return best;
+            }
+        }
+
+        return startPos;
+    }
+
+    private int closestReachableRingTile(int goalX, int goalY, int x, int y, int currentBest, float currentBestDst){
+        int pos = x + y * wwidth;
+        if(!fallbackVisited.contains(pos)) return currentBest;
+
+        float dst = ringDst2(goalX, goalY, pos);
+        return currentBest == -1 || dst < currentBestDst ? pos : currentBest;
+    }
+
+    private float ringDst2(int goalX, int goalY, int pos){
+        int x = pos % wwidth, y = pos / wwidth;
+        int dx = x - goalX, dy = y - goalY;
+        return dx * dx + dy * dy;
     }
 
     private PathCost idToCost(int costId){
@@ -1178,6 +1242,22 @@ public class ControlPathfinder implements Runnable{
 
     public boolean getPathPosition(Unit unit, Vec2 destination, Vec2 out, @Nullable boolean[] noResultFound){
         return getPathPosition(unit, destination, destination, out, noResultFound);
+    }
+
+    public boolean getFallbackPosition(Unit unit, Vec2 destination, Vec2 out){
+        if(unit == null || destination == null || out == null) return false;
+
+        PathRequest request = unitRequests.get(unit);
+        if(request == null || !request.usingFallback || request.fallbackPos < 0) return false;
+
+        int destPos = World.toTile(destination.x) + World.toTile(destination.y) * wwidth;
+        if(request.destination != destPos) return false;
+
+        Tile tile = world.tile(request.fallbackPos % wwidth, request.fallbackPos / wwidth);
+        if(tile == null) return false;
+
+        out.set(tile.worldx(), tile.worldy());
+        return true;
     }
 
     public boolean getPathPosition(Unit unit, Vec2 destination, Vec2 mainDestination, Vec2 out, @Nullable boolean[] noResultFound){

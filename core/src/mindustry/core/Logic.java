@@ -43,6 +43,8 @@ public class Logic implements ApplicationListener{
     private static final int pvpInitialScvs = 0;
     private static final int pvpRingScvs = 12;
     private static final int pvpHarvestSearchRadiusTiles = 40;
+    private static final float openingScvSpawnOutwardOffset = 2f;
+    private static final float openingScvSpawnAnchorDuration = 12f;
 
     public Logic(){
 
@@ -134,10 +136,15 @@ public class Logic implements ApplicationListener{
             if(state.isEditor()) return;
 
             CoreBlock.resetCoreCommandPositionsToNearestCrystal();
+        });
 
+        Events.on(PlayEvent.class, e -> {
+            if(net.client()) return;
+            if(state.isEditor()) return;
             if(!state.rules.pvp) return;
+            if(netServer != null && netServer.isMatchPreviewActive()) return;
 
-            //prevent duplication for reloaded saves
+            //prevent duplication for reloaded saves or repeated play() calls
             if(state.rules.tags.containsKey(pvpScvStartTag)) return;
             state.rules.tags.put(pvpScvStartTag, "true");
 
@@ -556,82 +563,64 @@ public class Logic implements ApplicationListener{
             if(fallbackDir.isZero(0.001f)) fallbackDir.set(0f, 1f);
             fallbackDir.nor();
 
-            Vec2 harvestDir = new Vec2();
-            Tile harvestTarget = scanHarvestTarget(core, fallbackDir, harvestDir);
-
-            if(pvpInitialScvs > 0){
-                spawnScvsAroundCore(core, pvpInitialScvs, harvestTarget);
+            Tile harvestTarget = core.findNearestCrystalRallyTile(CoreBlock.defaultRallyCrystalRangeTiles);
+            if(harvestTarget == null){
+                harvestTarget = scanHarvestTarget(core, fallbackDir, new Vec2());
             }
-            spawnScvsOnCoreRing(core, pvpRingScvs, harvestDir, harvestTarget);
+
+            spawnScvsOnCoreRing(core, pvpRingScvs, harvestTarget);
         }
     }
 
-    private void spawnScvsAroundCore(CoreBuild core, int amount, @Nullable Tile harvestTarget){
+    private void spawnScvsOnCoreRing(CoreBuild core, int amount, @Nullable Tile harvestTarget){
         if(amount <= 0) return;
-        UnitType type = UnitTypes.nova;
-        float offset = core.hitSize() / 2f + type.hitSize / 2f + 6f;
-
-        for(int i = 0; i < amount; i++){
-            float angle = i * 360f / amount;
-            float x = core.x + Angles.trnsx(angle, offset);
-            float y = core.y + Angles.trnsy(angle, offset);
-            Unit unit = type.create(core.team);
-            unit.set(x, y);
-            unit.add();
-            applyHarvestCommand(unit, harvestTarget);
-        }
-    }
-
-    private void spawnScvsOnCoreRing(CoreBuild core, int amount, Vec2 preferDir, @Nullable Tile harvestTarget){
-        if(amount <= 0) return;
-
         Seq<Tile> ring = coreRingTiles(core);
         if(ring.isEmpty()) return;
 
-        float half = tilesize / 2f;
-        Vec2 dir = Tmp.v1.set(preferDir);
-        if(dir.isZero(0.001f)){
-            dir.set(0f, 1f);
-        }else{
-            dir.nor();
+        Seq<Tile> candidates = new Seq<>();
+        for(int i = 0; i < ring.size; i++){
+            Tile tile = ring.get(i);
+            if(tile == null || tile.build != null || tile.solid()) continue;
+            candidates.add(tile);
         }
 
-        ring.sort(Structs.comparingFloat(t -> {
-            float dx = (t.worldx() + half) - core.x;
-            float dy = (t.worldy() + half) - core.y;
-            float len = Mathf.sqrt(dx * dx + dy * dy);
-            if(len < 0.001f) return 0f;
-            dx /= len;
-            dy /= len;
-            return -(dx * dir.x + dy * dir.y);
-        }));
+        if(candidates.isEmpty()) return;
 
-        ObjectSet<Tile> used = new ObjectSet<>();
-        int spawned = 0;
-        for(int i = 0; i < ring.size && spawned < amount; i++){
-            Tile tile = ring.get(i);
-            if(tile == null || used.contains(tile)) continue;
-            if(tile.build != null) continue;
-            if(tile.solid()) continue;
+        if(harvestTarget != null){
+            float tx = harvestTarget.worldx(), ty = harvestTarget.worldy();
+            candidates.sort(Structs.comparingFloat(t -> Mathf.dst2(t.worldx(), t.worldy(), tx, ty)));
+        }
 
+        int spawnCount = Math.min(amount, candidates.size);
+        for(int i = 0; i < spawnCount; i++){
+            Tile tile = candidates.get(i);
             Unit unit = UnitTypes.nova.create(core.team);
-            unit.set(tile.worldx() + half, tile.worldy() + half);
-            unit.add();
+            Vec2 spawn = openingScvSpawnPosition(core, tile, Tmp.v1);
+            unit.set(spawn.x, spawn.y);
+            unit.vel.setZero();
+            unit.openingSpawnAnchorX = spawn.x;
+            unit.openingSpawnAnchorY = spawn.y;
+            unit.openingSpawnAnchorTime = openingScvSpawnAnchorDuration;
             applyHarvestCommand(unit, harvestTarget);
-            used.add(tile);
-            spawned++;
+            unit.add();
         }
     }
 
     private void applyHarvestCommand(Unit unit, @Nullable Tile harvestTarget){
-        if(unit == null || !unit.isValid()) return;
-        if(harvestTarget == null) return;
+        if(unit == null) return;
 
         if(!(unit.controller() instanceof CommandAI)){
             unit.controller(new CommandAI());
         }
 
         if(unit.controller() instanceof CommandAI ai){
+            if(ai.currentCommand() != UnitCommand.harvestCommand){
+                ai.command(UnitCommand.harvestCommand);
+            }
+            if(harvestTarget != null){
+                ai.setHarvestTarget(Tmp.v2.set(harvestTarget.worldx(), harvestTarget.worldy()));
+            }
+        }else if(unit.controller() instanceof HarvestAI ai && harvestTarget != null){
             ai.setHarvestTarget(Tmp.v2.set(harvestTarget.worldx(), harvestTarget.worldy()));
         }
     }
@@ -640,19 +629,34 @@ public class Logic implements ApplicationListener{
         Seq<Tile> out = new Seq<>();
         if(core == null || core.tile == null) return out;
 
-        int bx = core.tile.x;
-        int by = core.tile.y;
-        int size = core.block.size;
+        int cx = World.toTile(core.x);
+        int cy = World.toTile(core.y);
 
-        for(int x = bx - 1; x <= bx + size; x++){
-            for(int y = by - 1; y <= by + size; y++){
-                if(x == bx - 1 || x == bx + size || y == by - 1 || y == by + size){
-                    Tile tile = world.tile(x, y);
-                    if(tile != null) out.add(tile);
-                }
-            }
+        for(int dy = -3; dy <= 3; dy++){
+            Tile left = world.tile(cx - 3, cy + dy);
+            if(left != null) out.add(left);
+            Tile right = world.tile(cx + 3, cy + dy);
+            if(right != null) out.add(right);
         }
 
+        for(int dx = -2; dx <= 2; dx++){
+            Tile bottom = world.tile(cx + dx, cy - 3);
+            if(bottom != null) out.add(bottom);
+            Tile top = world.tile(cx + dx, cy + 3);
+            if(top != null) out.add(top);
+        }
+
+        return out;
+    }
+
+    private Vec2 openingScvSpawnPosition(CoreBuild core, Tile tile, Vec2 out){
+        out.set(tile.worldx(), tile.worldy()).sub(core.x, core.y);
+        if(out.isZero(0.001f)){
+            out.set(0f, 1f);
+        }else{
+            out.nor();
+        }
+        out.scl(openingScvSpawnOutwardOffset).add(tile.worldx(), tile.worldy());
         return out;
     }
 
@@ -664,8 +668,8 @@ public class Logic implements ApplicationListener{
             return null;
         }
 
-        int cx = core.tile.x + core.block.size / 2;
-        int cy = core.tile.y + core.block.size / 2;
+        int cx = World.toTile(core.x);
+        int cy = World.toTile(core.y);
 
         ObjectSet<Tile> resources = new ObjectSet<>();
         int radius = Math.min(pvpHarvestSearchRadiusTiles, Math.min(world.width(), world.height()) / 2);
@@ -687,12 +691,10 @@ public class Logic implements ApplicationListener{
             return null;
         }
 
-        float half = tilesize / 2f;
-
         Vec2 sum = Tmp.v1.setZero();
         for(Tile tile : resources){
-            float dx = (tile.worldx() + half) - core.x;
-            float dy = (tile.worldy() + half) - core.y;
+            float dx = tile.worldx() - core.x;
+            float dy = tile.worldy() - core.y;
             float dst = Mathf.sqrt(dx * dx + dy * dy);
             float w = 1f / (dst / tilesize + 1f);
             sum.add(dx * w, dy * w);
@@ -708,8 +710,8 @@ public class Logic implements ApplicationListener{
         float sumDist = 0f;
         int distCount = 0;
         for(Tile tile : resources){
-            float dx = (tile.worldx() + half) - core.x;
-            float dy = (tile.worldy() + half) - core.y;
+            float dx = tile.worldx() - core.x;
+            float dy = tile.worldy() - core.y;
             float dst = Mathf.sqrt(dx * dx + dy * dy);
             if(dst < 0.001f) continue;
             float align = (dx * outDir.x + dy * outDir.y) / dst;
@@ -724,8 +726,8 @@ public class Logic implements ApplicationListener{
         Tile best = null;
         float bestScore = -999999f;
         for(Tile tile : resources){
-            float dx = (tile.worldx() + half) - core.x;
-            float dy = (tile.worldy() + half) - core.y;
+            float dx = tile.worldx() - core.x;
+            float dy = tile.worldy() - core.y;
             float dst = Mathf.sqrt(dx * dx + dy * dy);
             if(dst < 0.001f) continue;
 
@@ -743,7 +745,7 @@ public class Logic implements ApplicationListener{
         //fallback: nearest valid resource
         float bestDst = Float.MAX_VALUE;
         for(Tile tile : resources){
-            float dst = Mathf.dst(tile.worldx() + half, tile.worldy() + half, core.x, core.y);
+            float dst = Mathf.dst(tile.worldx(), tile.worldy(), core.x, core.y);
             if(dst < bestDst){
                 bestDst = dst;
                 best = tile;

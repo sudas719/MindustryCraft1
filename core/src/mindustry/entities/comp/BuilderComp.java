@@ -411,7 +411,7 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
     private float closeRange(@Nullable BuildPlan plan){
         if(plan == null || plan.block == null) return tilesize * 0.6f;
         float unitRadius = type.hitSize / 2f;
-        return plan.block.size * tilesize / 2f + unitRadius + 0.1f;
+        return plan.block.size * tilesize / 2f + unitRadius + 0.1f + tilesize * 0.05f;
     }
 
     /** @return  the build plan currently active, or the one at the top of the queue.*/

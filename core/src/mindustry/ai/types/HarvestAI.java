@@ -11,6 +11,7 @@ import mindustry.game.Team;
 import mindustry.gen.*;
 import mindustry.world.*;
 import mindustry.world.blocks.environment.*;
+import mindustry.world.blocks.storage.*;
 
 import static mindustry.Vars.*;
 
@@ -41,6 +42,7 @@ public class HarvestAI extends AIController{
     public @Nullable Tile queuedTile;
     public float harvestTimer;
     public boolean inCondenser;
+    public int condenserBuildPos = -1;
     public Vec2 condenserEntryPos = new Vec2();
     public Vec2 lastHarvestPos = new Vec2();
     public Building targetCore;
@@ -161,10 +163,6 @@ public class HarvestAI extends AIController{
             return;
         }
 
-        if(tryRebalanceTargets()){
-            return;
-        }
-
         // Always face the target while moving towards it
         unit.lookAt(harvestTarget.worldx(), harvestTarget.worldy());
 
@@ -192,9 +190,7 @@ public class HarvestAI extends AIController{
             if(!canMineHere(harvestTarget)){
                 harvestTimer = 0f;
                 if(isNova(unit)){
-                    Tile anchor = forcedTarget != null ? forcedTarget : harvestTarget;
-                    Tile better = forcedByPlayer ? findNearestFreeOre(anchor.worldx(), anchor.worldy(), searchRadius)
-                        : findOreNear(anchor.worldx(), anchor.worldy(), searchRadius, true);
+                    Tile better = findOreNear(unit.x, unit.y, searchRadius, true);
                     if(better != null && better != harvestTarget){
                         int currentCount = novaInterestCount(harvestTarget);
                         int betterCount = novaInterestCount(better);
@@ -279,11 +275,12 @@ public class HarvestAI extends AIController{
         }
 
         if(inCondenser){
+            unit.set(condenser.x, condenser.y);
+            unit.vel.setZero();
             harvestTimer += Time.delta;
             if(harvestTimer >= gasHarvestTime){
                 harvestTimer = 0f;
-                inCondenser = false;
-                unit.harvestHidden = false;
+                exitCondenser(condenser);
 
                 int amount = vent.getNovaCollect(dataTile);
                 int consumed = vent.isInfinite(dataTile) ? amount : vent.consumeGas(dataTile, amount);
@@ -340,11 +337,7 @@ public class HarvestAI extends AIController{
         }
 
         startMining(harvestTarget);
-        inCondenser = true;
-        harvestTimer = 0f;
-        condenserEntryPos.set(unit.x, unit.y);
-        unit.harvestHidden = true;
-        unit.vel.setZero();
+        enterCondenser(condenser);
     }
 
     void updateReturning(){
@@ -432,6 +425,70 @@ public class HarvestAI extends AIController{
         return null;
     }
 
+    @Nullable Building currentCondenser(){
+        if(condenserBuildPos != -1){
+            Building build = world.build(condenserBuildPos);
+            if(build != null && build.isValid() && build.block == Blocks.ventCondenser && build.team == unit.team){
+                return build;
+            }
+        }
+        return findVentCondenser(harvestTarget);
+    }
+
+    int gasHarvestLimit(@Nullable Tile tile){
+        return 1;
+    }
+
+    int validCount(@Nullable Seq<Unit> units){
+        if(units == null) return 0;
+        int count = 0;
+        for(Unit other : units){
+            if(other == null || !other.isValid() || other.dead) continue;
+            count++;
+        }
+        return count;
+    }
+
+    int queueIndex(@Nullable Seq<Unit> queue){
+        if(queue == null) return -1;
+        for(int i = 0; i < queue.size; i++){
+            if(queue.get(i) == unit) return i;
+        }
+        return -1;
+    }
+
+    void enterCondenser(Building condenser){
+        inCondenser = true;
+        harvestTimer = 0f;
+        condenserBuildPos = condenser.pos();
+        condenserEntryPos.set(unit.x, unit.y);
+        unit.harvestHidden = true;
+        unit.vel.setZero();
+        unit.set(condenser.x, condenser.y);
+    }
+
+    Vec2 condenserExitPoint(Building condenser, Vec2 out){
+        Rect condRect = Tmp.r1.setSize(condenser.block.size * tilesize).setCenter(condenser.x, condenser.y);
+        return contactPoint(condRect, condenserEntryPos.x, condenserEntryPos.y, out);
+    }
+
+    void exitCondenser(@Nullable Building condenser){
+        if(!(inCondenser || unit.harvestHidden || condenserBuildPos != -1)) return;
+
+        Building activeCondenser = condenser != null ? condenser : currentCondenser();
+        if(activeCondenser != null && activeCondenser.isValid()){
+            Vec2 exit = condenserExitPoint(activeCondenser, Tmp.v1);
+            unit.set(exit.x, exit.y);
+        }else if(!condenserEntryPos.isZero(0.001f)){
+            unit.set(condenserEntryPos);
+        }
+
+        inCondenser = false;
+        condenserBuildPos = -1;
+        unit.harvestHidden = false;
+        unit.vel.setZero();
+    }
+
     float collisionRadius(){
         return unit.type.hitSize * unitCollisionRadiusScale;
     }
@@ -480,33 +537,30 @@ public class HarvestAI extends AIController{
             return true;
         }
 
-        if(active != null && !active.isEmpty()){
-            queueNova(tile);
-            return false;
-        }
-
+        int limit = gasHarvestLimit(tile);
+        int activeCount = validCount(active);
         Seq<Unit> queue = novaQueue.get(tile);
-        if(queue != null && !queue.isEmpty()){
-            if(queue.first() == unit){
+        if(activeCount < limit){
+            if(queue == null || queue.isEmpty()){
+                leaveQueue();
+                return true;
+            }
+
+            queueNova(tile);
+            queue = novaQueue.get(tile);
+            int freeSlots = limit - activeCount;
+            int index = queueIndex(queue);
+            if(index != -1 && index < freeSlots){
                 queue.remove(unit);
                 if(queue.isEmpty()) novaQueue.remove(tile);
                 queuedTile = null;
                 return true;
-            }else{
-                queueNova(tile);
-                return false;
             }
+
+            return false;
         }
 
         queueNova(tile);
-        queue = novaQueue.get(tile);
-        if(queue != null && !queue.isEmpty() && queue.first() == unit){
-            queue.remove(unit);
-            if(queue.isEmpty()) novaQueue.remove(tile);
-            queuedTile = null;
-            return true;
-        }
-
         return false;
     }
 
@@ -531,9 +585,8 @@ public class HarvestAI extends AIController{
     }
 
     void clearMiningState(){
-        if(inCondenser){
-            inCondenser = false;
-            unit.harvestHidden = false;
+        if(inCondenser || unit.harvestHidden || condenserBuildPos != -1){
+            exitCondenser(null);
             if(unit.controller() instanceof CommandAI ai){
                 ai.applyQueuedCommand();
             }
@@ -595,22 +648,16 @@ public class HarvestAI extends AIController{
     }
 
     Tile findNearestOre(){
-        // First try to find ore near last harvest position
-        boolean useCounts = isNova(unit);
+        // First try to find the nearest ore near the last harvest position.
+        // SCV load-balancing happens only after it reaches a patch and attempts to mine it.
+        boolean useCounts = false;
         if(lastHarvestPos.len() > 0){
             Tile near = findOreNear(lastHarvestPos.x, lastHarvestPos.y, searchRadius, useCounts);
             if(near != null) return near;
         }
 
-        // Otherwise find nearest ore to unit with limited search radius
+        // Otherwise find the nearest ore to the unit with limited search radius.
         Tile best = findOreNear(unit.x, unit.y, maxSearchRadius, useCounts);
-        if(useCounts && harvestTarget != null && harvestTarget.block() instanceof CrystalMineralWall && best != null){
-            int currentCount = minerCount(harvestTarget);
-            int bestCount = minerCount(best);
-            if(bestCount == currentCount){
-                return harvestTarget;
-            }
-        }
         return best;
     }
 
@@ -758,7 +805,11 @@ public class HarvestAI extends AIController{
     }
 
     public static int getActiveNovaCount(Tile tile){
-        return targetCount(targetNovas, tile);
+        return getActiveNovaCount(tile, null);
+    }
+
+    public static int getActiveNovaCount(Tile tile, @Nullable Team team){
+        return targetCount(targetNovas, tile, team);
     }
 
     static int novaInterestCount(Tile tile){
@@ -778,6 +829,19 @@ public class HarvestAI extends AIController{
     static int targetCount(ObjectMap<Tile, Seq<Unit>> map, Tile tile){
         Seq<Unit> seq = map.get(tile);
         return seq == null ? 0 : seq.size;
+    }
+
+    static int targetCount(ObjectMap<Tile, Seq<Unit>> map, Tile tile, @Nullable Team team){
+        Seq<Unit> seq = map.get(tile);
+        if(seq == null) return 0;
+
+        int count = 0;
+        for(Unit unit : seq){
+            if(unit == null || !unit.isValid() || unit.dead) continue;
+            if(team != null && unit.team != team) continue;
+            count++;
+        }
+        return count;
     }
 
     static void addActive(ObjectMap<Tile, Seq<Unit>> map, Tile tile, Unit unit){
@@ -911,27 +975,6 @@ public class HarvestAI extends AIController{
         if(unit.isFlying()) return true;
         if(unit.isPathImpassable(tile.x, tile.y)) return false;
         return unit.canPass(tile.x, tile.y);
-    }
-
-    boolean tryRebalanceTargets(){
-        if(!isNova(unit) || miningTile == harvestTarget) return false;
-        if(forcedByPlayer && forcedTarget != null && !nearTile(forcedTarget)) return false;
-
-        Tile anchor = forcedTarget != null ? forcedTarget : harvestTarget;
-        Tile better = findOreNear(anchor.worldx(), anchor.worldy(), searchRadius, true);
-        if(better == null || better == harvestTarget) return false;
-
-        int currentCount = novaInterestCount(harvestTarget);
-        int betterCount = novaInterestCount(better);
-        if(currentCount - betterCount < 2) return false;
-
-        clearMiningState();
-        if(forcedByPlayer){
-            forcedTarget = better;
-        }
-        setHarvestTargetTile(better);
-        harvestTimer = 0f;
-        return true;
     }
 
     boolean nearTile(Tile tile){

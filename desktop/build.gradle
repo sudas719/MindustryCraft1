@@ -7,6 +7,7 @@ def enableTemplates = true
 def JDK_DIR = "$System.env.JDK_DIR"
 def ICON_DIR = new File("$rootDir/core/assets/icons/icon.icns")
 def platforms = ["Linux64", "Windows64", "Windows32", "MacOS"]
+def desktopJarName = "MindustryCraftⅠ v${getBuildVersion()}.jar"
 
 task run(dependsOn: classes, type: JavaExec){
     mainClass = project.mainClassName
@@ -53,7 +54,7 @@ task dist(type: Jar, dependsOn: configurations.runtimeClasspath){
         exclude("**steam**.so", "**steam**.dll", "**steam**.dylib")
     }
 
-    archiveFileName = "${appName}.jar"
+    archiveFileName = desktopJarName
 
     manifest{
         attributes 'Main-Class': project.mainClassName
@@ -73,7 +74,7 @@ if(!project.ext.hasSprites() && System.getenv("JITPACK") != "true"){
 task steamtest(dependsOn: dist){
     doLast{
         copy{
-            from "build/libs/Mindustry.jar"
+            from "build/libs/${desktopJarName}"
             if(project.hasProperty("destination")){
                 into project.property("destination")
             }else if(System.properties["os.name"].contains("Mac")){
@@ -81,7 +82,7 @@ task steamtest(dependsOn: dist){
             }else{
                 into "/home/anuke/.steam/steam/steamapps/common/Mindustry/jre"
             }
-            rename("Mindustry.jar", "desktop.jar")
+            rename(desktopJarName, "desktop.jar")
         }
     }
 }
@@ -99,8 +100,8 @@ platforms.each{ platform ->
         doLast{
             copy{
                 into "build/packr/"
-                rename("${appName}.jar", "desktop.jar")
-                from "build/libs/${appName}.jar"
+                rename(desktopJarName, "desktop.jar")
+                from "build/libs/${desktopJarName}"
             }
 
             delete{
@@ -116,8 +117,8 @@ platforms.each{ platform ->
 
                 copy{
                     into "build/packr/output/jre"
-                    rename("${appName}.jar", "desktop.jar")
-                    from "build/libs/${appName}.jar"
+                    rename(desktopJarName, "desktop.jar")
+                    from "build/libs/${desktopJarName}"
                 }
             }else{
                 def jarPath = JDK_DIR + "packr.jar"

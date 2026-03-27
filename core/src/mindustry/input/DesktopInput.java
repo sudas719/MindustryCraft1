@@ -478,14 +478,14 @@ public class DesktopInput extends InputHandler{
                     if(!showHint()) return str;
                     str.setLength(0);
                     if(!isBuilding && !Core.settings.getBool("buildautopause") && !player.unit().isBuilding()){
-                        str.append(Core.bundle.format("enablebuilding", Binding.pauseBuilding.value.key.toString()));
+                        str.append(Core.bundle.format("enablebuilding", KeyNames.get(Binding.pauseBuilding.value.key)));
                     }else if(player.unit().isBuilding()){
-                        str.append(Core.bundle.format(isBuilding ? "pausebuilding" : "resumebuilding", Binding.pauseBuilding.value.key.toString()))
-                            .append("\n").append(Core.bundle.format("cancelbuilding", Binding.clearBuilding.value.key.toString()))
-                            .append("\n").append(Core.bundle.format("selectschematic", Binding.schematicSelect.value.key.toString()));
+                        str.append(Core.bundle.format(isBuilding ? "pausebuilding" : "resumebuilding", KeyNames.get(Binding.pauseBuilding.value.key)))
+                            .append("\n").append(Core.bundle.format("cancelbuilding", KeyNames.get(Binding.clearBuilding.value.key)))
+                            .append("\n").append(Core.bundle.format("selectschematic", KeyNames.get(Binding.schematicSelect.value.key)));
                     }
                     if(!player.dead() && !player.unit().spawnedByCore()){
-                        str.append(str.length() != 0 ? "\n" : "").append(Core.bundle.format("respawn", Binding.respawn.value.key.toString()));
+                        str.append(str.length() != 0 ? "\n" : "").append(Core.bundle.format("respawn", KeyNames.get(Binding.respawn.value.key)));
                     }
                     return str;
                 }).style(Styles.outlineLabel);
@@ -499,8 +499,8 @@ public class DesktopInput extends InputHandler{
             t.table(Styles.black6, b -> {
                 b.defaults().left();
                 b.label(() -> Core.bundle.format("schematic.flip",
-                    Binding.schematicFlipX.value.key.toString(),
-                    Binding.schematicFlipY.value.key.toString())).style(Styles.outlineLabel).visible(() -> Core.settings.getBool("hints"));
+                    KeyNames.get(Binding.schematicFlipX.value.key),
+                    KeyNames.get(Binding.schematicFlipY.value.key))).style(Styles.outlineLabel).visible(() -> Core.settings.getBool("hints"));
                 b.row();
                 b.table(a -> {
                     a.button("@schematic.add", Icon.save, this::showSchematicSave).colspan(2).size(250f, 50f).disabled(f -> lastSchematic == null || lastSchematic.file != null);
@@ -1502,7 +1502,7 @@ public class DesktopInput extends InputHandler{
                     commandRectY = mouseWorldY();
                     commandRectScreenX = getMouseX();
                     commandRectScreenY = getMouseY();
-                }else if(!checkConfigTap() && selected != null && !tryRepairDerelict(selected)){
+                }else if(!checkConfigTap() && selected != null && !inspectDerelictScrapWall(selected) && !tryRepairDerelict(selected)){
                     if(trySelectResource(selected)){
                         //resource selection consumes the tap
                     }else{
@@ -1633,11 +1633,13 @@ public class DesktopInput extends InputHandler{
         }
 
         Tile cursor = tileAt(Core.input.mouseX(), Core.input.mouseY());
+        Team viewer = ViewerPerspective.team();
+        boolean visibleCursorTile = isTileVisibleToViewer(cursor, viewer);
 
         cursorType = SystemCursor.arrow;
 
-        if(cursor != null){
-            if(cursor.build != null && cursor.build.interactable(player.team())){
+        if(cursor != null && visibleCursorTile){
+            if(cursor.build != null && canInspectBuilding(cursor.build, viewer) && cursor.build.interactable(player.team())){
                 cursorType = cursor.build.getCursor();
             }
 
@@ -2657,7 +2659,13 @@ public class DesktopInput extends InputHandler{
             case ATTACK:
                 //Attack command: units move and attack
                 //Check if clicking on any unit or building, including allies when forced by attack command mode.
-                Building build = world.buildWorld(worldX, worldY);
+                Building build = buildAt(worldX, worldY);
+                if(build == null){
+                    Tile tile = world.tileWorld(worldX, worldY);
+                    if(tile != null && canInspectBuilding(tile.build, ViewerPerspective.team())){
+                        build = tile.build;
+                    }
+                }
                 Teamc attack = build;
                 if(attack == null){
                     attack = selectedAnyUnit(worldX, worldY);

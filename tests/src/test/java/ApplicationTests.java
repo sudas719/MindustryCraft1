@@ -276,6 +276,38 @@ public class ApplicationTests{
     }
 
     @Test
+    void pvpPlaySpawnsStartingScvsOnce(){
+        Tiles tiles = world.resize(24, 24);
+
+        world.beginMapLoad();
+        for(int x = 0; x < tiles.width; x++){
+            for(int y = 0; y < tiles.height; y++){
+                tiles.set(x, y, new Tile(x, y, Blocks.stone, Blocks.air, Blocks.air));
+            }
+        }
+
+        tiles.getn(5, 5).setBlock(Blocks.coreShard, Team.sharded);
+        tiles.getn(18, 18).setBlock(Blocks.coreShard, Team.crux);
+        world.endMapLoad();
+
+        Rules rules = new Rules();
+        Gamemode.pvp.apply(rules);
+        state.rules = rules;
+
+        logic.play();
+        int spawned = Groups.unit.count(u -> u.type == UnitTypes.nova);
+        assertTrue(spawned > 0);
+        assertTrue(Groups.unit.contains(u -> u.type == UnitTypes.nova && u.team == Team.sharded));
+        assertTrue(Groups.unit.contains(u -> u.type == UnitTypes.nova && u.team == Team.crux));
+        assertTrue(Groups.unit.contains(u -> u.type == UnitTypes.nova &&
+            Mathf.equal(Mathf.mod(u.x, tilesize), 0f) && Mathf.equal(Mathf.mod(u.y, tilesize), 0f)
+        ));
+
+        logic.play();
+        assertEquals(spawned, Groups.unit.count(u -> u.type == UnitTypes.nova));
+    }
+
+    @Test
     void spawnWaves(){
         world.loadMap(testMap);
         assertTrue(spawner.countSpawns() > 0, "No spawns present.");
@@ -966,6 +998,39 @@ public class ApplicationTests{
         assertTrue(Mathf.equal(ai.targetPos.x, third.drawx()));
         assertTrue(Mathf.equal(ai.targetPos.y, third.drawy()));
         assertEquals(0, ai.commandQueue.size);
+    }
+
+    @Test
+    void incompleteCommandableBuildingKeepsRallyAfterConstruction(){
+        initBuilding();
+
+        Tile prereq = world.tile(8, 8);
+        prereq.setBlock(Blocks.doorLarge, Team.sharded, 0);
+
+        Tile tile = world.tile(14, 14);
+        Build.beginPlace(null, Blocks.groundFactory, Team.sharded, tile.x, tile.y, 0, null);
+
+        assertTrue(tile.build instanceof mindustry.world.blocks.ConstructBlock.ConstructBuild);
+        var construct = (mindustry.world.blocks.ConstructBlock.ConstructBuild)tile.build;
+        assertTrue(construct.isCommandable());
+
+        Player commander = Player.create();
+        commander.team(Team.sharded);
+
+        Vec2 target = new Vec2(world.tile(24, 24).worldx(), world.tile(24, 24).worldy());
+        InputHandler.commandBuilding(commander, new int[]{tile.pos()}, target.cpy());
+
+        assertNotNull(construct.getCommandPosition());
+        assertTrue(Mathf.equal(construct.getCommandPosition().x, target.x));
+        assertTrue(Mathf.equal(construct.getCommandPosition().y, target.y));
+
+        mindustry.world.blocks.ConstructBlock.constructFinish(tile, Blocks.groundFactory, null, (byte)0, Team.sharded, null);
+
+        assertTrue(tile.build instanceof mindustry.world.blocks.units.UnitFactory.UnitFactoryBuild);
+        var factory = (mindustry.world.blocks.units.UnitFactory.UnitFactoryBuild)tile.build;
+        assertNotNull(factory.getCommandPosition());
+        assertTrue(Mathf.equal(factory.getCommandPosition().x, target.x));
+        assertTrue(Mathf.equal(factory.getCommandPosition().y, target.y));
     }
 
     @Test

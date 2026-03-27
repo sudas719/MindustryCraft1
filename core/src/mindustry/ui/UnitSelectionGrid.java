@@ -34,13 +34,14 @@ public class UnitSelectionGrid extends Table{
     private static final int COLS = 8;
     private static final int ROWS = 3;
     private static final int UNITS_PER_PAGE = COLS * ROWS;
-    private static final float GRID_PORTRAIT_PAD = 2f;
+    private static final float SELECTION_PANEL_SCALE = 1.2f;
+    private static final float GRID_PORTRAIT_PAD = 2f * SELECTION_PANEL_SCALE;
     private static final String detectorTag = "[gold]\u4fa6\u6d4b\u5355\u4f4d";
     private static final int PAYLOAD_GRID_COLS = 4;
     private static final int PAYLOAD_GRID_ROWS = 2;
-    private static final float PAYLOAD_SLOT_SIZE = 38f;
-    private static final float PAYLOAD_SLOT_PAD = 3f;
-    private static final float QUEUE_SLOT_SIZE = 40f;
+    private static final float PAYLOAD_SLOT_SIZE = 38f * SELECTION_PANEL_SCALE;
+    private static final float PAYLOAD_SLOT_PAD = 3f * SELECTION_PANEL_SCALE;
+    private static final float QUEUE_SLOT_SIZE = 40f * SELECTION_PANEL_SCALE;
 
     private int currentPage = 0;
     private Seq<Displayable> displayedItems = new Seq<>();
@@ -66,6 +67,10 @@ public class UnitSelectionGrid extends Table{
     private int lastMedivacPayloadHash = -1;
     private final GlyphLayout addonBadgeLayout = new GlyphLayout();
 
+    private static float ui(float value){
+        return value * SELECTION_PANEL_SCALE;
+    }
+
     //Interface for units and buildings
     private interface Displayable{
         TextureRegion icon();
@@ -89,6 +94,13 @@ public class UnitSelectionGrid extends Table{
             return cons.current.health;
         }
         return building.maxHealth;
+    }
+
+    private static float displayArmor(Building building, Block display){
+        if(building != null && display == Blocks.scrapWall && building.team == Team.derelict){
+            return 1f;
+        }
+        return display == null ? 0f : display.armor;
     }
 
     //StarCraft 2-style unit command
@@ -198,7 +210,7 @@ public class UnitSelectionGrid extends Table{
 
     public UnitSelectionGrid(){
         background(Styles.black6);
-        margin(4f);
+        margin(ui(4f));
 
         //Main layout - vertical stack
         defaults().center();
@@ -213,7 +225,7 @@ public class UnitSelectionGrid extends Table{
 
         //Left side: pagination (vertical)
         paginationTable = new Table();
-        contentRow.add(paginationTable).left().padRight(4f);
+        contentRow.add(paginationTable).left().padRight(ui(4f));
 
         //Right side: unit grid
         gridTable = new Table();
@@ -222,7 +234,7 @@ public class UnitSelectionGrid extends Table{
         update(() -> {
             //Update formation numbers display - show all 10 buttons (1-0)
             formationTable.clear();
-            formationTable.defaults().size(32f).pad(2f);
+            formationTable.defaults().size(ui(32f)).pad(ui(2f));
 
             //Draw all 10 formation buttons (1-0)
             for(int i = 0; i < 10; i++){
@@ -734,7 +746,7 @@ public class UnitSelectionGrid extends Table{
 
         //Add pagination with direct page number selection (vertical layout on left)
         if(totalPages > 1){
-            paginationTable.defaults().size(32f).pad(2f);
+            paginationTable.defaults().size(ui(32f)).pad(ui(2f));
             for(int i = 0; i < totalPages; i++){
                 final int pageNum = i;
                 paginationTable.button(String.valueOf(i + 1), () -> {
@@ -769,53 +781,53 @@ public class UnitSelectionGrid extends Table{
 
         gridTable.table(panel -> {
             panel.background(Styles.black6);
-            panel.margin(8f);
+            panel.margin(ui(8f));
 
             //Left half: Unit icon and HP
             panel.table(leftHalf -> {
                 Stack unitIconStack = new Stack();
                 unitIconStack.add(portraitBorderElement());
                 Table iconWrap = new Table();
-                iconWrap.image(unit.type.uiIcon).size(76f);
+                iconWrap.image(unit.type.uiIcon).size(ui(76f));
                 unitIconStack.add(iconWrap);
-                leftHalf.add(unitIconStack).size(80f).row();
+                leftHalf.add(unitIconStack).size(ui(80f)).row();
                 //HP display updates in real-time
                 leftHalf.label(() -> Strings.autoFixed(unit.health, 2) + "/" + Strings.autoFixed(unit.maxHealth, 2))
-                    .color(Color.white).style(Styles.outlineLabel).padTop(4f);
+                    .color(Color.white).style(Styles.outlineLabel).padTop(ui(4f));
                 if(unit.type.energyCapacity > 0f){
                     leftHalf.row();
                     leftHalf.label(() -> Mathf.round(unit.energy) + "/" + Mathf.round(unit.type.energyCapacity))
-                        .color(Color.valueOf("b57aff")).style(Styles.outlineLabel).padTop(2f);
+                        .color(Color.valueOf("b57aff")).style(Styles.outlineLabel).padTop(ui(2f));
                 }
                 float remaining = PulsarDrops.remainingFraction(unit);
                 if(remaining > 0f){
                     leftHalf.row();
                     Bar lifeBar = new Bar(() -> "", () -> Color.gray, () -> PulsarDrops.remainingFraction(unit));
-                    leftHalf.add(lifeBar).width(80f).height(4f).padTop(4f);
+                    leftHalf.add(lifeBar).width(ui(80f)).height(ui(4f)).padTop(ui(4f));
                 }
                 if(unit.hasEffect(StatusEffects.ravenAntiArmor)){
                     leftHalf.row();
                     Bar armorBreakBar = new Bar(() -> "", () -> Color.valueOf("7a1d22"),
                     () -> Mathf.clamp(unit.getDuration(StatusEffects.ravenAntiArmor) / UnitTypes.ravenAntiArmorDuration()));
-                    leftHalf.add(armorBreakBar).width(80f).height(4f).padTop(3f);
+                    leftHalf.add(armorBreakBar).width(ui(80f)).height(ui(4f)).padTop(ui(3f));
                 }
                 if(unit.hasEffect(StatusEffects.ravenMatrixLock)){
                     leftHalf.row();
                     Bar matrixBar = new Bar(() -> "", () -> Color.valueOf("1e1e1e"),
                     () -> Mathf.clamp(unit.getDuration(StatusEffects.ravenMatrixLock) / UnitTypes.ravenMatrixDuration()));
-                    leftHalf.add(matrixBar).width(80f).height(4f).padTop(3f);
+                    leftHalf.add(matrixBar).width(ui(80f)).height(ui(4f)).padTop(ui(3f));
                 }
                 if(UnitTypes.battlecruiserYamatoCharging(unit)){
                     leftHalf.row();
                     Bar yamatoCharge = new Bar(() -> "", () -> Color.valueOf("66e7ff"), () -> UnitTypes.battlecruiserYamatoChargeProgress(unit));
-                    leftHalf.add(yamatoCharge).width(80f).height(4f).padTop(3f);
+                    leftHalf.add(yamatoCharge).width(ui(80f)).height(ui(4f)).padTop(ui(3f));
                 }
                 if(UnitTypes.isRavenTurret(unit)){
                     leftHalf.row();
                     Bar turretLife = new Bar(() -> "", () -> Color.gray, () -> UnitTypes.ravenTurretLifeProgress(unit));
-                    leftHalf.add(turretLife).width(80f).height(4f).padTop(3f);
+                    leftHalf.add(turretLife).width(ui(80f)).height(ui(4f)).padTop(ui(3f));
                 }
-            }).width(120f).padRight(16f);
+            }).width(ui(120f)).padRight(ui(16f));
 
             //Right half: Unit info (centered)
             boolean medivacCargoOnly = (!readOnly || friendlyReadOnly) && UnitTypes.isMedivac(unit) && unit instanceof Payloadc pay && !pay.payloads().isEmpty();
@@ -834,11 +846,11 @@ public class UnitSelectionGrid extends Table{
                 rightHalf.add(unit.type.localizedName).color(Color.white).style(Styles.outlineLabel).row();
 
                 //Eliminated count
-                rightHalf.add("Eliminated: " + (int)unit.stack.amount).color(Color.lightGray).padTop(4f).row();
+                rightHalf.add("Eliminated: " + (int)unit.stack.amount).color(Color.lightGray).padTop(ui(4f)).row();
 
                 //Icons row: armor and weapons
                 rightHalf.table(iconsRow -> {
-                    iconsRow.defaults().size(28f).pad(4f);
+                    iconsRow.defaults().size(ui(28f)).pad(ui(4f));
                     String armorLabel = Core.bundle.get("ui.armor", "Armor");
                     String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
                     String speedLabel = Core.bundle.get("ui.speed", "Speed");
@@ -858,13 +870,13 @@ public class UnitSelectionGrid extends Table{
                         armorImage.setColor(Color.orange);
                         armorImage.setScaling(Scaling.fit);
                         Table iconInner = new Table();
-                        iconInner.add(armorImage).size(20f);
+                        iconInner.add(armorImage).size(ui(20f));
                         iconStack.add(iconInner);
-                        armorIcon.add(iconStack).size(28f);
+                        armorIcon.add(iconStack).size(ui(28f));
                         armorIcon.addListener(new Tooltip(t -> {
                             t.background(Styles.black6);
                             t.add(armorLabel).color(Color.yellow).row();
-                            t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+                            t.image().color(Pal.accent).height(ui(3f)).growX().pad(ui(4f)).row();
                             t.add(armorLabel + ": " + fixed2(unit.type.armor)).left().row();
                             if(UnitTypes.isMedivac(unit) && UnitTypes.medivacAfterburnerActive(unit)){
                                 t.add(speedLabel + ": " + fixed2(UnitTypes.medivacBaseSpeed()) + "[#6fff6f](+" + fixed2(UnitTypes.medivacAfterburnerBonusSpeed()) + ")[] tiles/s").left().row();
@@ -894,7 +906,7 @@ public class UnitSelectionGrid extends Table{
                             }
                             weaponImage.setScaling(Scaling.fit);
                             Table iconInner = new Table();
-                            iconInner.add(weaponImage).size(20f);
+                            iconInner.add(weaponImage).size(ui(20f));
                             iconStack.add(iconInner);
 
                             if(showSiegeClock){
@@ -913,7 +925,7 @@ public class UnitSelectionGrid extends Table{
                                         float handLen = width * 0.20f;
 
                                         Draw.color(Color.valueOf("b6bcc5"));
-                                        Lines.stroke(1.25f);
+                                        Lines.stroke(ui(1.25f));
                                         Lines.line(cx, cy, cx + Angles.trnsx(fixedAngle, handLen), cy + Angles.trnsy(fixedAngle, handLen));
                                         Lines.line(cx, cy, cx + Angles.trnsx(movingAngle, handLen), cy + Angles.trnsy(movingAngle, handLen));
 
@@ -922,11 +934,11 @@ public class UnitSelectionGrid extends Table{
                                 });
                             }
 
-                            weaponIcon.add(iconStack).size(28f);
+                            weaponIcon.add(iconStack).size(ui(28f));
                             weaponIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
                                 t.add(weaponLabel).color(Color.yellow).row();
-                                t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+                                t.image().color(Pal.accent).height(ui(3f)).growX().pad(ui(4f)).row();
 
                                 float damage = displayedWeaponDamage(unit, shownWeapon);
                                 float range = displayedWeaponRange(unit, shownWeapon);
@@ -953,7 +965,7 @@ public class UnitSelectionGrid extends Table{
                             }));
                         });
                     }
-                }).padTop(8f).row();
+                }).padTop(ui(8f)).row();
 
                 //Bottom row: armor type and unit class
                 rightHalf.table(bottomRow -> {
@@ -964,7 +976,7 @@ public class UnitSelectionGrid extends Table{
                     }else{
                         bottomRow.add(armorName + " " + className).color(Color.white);
                     }
-                }).padTop(8f);
+                }).padTop(ui(8f));
 
                 if((!readOnly || friendlyReadOnly) && UnitTypes.isMedivac(unit)){
                     rightHalf.row();
@@ -978,7 +990,7 @@ public class UnitSelectionGrid extends Table{
         if(!(unit instanceof Payloadc payload) || payload.payloads().isEmpty()) return;
         WidgetGroup cargoGrid = buildPayloadGrid(unit, payload.payloads());
         if(cargoGrid == null) return;
-        rightHalf.add(cargoGrid).size(cargoGrid.getWidth(), cargoGrid.getHeight()).padTop(8f);
+        rightHalf.add(cargoGrid).size(cargoGrid.getWidth(), cargoGrid.getHeight()).padTop(ui(8f));
     }
 
     private @Nullable WidgetGroup buildPayloadGrid(Unit carrier, Seq<Payload> payloads){
@@ -1146,7 +1158,7 @@ public class UnitSelectionGrid extends Table{
             Image icon = new Image(iconRegion);
             icon.setScaling(Scaling.fit);
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(Math.max(0f, width - 8f), Math.max(0f, height - 8f));
+            iconWrap.add(icon).size(Math.max(0f, width - ui(8f)), Math.max(0f, height - ui(8f)));
             stack.add(iconWrap);
         }
 
@@ -1162,6 +1174,7 @@ public class UnitSelectionGrid extends Table{
     private void buildBuildingInfoPanel(Building building, boolean readOnly){
         gridTable.clear();
         Block display = displayBlock(building);
+        float armor = displayArmor(building, display);
         float maxHealth = displayMaxHealth(building);
         CoreBuild core = building instanceof CoreBuild ? (CoreBuild)building : null;
         ConstructBlock.ConstructBuild cons = building instanceof ConstructBlock.ConstructBuild ? (ConstructBlock.ConstructBuild)building : null;
@@ -1179,7 +1192,7 @@ public class UnitSelectionGrid extends Table{
 
         gridTable.table(panel -> {
             panel.background(Styles.black6);
-            panel.margin(8f);
+            panel.margin(ui(8f));
 
             //Left half: Building icon
             panel.table(leftHalf -> {
@@ -1187,19 +1200,19 @@ public class UnitSelectionGrid extends Table{
                 Stack buildIconStack = new Stack();
                 buildIconStack.add(portraitBorderElement());
                 Table iconWrap = new Table();
-                iconWrap.image(display.uiIcon).size(76f);
+                iconWrap.image(display.uiIcon).size(ui(76f));
                 buildIconStack.add(iconWrap);
-                leftHalf.add(buildIconStack).size(80f).row();
+                leftHalf.add(buildIconStack).size(ui(80f)).row();
                 leftHalf.label(() -> {
                     if(incomplete){
                         return Mathf.round(building.health) + "/" + Mathf.round(maxHealth);
                     }
                     return Strings.autoFixed(building.health, 2) + "/" + Strings.autoFixed(maxHealth, 2);
                 })
-                    .style(Styles.outlineLabel).color(Color.lightGray).padTop(6f).row();
+                    .style(Styles.outlineLabel).color(Color.lightGray).padTop(ui(6f)).row();
                 if(core != null && core.block == Blocks.coreOrbital){
                     leftHalf.label(() -> Mathf.round(Math.max(core.orbitalEnergy, 0f)) + "/" + Mathf.round(CoreBlock.orbitalEnergyCap))
-                        .style(Styles.outlineLabel).color(Color.valueOf("b57aff")).padTop(4f).row();
+                        .style(Styles.outlineLabel).color(Color.valueOf("b57aff")).padTop(ui(4f)).row();
                 }
 
                 if(display == Blocks.ventCondenser){
@@ -1213,10 +1226,10 @@ public class UnitSelectionGrid extends Table{
                                 return remainingLabel + ": " + infiniteLabel;
                             }
                             return remainingLabel + ": " + vent.getReserves(data);
-                        }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
+                        }).style(Styles.outlineLabel).color(Color.lightGray).padTop(ui(6f));
                     }
                 }
-            }).width(120f).padRight(16f);
+            }).width(ui(120f)).padRight(ui(16f));
 
             //Right half: Building info (centered)
             panel.table(rightHalf -> {
@@ -1247,7 +1260,7 @@ public class UnitSelectionGrid extends Table{
 
                     //Icons row: armor and weapons
                     rightHalf.table(iconsRow -> {
-                        iconsRow.defaults().size(28f).pad(4f);
+                        iconsRow.defaults().size(ui(28f)).pad(ui(4f));
                         String armorLabel = Core.bundle.get("ui.armor", "Armor");
                         String weaponLabel = Core.bundle.get("ui.weapon", "Weapon");
                         String speedLabel = Core.bundle.get("ui.speed", "Speed");
@@ -1266,14 +1279,14 @@ public class UnitSelectionGrid extends Table{
                             armorImage.setColor(Color.orange);
                             armorImage.setScaling(Scaling.fit);
                             Table iconInner = new Table();
-                            iconInner.add(armorImage).size(20f);
+                            iconInner.add(armorImage).size(ui(20f));
                             iconStack.add(iconInner);
-                            armorIcon.add(iconStack).size(28f);
+                            armorIcon.add(iconStack).size(ui(28f));
                             armorIcon.addListener(new Tooltip(t -> {
                                 t.background(Styles.black6);
                                 t.add(armorLabel).color(Color.yellow).row();
-                                t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
-                                t.add(armorLabel + ": " + fixed2(display.armor)).left().row();
+                                t.image().color(Pal.accent).height(ui(3f)).growX().pad(ui(4f)).row();
+                                t.add(armorLabel + ": " + fixed2(armor)).left().row();
                                 t.add(healthLabel + ": " + fixed2(maxHealth)).left().row();
                             }));
                         });
@@ -1286,13 +1299,13 @@ public class UnitSelectionGrid extends Table{
                                 Image weaponImage = new Image(Icon.units);
                                 weaponImage.setScaling(Scaling.fit);
                                 Table iconInner = new Table();
-                                iconInner.add(weaponImage).size(20f);
+                                iconInner.add(weaponImage).size(ui(20f));
                                 iconStack.add(iconInner);
-                                weaponIcon.add(iconStack).size(28f);
+                                weaponIcon.add(iconStack).size(ui(28f));
                                 weaponIcon.addListener(new Tooltip(t -> {
                                     t.background(Styles.black6);
                                     t.add(weaponLabel).color(Color.yellow).row();
-                                    t.image().color(Pal.accent).height(3f).growX().pad(4f).row();
+                                    t.image().color(Pal.accent).height(ui(3f)).growX().pad(ui(4f)).row();
 
                                     float range = -1f;
                                     float reload = -1f;
@@ -1339,14 +1352,14 @@ public class UnitSelectionGrid extends Table{
                                 }));
                             });
                         }
-                    }).padTop(8f).row();
+                    }).padTop(ui(8f)).row();
 
                     //Bottom row: armor type and building category
                     String armorName = armorTypeName(armorTypeFor(display));
                     String className = unitClassName(UnitClass.mechanical);
                     String buildingLabel = Core.bundle.get("ui.building", "Building");
                     rightHalf.add(armorName + " " + className + " " + buildingLabel)
-                        .color(Color.white).padTop(8f);
+                        .color(Color.white).padTop(ui(8f));
                 }
             }).grow().center();
         }).growX().height(singlePanelHeight());
@@ -1368,11 +1381,11 @@ public class UnitSelectionGrid extends Table{
             Table row1 = new Table();
             row1.left();
             row1.add(buildQueueSlot(core.queuedUnit(0), slotSize)).size(slotSize, slotSize);
-            row1.add(buildQueueProgress(core, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            row1.add(buildQueueProgress(core, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             if(activeSlots > 1){
                 row1.add(buildQueueSlot(core.queuedUnit(1), slotSize)).size(slotSize, slotSize);
-                row1.add(buildQueueProgress(core, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                row1.add(buildQueueProgress(core, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
             }
 
             queueRoot.add(row1).left().row();
@@ -1414,7 +1427,7 @@ public class UnitSelectionGrid extends Table{
                     Table row1 = new Table();
                     row1.left();
                     row1.add(buildQueueSlot(addon, slotSize)).size(slotSize, slotSize);
-                    row1.add(buildAddonProgress(factory, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                    row1.add(buildAddonProgress(factory, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
                     queueRoot.add(row1).left();
                 }
                 return;
@@ -1427,11 +1440,11 @@ public class UnitSelectionGrid extends Table{
             Table row1 = new Table();
             row1.left();
             row1.add(buildQueueSlot(factory.queuedUnit(0), slotSize)).size(slotSize, slotSize);
-            row1.add(buildQueueProgress(factory, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            row1.add(buildQueueProgress(factory, 0, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             if(activeSlots > 1){
                 row1.add(buildQueueSlot(factory.queuedUnit(1), slotSize)).size(slotSize, slotSize);
-                row1.add(buildQueueProgress(factory, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                row1.add(buildQueueProgress(factory, 1, barWidth, barHeight)).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
             }
 
             queueRoot.add(row1).left().row();
@@ -1502,7 +1515,7 @@ public class UnitSelectionGrid extends Table{
                 () -> progress.get() * total,
                 () -> total,
                 barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             Table row2 = new Table();
             row2.left();
@@ -1540,7 +1553,7 @@ public class UnitSelectionGrid extends Table{
                 () -> progress.get() * total,
                 () -> total,
                 barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             Table row2 = new Table();
             row2.left();
@@ -1590,7 +1603,7 @@ public class UnitSelectionGrid extends Table{
                 () -> progress.get() * total,
                 () -> total,
                 barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             Table row2 = new Table();
             row2.left();
@@ -1658,7 +1671,7 @@ public class UnitSelectionGrid extends Table{
                 () -> progress.get() * total,
                 () -> total,
                 barWidth, barHeight
-            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+            )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
 
             Table row2 = new Table();
             row2.left();
@@ -1684,28 +1697,28 @@ public class UnitSelectionGrid extends Table{
 
             if(UnitTypes.ghostCamoAnyResearching(build.team)){
                 Table row = new Table();
-                row.defaults().size(slotSize).pad(2f);
+                row.defaults().size(slotSize).pad(ui(2f));
                 row.add(buildQueueSlot(Blocks.launchPad, slotSize));
                 row.add(buildQueueProgress(
                     () -> UnitTypes.ghostCamoResearchProgress(build.team),
                     () -> UnitTypes.ghostCamoResearchProgress(build.team) * (UnitTypes.ghostCamoResearchDuration() / 60f),
                     () -> UnitTypes.ghostCamoResearchDuration() / 60f,
                     barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
                 queueRoot.add(row).row();
                 added = true;
             }
 
             if(UnitTypes.ghostWarheadProducing(build)){
                 Table row = new Table();
-                row.defaults().size(slotSize).pad(2f);
+                row.defaults().size(slotSize).pad(ui(2f));
                 row.add(buildQueueSlot(Blocks.launchPad, slotSize));
                 row.add(buildQueueProgress(
                     () -> UnitTypes.ghostWarheadProductionProgress(build),
                     () -> UnitTypes.ghostWarheadProductionProgress(build) * (UnitTypes.ghostWarheadBuildDuration() / 60f),
                     () -> UnitTypes.ghostWarheadBuildDuration() / 60f,
                     barWidth, barHeight
-                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(2f);
+                )).size(barWidth, barHeight).bottom().left().pad(0f).padBottom(ui(2f));
                 queueRoot.add(row);
                 added = true;
             }
@@ -1736,7 +1749,7 @@ public class UnitSelectionGrid extends Table{
     }
 
     private float queueBarHeight(){
-        return 3f;
+        return ui(3f);
     }
 
     private float queueBottomSlotSize(int activeSlots, int queuedSlots, float slotSize, float barWidth){
@@ -1755,7 +1768,7 @@ public class UnitSelectionGrid extends Table{
             Image icon = new Image(type.uiIcon);
             icon.setScaling(Scaling.fit);
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - 8f));
+            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - ui(8f)));
             stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
@@ -1779,7 +1792,7 @@ public class UnitSelectionGrid extends Table{
             Image icon = new Image(block.uiIcon);
             icon.setScaling(Scaling.fit);
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - 8f));
+            iconWrap.add(icon).size(Math.max(0f, Math.min(width, height) - ui(8f)));
             stack.add(iconWrap);
             slot.addListener(new Tooltip(t -> {
                 t.background(Styles.black6);
@@ -1793,9 +1806,9 @@ public class UnitSelectionGrid extends Table{
 
     private void buildConstructProgressPanel(Table rightHalf, ConstructBlock.ConstructBuild cons){
         if(cons == null || cons.current == null || cons.current == Blocks.air) return;
-        float boxSize = 54f;
-        float barWidth = (boxSize - 12f) * 2f;
-        float barHeight = 2.5f;
+        float boxSize = ui(54f);
+        float barWidth = (boxSize - ui(12f)) * 2f;
+        float barHeight = ui(2.5f);
 
         rightHalf.table(panel -> {
             Table box = new Table(Styles.black6);
@@ -1804,7 +1817,7 @@ public class UnitSelectionGrid extends Table{
             Stack iconStack = new Stack();
             iconStack.add(portraitBorderElement());
             Table iconWrap = new Table();
-            iconWrap.add(icon).size(boxSize - 4f);
+            iconWrap.add(icon).size(boxSize - ui(4f));
             iconStack.add(iconWrap);
             box.add(iconStack).size(boxSize);
             box.addListener(new Tooltip(t -> {
@@ -1824,7 +1837,7 @@ public class UnitSelectionGrid extends Table{
                     float total = cons.current.buildTime / 60f;
                     float current = total * cons.progress;
                     return formatTimePair(current, total);
-                }).style(Styles.outlineLabel).color(Color.lightGray).width(barWidth).right().padBottom(2f).row();
+                }).style(Styles.outlineLabel).color(Color.lightGray).width(barWidth).right().padBottom(ui(2f)).row();
 
                 Bar bar = new Bar(() -> "", () -> Pal.accent, () -> cons.progress);
                 barTable.add(bar).size(barWidth, barHeight).left();
@@ -2131,9 +2144,9 @@ public class UnitSelectionGrid extends Table{
             @Override
             public void draw(){
                 Draw.color(UnitAbilityPanel.abilityBorderColor);
-                Lines.stroke(1.5f);
-                float inset = 1.5f;
-                float innerInset = 4.5f;
+                Lines.stroke(ui(1.5f));
+                float inset = ui(1.5f);
+                float innerInset = ui(4.5f);
                 Lines.rect(x + inset, y + inset, width - inset * 2f, height - inset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
                 Draw.reset();
@@ -2148,9 +2161,9 @@ public class UnitSelectionGrid extends Table{
                 if(type == null) return;
                 if(!control.input.isUnitInActiveAbilitySubgroup(type)) return;
                 Draw.color(UnitAbilityPanel.abilityBorderColor);
-                Lines.stroke(1.5f * 3f);
-                float outerInset = -2f;
-                float innerInset = outerInset + 3f;
+                Lines.stroke(ui(1.5f * 3f));
+                float outerInset = -ui(2f);
+                float innerInset = outerInset + ui(3f);
                 Lines.rect(x + outerInset, y + outerInset, width - outerInset * 2f, height - outerInset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
                 Draw.reset();
@@ -2165,9 +2178,9 @@ public class UnitSelectionGrid extends Table{
                 if(build == null) return;
                 if(!control.input.isBuildingInActiveAbilitySubgroup(build)) return;
                 Draw.color(UnitAbilityPanel.abilityBorderColor);
-                Lines.stroke(1.5f * 3f);
-                float outerInset = -2f;
-                float innerInset = outerInset + 3f;
+                Lines.stroke(ui(1.5f * 3f));
+                float outerInset = -ui(2f);
+                float innerInset = outerInset + ui(3f);
                 Lines.rect(x + outerInset, y + outerInset, width - outerInset * 2f, height - outerInset * 2f);
                 Lines.rect(x + innerInset, y + innerInset, width - innerInset * 2f, height - innerInset * 2f);
                 Draw.reset();
@@ -2182,12 +2195,12 @@ public class UnitSelectionGrid extends Table{
                 String letter = factoryAddonLetter(build);
                 if(letter == null) return;
 
-                Fonts.outline.getData().setScale(0.45f);
+                Fonts.outline.getData().setScale(0.45f * SELECTION_PANEL_SCALE);
                 addonBadgeLayout.setText(Fonts.outline, letter);
 
-                float pad = 2f;
-                float textPadX = 2f;
-                float textPadY = 1f;
+                float pad = ui(2f);
+                float textPadX = ui(2f);
+                float textPadY = ui(1f);
                 float badgeWidth = addonBadgeLayout.width + textPadX * 2f;
                 float badgeHeight = addonBadgeLayout.height + textPadY * 2f;
                 float badgeX = x + width - badgeWidth - pad;
@@ -2196,7 +2209,7 @@ public class UnitSelectionGrid extends Table{
                 Draw.color(Color.black, 0.8f);
                 Fill.crect(badgeX, badgeY, badgeWidth, badgeHeight);
                 Draw.color(Color.white, 0.9f);
-                Lines.stroke(1f);
+                Lines.stroke(ui(1f));
                 Lines.rect(badgeX, badgeY, badgeWidth, badgeHeight);
                 Draw.reset();
 
@@ -2219,7 +2232,7 @@ public class UnitSelectionGrid extends Table{
                 int slots = Math.min(8, factory.queueSlots());
                 if(slots <= 0) return;
                 int queued = Mathf.clamp(factory.queued, 0, slots);
-                float badgeReserve = factoryAddonLetter(factory) == null ? 0f : 12f;
+                float badgeReserve = factoryAddonLetter(factory) == null ? 0f : ui(12f);
                 drawBottomQueueSlots(slots, queued, badgeReserve, empty, border, filled);
             }
         };
@@ -2242,13 +2255,13 @@ public class UnitSelectionGrid extends Table{
     }
 
     private void drawBottomQueueSlots(int slots, int queued, float rightReserve, Color empty, Color border, Color filled){
-        float leftMargin = 2f;
-        float rightMargin = 2f + rightReserve;
+        float leftMargin = ui(2f);
+        float rightMargin = ui(2f) + rightReserve;
         float avail = Math.max(0f, width - leftMargin - rightMargin);
         if(avail <= 0f) return;
 
         float box = avail / slots;
-        box = Mathf.clamp(box, 3.5f, 6.5f);
+        box = Mathf.clamp(box, ui(3.5f), ui(6.5f));
 
         float totalWidth = box * slots;
         if(totalWidth > avail){
@@ -2257,9 +2270,9 @@ public class UnitSelectionGrid extends Table{
         }
 
         float startX = x + leftMargin + Math.max(0f, (avail - totalWidth) / 2f);
-        float baseY = y + 1.5f;
+        float baseY = y + ui(1.5f);
 
-        Lines.stroke(1f);
+        Lines.stroke(ui(1f));
         for(int i = 0; i < slots; i++){
             float bx = startX + i * box;
             Draw.color(i < queued ? filled : empty);
@@ -2333,20 +2346,20 @@ public class UnitSelectionGrid extends Table{
         gridTable.clear();
         gridTable.table(panel -> {
             panel.background(Styles.black6);
-            panel.margin(8f);
+            panel.margin(ui(8f));
             panel.defaults().center();
 
             panel.label(() -> collectingLabel + ": " + HarvestAI.getActiveNovaCount(tile))
                 .style(Styles.outlineLabel).color(Color.white).row();
 
-            panel.image(tile.block().uiIcon).size(80f).padTop(6f).row();
+            panel.image(tile.block().uiIcon).size(ui(80f)).padTop(ui(6f)).row();
 
             panel.label(() -> {
                 if(crystal.isInfinite(tile)){
                     return remainingLabel + ": " + infiniteLabel;
                 }
                 return remainingLabel + ": " + crystal.getReserves(tile);
-            }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
+            }).style(Styles.outlineLabel).color(Color.lightGray).padTop(ui(6f));
         }).growX().height(singlePanelHeight());
     }
 
@@ -2361,20 +2374,20 @@ public class UnitSelectionGrid extends Table{
         gridTable.clear();
         gridTable.table(panel -> {
             panel.background(Styles.black6);
-            panel.margin(8f);
+            panel.margin(ui(8f));
             panel.defaults().center();
 
             panel.label(() -> collectingLabel + ": " + HarvestAI.getActiveNovaCount(data))
                 .style(Styles.outlineLabel).color(Color.white).row();
 
-            panel.image(tile.floor().uiIcon).size(80f).padTop(6f).row();
+            panel.image(tile.floor().uiIcon).size(ui(80f)).padTop(ui(6f)).row();
 
             panel.label(() -> {
                 if(vent.isInfinite(data)){
                     return remainingLabel + ": " + infiniteLabel;
                 }
                 return remainingLabel + ": " + vent.getReserves(data);
-            }).style(Styles.outlineLabel).color(Color.lightGray).padTop(6f);
+            }).style(Styles.outlineLabel).color(Color.lightGray).padTop(ui(6f));
         }).growX().height(singlePanelHeight());
     }
 

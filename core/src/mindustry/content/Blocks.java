@@ -196,6 +196,35 @@ public class Blocks{
 
     ;
 
+    public static boolean isSc2DatabaseBlock(@Nullable Block block){
+        return block == coreNucleus
+        || block == coreOrbital
+        || block == corePlanetaryFortress
+        || block == ventCondenser
+        || block == doorLarge
+        || block == groundFactory
+        || block == multiPress
+        || block == atmosphericConcentrator
+        || block == swarmer
+        || block == radar
+        || block == launchPad
+        || block == tankFabricator
+        || block == siliconCrucible
+        || block == shipFabricator
+        || block == surgeCrucible
+        || block == memoryBank
+        || block == rotaryPump;
+    }
+
+    private static void markSc2DatabaseBlocks(){
+        for(Block block : content.blocks()){
+            if(block == null || !isSc2DatabaseBlock(block)) continue;
+            block.databaseCategory = "block";
+            block.databaseTag = "sc2";
+            block.allDatabaseTabs = true;
+        }
+    }
+
     public static void load(){
         //region environment
 
@@ -3278,6 +3307,13 @@ public class Blocks{
             consumePower(0.5f);
             liquidCapacity = 60f;
             solid = true;
+            buildType = () -> new AttributeCrafterBuild(){
+                @Override
+                public void draw(){
+                    super.draw();
+                    CoreBlock.drawScvWorkerText(this, CoreBlock.refineryWorkerText(this));
+                }
+            };
         }
 
         @Override
@@ -3514,6 +3550,7 @@ public class Blocks{
                     if(topFound && topRegion != null){
                         Draw.rect(topRegion, x, y, drawrot());
                     }
+                    CoreBlock.drawScvWorkerText(this, CoreBlock.crystalWorkerText(this));
                 }
             };
         }
@@ -3613,6 +3650,7 @@ public class Blocks{
                         drawTeamTop();
                         drawTurret();
                     }
+                    CoreBlock.drawScvWorkerText(this, CoreBlock.crystalWorkerText(this));
                 }
 
                 private void drawTurret(){
@@ -7690,6 +7728,8 @@ public class Blocks{
         };
 
         noBuildOverlay = new EditorBuildBlockerOverlay("no-build-overlay", "build-obstacles");
+
+        markSc2DatabaseBlocks();
 
         //endregion
     }

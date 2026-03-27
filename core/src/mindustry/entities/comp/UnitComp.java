@@ -79,6 +79,8 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     private transient float regenCarry;
     private transient float lastHitTime;
     private transient float firingLockTime;
+    public transient float openingSpawnAnchorTime;
+    public transient float openingSpawnAnchorX, openingSpawnAnchorY;
 
     @SyncLocal float elevation;
     private transient boolean wasFlying;
@@ -578,6 +580,9 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
         if(harvestHidden){
             return -1;
         }
+        if(openingSpawnAnchorTime > 0f){
+            return -1;
+        }
         boolean harvestCommand = controller instanceof HarvestAI ||
             (controller instanceof CommandAI cmd && cmd.currentCommand() == UnitCommand.harvestCommand);
         boolean harvestNoCollision = harvestCommand && (type == UnitTypes.nova || (isFlying() && type == UnitTypes.pulsar));
@@ -824,6 +829,12 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
 
         if(harvestSoftTime > 0f){
             harvestSoftTime = Math.max(0f, harvestSoftTime - Time.delta);
+        }
+        if(openingSpawnAnchorTime > 0f){
+            openingSpawnAnchorTime = Math.max(0f, openingSpawnAnchorTime - Time.delta);
+            x = openingSpawnAnchorX;
+            y = openingSpawnAnchorY;
+            vel.setZero();
         }
         if(buildEjectTime > 0f){
             buildEjectTime = Math.max(0f, buildEjectTime - Time.delta);
@@ -1171,7 +1182,7 @@ abstract class UnitComp implements Healthc, Physicsc, Hitboxc, Statusc, Teamc, I
     }
 
     public boolean shouldUpdateController(){
-        return true;
+        return openingSpawnAnchorTime <= 0f;
     }
 
     public void firingLock(float duration){

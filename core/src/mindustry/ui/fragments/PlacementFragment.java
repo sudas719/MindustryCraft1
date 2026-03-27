@@ -371,9 +371,9 @@ public class PlacementFragment{
                                     Seq<Block> blocks = getByCategory(currentCategory);
                                     for(int i = 0; i < blocks.size; i++){
                                         if(blocks.get(i) == displayBlock && (i + 1) / 10 - 1 < blockSelect.length){
-                                            keyCombo = Core.bundle.format("placement.blockselectkeys", blockSelect[currentCategory.ordinal()].value.key.toString())
-                                                + (i < 10 ? "" : blockSelect[(i + 1) / 10 - 1].value.key.toString() + ",")
-                                                + blockSelect[i % 10].value.key.toString() + "]";
+                                            keyCombo = Core.bundle.format("placement.blockselectkeys", KeyNames.get(blockSelect[currentCategory.ordinal()].value.key))
+                                                + (i < 10 ? "" : KeyNames.get(blockSelect[(i + 1) / 10 - 1].value.key) + ",")
+                                                + KeyNames.get(blockSelect[i % 10].value.key) + "]";
                                             break;
                                         }
                                     }

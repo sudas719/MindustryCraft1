@@ -41,20 +41,52 @@ public class Build{
         return owner != null ? owner : build.ownerName;
     }
 
+    private static boolean require(boolean present, String name, @Nullable Seq<String> missing){
+        if(!present && missing != null){
+            missing.add(name);
+        }
+        return present;
+    }
+
     public static boolean meetsPrerequisites(Block type, Team team){
+        return collectMissingPrerequisites(type, team, null);
+    }
+
+    public static void addMissingPrerequisites(Block type, Team team, Seq<String> missing){
+        if(missing == null) return;
+        collectMissingPrerequisites(type, team, missing);
+    }
+
+    private static boolean collectMissingPrerequisites(Block type, Team team, @Nullable Seq<String> missing){
         if(type == null || team == null) return false;
-        if(type == Blocks.doorLarge) return team.data().hasCore();
-        if(type == Blocks.groundFactory) return team.data().getCount(Blocks.doorLarge) + team.data().getCount(Blocks.doorLargeErekir) > 0;
-        if(type == Blocks.multiPress) return team.data().hasCore();
-        if(type == Blocks.atmosphericConcentrator) return team.data().getCount(Blocks.groundFactory) > 0;
-        if(type == Blocks.swarmer) return team.data().getCount(Blocks.multiPress) > 0;
-        if(type == Blocks.radar) return team.data().getCount(Blocks.multiPress) > 0;
-        if(type == Blocks.launchPad) return team.data().getCount(Blocks.groundFactory) > 0;
-        if(type == Blocks.tankFabricator) return team.data().getCount(Blocks.groundFactory) > 0;
-        if(type == Blocks.shipFabricator) return team.data().getCount(Blocks.tankFabricator) > 0;
-        if(type == Blocks.siliconCrucible) return team.data().getCount(Blocks.tankFabricator) > 0;
-        if(type == Blocks.surgeCrucible) return team.data().getCount(Blocks.shipFabricator) > 0;
-        return true;
+
+        boolean met = true;
+
+        if(type == Blocks.doorLarge){
+            met &= require(team.data().hasCore(), "Command Center", missing);
+        }else if(type == Blocks.groundFactory){
+            met &= require(team.data().getCount(Blocks.doorLarge) + team.data().getCount(Blocks.doorLargeErekir) > 0, "Supply Depot", missing);
+        }else if(type == Blocks.multiPress){
+            met &= require(team.data().hasCore(), "Command Center", missing);
+        }else if(type == Blocks.atmosphericConcentrator){
+            met &= require(team.data().getCount(Blocks.groundFactory) > 0, "Barracks", missing);
+        }else if(type == Blocks.swarmer){
+            met &= require(team.data().getCount(Blocks.multiPress) > 0, "Engineering Bay", missing);
+        }else if(type == Blocks.radar){
+            met &= require(team.data().getCount(Blocks.multiPress) > 0, "Engineering Bay", missing);
+        }else if(type == Blocks.launchPad){
+            met &= require(team.data().getCount(Blocks.groundFactory) > 0, "Barracks", missing);
+        }else if(type == Blocks.tankFabricator){
+            met &= require(team.data().getCount(Blocks.groundFactory) > 0, "Barracks", missing);
+        }else if(type == Blocks.shipFabricator){
+            met &= require(team.data().getCount(Blocks.tankFabricator) > 0, "Factory", missing);
+        }else if(type == Blocks.siliconCrucible){
+            met &= require(team.data().getCount(Blocks.tankFabricator) > 0, "Factory", missing);
+        }else if(type == Blocks.surgeCrucible){
+            met &= require(team.data().getCount(Blocks.shipFabricator) > 0, "Starport", missing);
+        }
+
+        return met;
     }
 
     @Remote(called = Loc.server)
@@ -390,7 +422,6 @@ public class Build{
                 if(
                 check == null || //nothing there
                 (type.size == 2 && world.getDarkness(wx, wy) >= 3) ||
-                (state.rules.staticFog && state.rules.fog && !fogControl.isDiscovered(team, wx, wy)) ||
                 (isPlacementDeep(check) && !type.floating && !type.requiresWater && !type.placeableLiquid) || //deep water
                 (!state.rules.derelictRepair && check.team() == Team.derelict && check.build != null) ||
                 (type == check.block() && check.build != null && rotation == check.build.rotation && type.rotate && !((type == check.block && team != Team.derelict && check.team() == Team.derelict))) || //same block, same rotation

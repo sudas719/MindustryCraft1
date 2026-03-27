@@ -29,6 +29,7 @@ import mindustry.maps.Map;
 import mindustry.maps.*;
 import mindustry.net.*;
 import mindustry.type.*;
+import mindustry.ui.*;
 import mindustry.ui.dialogs.*;
 import mindustry.world.*;
 import mindustry.world.blocks.power.PowerNode.*;
@@ -169,6 +170,7 @@ public class Control implements ApplicationListener, Loadable{
         Events.on(WorldLoadEvent.class, event -> app.post(() -> {
             if(state.rules.pvp && !net.active()){
                 try{
+                    state.rules.tags.put(NetServer.pvpSingleplayerTag, "true");
                     net.host(port);
                     player.admin = true;
                 }catch(IOException e){
@@ -405,7 +407,7 @@ public class Control implements ApplicationListener, Loadable{
         Core.settings.put("desktop_menu_info_shown", true);
 
         KeyCode menuKey = Binding.menu.value.key;
-        String menuKeyName = menuKey == null || menuKey == KeyCode.unset ? "F10" : menuKey.toString();
+        String menuKeyName = menuKey == null || menuKey == KeyCode.unset ? "F10" : KeyNames.get(menuKey);
         ui.showOkText(bundle.get("firstplay.menu.title"), bundle.format("firstplay.menu.text", menuKeyName), () -> {});
     }
 

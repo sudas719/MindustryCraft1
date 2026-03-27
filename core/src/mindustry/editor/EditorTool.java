@@ -37,12 +37,10 @@ public enum EditorTool{
             }
             EnvironmentLightMarker lightMarker = editor.environmentLightMarkerForTile(tile);
             if(lightMarker != null){
-                editor.drawBlock = lightMarker;
-                editor.drawBlock.editorPicked(tile);
+                editor.pickDrawBlock(tile, lightMarker);
                 return;
             }
-            editor.drawBlock = tile.block() == Blocks.air || !tile.block().inEditor ? tile.overlay() == Blocks.air ? tile.floor() : tile.overlay() : tile.block();
-            editor.drawBlock.editorPicked(tile);
+            editor.pickDrawBlock(tile, tile.block() == Blocks.air || !tile.block().inEditor ? tile.overlay() == Blocks.air ? tile.floor() : tile.overlay() : tile.block());
         }
     },
     line(KeyCode.l, "replace", "orthogonal"){

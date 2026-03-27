@@ -20,6 +20,9 @@ import mindustry.world.meta.*;
 import static mindustry.Vars.*;
 
 public final class FogRenderer{
+    private static final float pvpDynamicFogAlpha = 0.3f;
+    private static final float pvpStaticFogAlpha = 0.5f;
+
     private FrameBuffer staticFog = new FrameBuffer(), dynamicFog = new FrameBuffer();
     private LongSeq events = new LongSeq();
     private Rect rect = new Rect();
@@ -121,13 +124,17 @@ public final class FogRenderer{
         }
         dynamicFog.getTexture().setFilter(TextureFilter.linear);
 
+        float dynamicAlpha = state.rules.pvp ? pvpDynamicFogAlpha :
+            (Float.isNaN(state.rules.dynamicColor.a) ? 0.5f : Math.max(0.5f, state.rules.dynamicColor.a));
+        float staticAlpha = state.rules.pvp ? pvpStaticFogAlpha : 1f;
+
         Draw.shader(Shaders.fog);
-        Draw.color(state.rules.dynamicColor, Float.isNaN(state.rules.dynamicColor.a) ? 0.5f : Math.max(0.5f, state.rules.dynamicColor.a));
+        Draw.color(state.rules.dynamicColor, dynamicAlpha);
         Draw.fbo(dynamicFog.getTexture(), world.width(), world.height(), tilesize);
         //TODO ai check?
         if(state.rules.staticFog){
             //TODO why does this require a half-tile offset while dynamic does not
-            Draw.color(state.rules.staticColor, 1f);
+            Draw.color(state.rules.staticColor, staticAlpha);
             Draw.fbo(staticFog.getTexture(), world.width(), world.height(), tilesize, tilesize/2f);
         }
         Draw.shader();
