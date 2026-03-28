@@ -704,13 +704,16 @@ public class Control implements ApplicationListener, Loadable{
         sound.update();
 
         if(Core.input.keyTap(Binding.fullscreen)){
-            boolean full = settings.getBool("fullscreen");
-            if(full){
-                graphics.setWindowedMode(graphics.getWidth(), graphics.getHeight());
-            }else{
-                graphics.setFullscreen();
+            if(settings.getBool("borderlesswindow")){
+                settings.put("borderlesswindow", false);
+                graphics.setBorderless(false);
             }
-            settings.put("fullscreen", !full);
+
+            if(!settings.getBool("fullscreen")){
+                settings.put("fullscreen", true);
+            }
+
+            graphics.setFullscreen();
         }
 
         if(Float.isNaN(Vars.player.x) || Float.isNaN(Vars.player.y)){

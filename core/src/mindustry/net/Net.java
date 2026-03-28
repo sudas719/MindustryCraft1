@@ -56,6 +56,8 @@ public class Net{
         registerPacket(ServerInfoResponse::new);
         registerPacket(SpectatorCameraTargetPacket::new);
         registerPacket(SpectatorCameraStatePacket::new);
+        registerPacket(PlayerSelectionStatePacket::new);
+        registerPacket(SpectatorSelectionStatePacket::new);
     }
 
     /** Registers a new packet type for serialization. */

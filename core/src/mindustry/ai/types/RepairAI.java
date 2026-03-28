@@ -343,8 +343,7 @@ public class RepairAI extends AIController{
         if(requirements == null || requirements.length == 0) return true;
         if(maxHealth <= 0.0001f || healAmount <= 0f) return false;
 
-        CoreBuild core = unit.team.core();
-        if(core == null || core.items == null) return false;
+        var resources = unit.team.data();
 
         ensureRepairCostTarget(targetKind, targetId);
 
@@ -358,7 +357,7 @@ public class RepairAI extends AIController{
             int required = Mathf.ceil(nextHealed / maxHealth * scaledCost);
             int paid = repairCostPaid.get(stack.item.id, 0);
             int delta = Math.max(required - paid, 0);
-            if(delta > 0 && core.items.get(stack.item) < delta){
+            if(delta > 0 && resources.resource(stack.item) < delta){
                 return false;
             }
         }
@@ -372,7 +371,7 @@ public class RepairAI extends AIController{
             int paid = repairCostPaid.get(stack.item.id, 0);
             int delta = Math.max(required - paid, 0);
             if(delta > 0){
-                core.items.remove(stack.item, delta);
+                resources.removeResource(stack.item, delta);
                 repairCostPaid.put(stack.item.id, paid + delta);
             }
         }

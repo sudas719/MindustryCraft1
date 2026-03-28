@@ -127,7 +127,7 @@ public class PlacementFragment{
 
     boolean updatePick(InputHandler input){
         Tile tile = world.tileWorld(control.input.mouseWorldX(), control.input.mouseWorldY());
-        if(tile != null && Core.input.keyTap(Binding.pick) && player.isBuilder() && !Core.scene.hasDialog()){ //mouse eyedropper select
+        if(tile != null && Binding.pick.value.key != KeyCode.mouseMiddle && Core.input.keyTap(Binding.pick) && player.isBuilder() && !Core.scene.hasDialog()){ //mouse eyedropper select
             var build = tile.build;
 
             //can't middle click buildings in fog

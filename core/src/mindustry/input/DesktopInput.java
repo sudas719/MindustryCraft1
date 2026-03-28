@@ -610,14 +610,16 @@ public class DesktopInput extends InputHandler{
                     float offset = landBlock.offset;
                     int placeX = World.toTile(mouseWorldX() - offset);
                     int placeY = World.toTile(mouseWorldY() - offset);
-                    boolean valid = Build.validPlace(landBlock, player.team(), placeX, placeY, rot, false);
+                    boolean valid = Build.validLandPlace(landBlock, player.team(), placeX, placeY, rot, true);
                     if(landBlock.rotate && landBlock.drawArrow){
                         drawArrow(landBlock, placeX, placeY, rot, valid);
                     }
-                    drawPlacementConstraintGrid(landBlock, player.team(), placeX, placeY, rot);
+                    drawLandPlacementConstraintGrid(landBlock, player.team(), placeX, placeY, rot);
                     Draw.color();
                     drawPlan(placeX, placeY, landBlock, rot, cursorAlpha);
-                    landBlock.drawPlace(placeX, placeY, rot, valid);
+                    if(!(landBlock instanceof CoreBlock)){
+                        landBlock.drawPlace(placeX, placeY, rot, valid);
+                    }
                     drawOverlapCheck(landBlock, placeX, placeY, valid);
                 }
             }
@@ -762,6 +764,7 @@ public class DesktopInput extends InputHandler{
                 middlePan = true;
                 panning = true;
                 clearSpectating();
+                float middleMousePanDirection = Core.settings.getBool("invert-middle-mouse-pan", false) ? -1f : 1f;
 
                 //ensure cursor stays hidden/locked even if some other UI code changes it
                 if(middleMouseCaptured){
@@ -784,8 +787,8 @@ public class DesktopInput extends InputHandler{
                 if(dx != 0 || dy != 0){
                     float sx = Core.graphics.getWidth() <= 0 ? 0f : (Core.camera.width / Core.graphics.getWidth());
                     float sy = Core.graphics.getHeight() <= 0 ? 0f : (Core.camera.height / Core.graphics.getHeight());
-                    Core.camera.position.x += dx * sx;
-                    Core.camera.position.y += dy * sy;
+                    Core.camera.position.x += dx * sx * middleMousePanDirection;
+                    Core.camera.position.y += dy * sy * middleMousePanDirection;
                 }
 
                 if(!middleMouseCaptured){
@@ -938,6 +941,11 @@ public class DesktopInput extends InputHandler{
         selectedUnits.removeAll(u -> !u.allowCommand() || !u.isValid() || u.team != player.team());
         restorePreservedUnitSelection();
         sanitizeReadOnlySelection();
+        syncLocalPlayerSelectionState();
+
+        if(Core.input.keyTap(KeyCode.escape) && spectatorSelectionPinned){
+            resumeSpectatorFollowSelection();
+        }
 
         if(commandMode && !scene.hasField() && !scene.hasDialog()){
             if(input.keyTap(Binding.selectAllUnits)){
@@ -2043,6 +2051,8 @@ public class DesktopInput extends InputHandler{
 
         Tile target = world.tileWorld(worldX, worldY);
         if(target == null) return false;
+        Team viewer = ViewerPerspective.team();
+        if(!isTileVisibleToViewer(target, viewer)) return false;
 
         Tile resource = resolveResourceTile(target);
         Tile harvestTarget = null;
@@ -2150,7 +2160,7 @@ public class DesktopInput extends InputHandler{
             unit.set(worldX, worldY);
             unit.add();
             Fx.padlaunch.at(worldX, worldY);
-            Fx.sc2Scan.at(worldX, worldY, 10f * tilesize);
+            Fx.sc2Scan.at(worldX, worldY, 11f * tilesize);
             Time.run(9f * 60f, () -> {
                 if(unit != null && unit.isValid()){
                     unit.remove();
@@ -2219,7 +2229,8 @@ public class DesktopInput extends InputHandler{
             float offset = block.offset;
             int tx = World.toTile(worldX - offset);
             int ty = World.toTile(worldY - offset);
-            if(!Build.validPlace(block, unit.team, tx, ty, buildPayload.build.rotation, false)){
+            boolean valid = Build.validLandPlace(block, unit.team, tx, ty, buildPayload.build.rotation, true);
+            if(!valid){
                 continue;
             }
 
@@ -2238,6 +2249,7 @@ public class DesktopInput extends InputHandler{
             }
 
             landConfirmPlan = new BuildPlan(tx, ty, buildPayload.build.rotation, block);
+            landConfirmPlan.cachedValid = valid;
             landConfirmUnitId = unit.id;
             any = true;
         }
@@ -2540,7 +2552,7 @@ public class DesktopInput extends InputHandler{
         }
 
         if(hasScvBuilder){
-            chosen = pickScvBuildUnit(shiftHeld, false);
+            chosen = pickDirectScvBuildUnit(shiftHeld);
         }else{
             float bestDst = Float.MAX_VALUE;
             for(Unit unit : selectedUnits){
@@ -2557,7 +2569,15 @@ public class DesktopInput extends InputHandler{
             return;
         }
 
-        boolean queueCommand = shiftHeld;
+        boolean preserveActiveScvBuild = !shiftHeld && shouldPreserveActiveScvBuild(chosen);
+        if(preserveActiveScvBuild){
+            trimScvQueuedBuildPlans(chosen);
+            if(chosen.controller() instanceof CommandAI ai){
+                ai.commandQueue.clear();
+            }
+        }
+
+        boolean queueCommand = shiftHeld || preserveActiveScvBuild;
         BuildPlan plan = new BuildPlan(tx, ty, placeRotation, block, block.saveConfig ? block.lastConfig : null);
         plan.requireClose = true;
         chosen.addBuild(plan);
@@ -2705,6 +2725,7 @@ public class DesktopInput extends InputHandler{
 
     @Override
     public boolean touchDown(float x, float y, int pointer, KeyCode button){
+        if(button == KeyCode.mouseMiddle) return false;
         if(scene.hasMouse() || !commandMode) return false;
 
         float clampedY = clampScreenY(y);
@@ -2736,7 +2757,7 @@ public class DesktopInput extends InputHandler{
             }
         }
 
-        if(button == Binding.commandQueue.value.key){
+        if(button == Binding.commandQueue.value.key && button != KeyCode.mouseMiddle){
             if(commandFocusGuardTime <= 0f){
                 commandTap(x, clampedY, true);
             }

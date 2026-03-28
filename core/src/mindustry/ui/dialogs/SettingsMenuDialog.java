@@ -449,7 +449,7 @@ public class SettingsMenuDialog extends BaseDialog{
 
         if(!mobile){
             graphics.checkPref("vsync", true, b -> Core.graphics.setVSync(b));
-            graphics.checkPref("fullscreen", false, b -> {
+            graphics.checkPref("fullscreen", true, b -> {
                 if(b && settings.getBool("borderlesswindow")){
                     Core.graphics.setWindowedMode(Core.graphics.getWidth(), Core.graphics.getHeight());
                     settings.put("borderlesswindow", false);
@@ -459,28 +459,31 @@ public class SettingsMenuDialog extends BaseDialog{
                 if(b){
                     Core.graphics.setFullscreen();
                 }else{
-                    Core.graphics.setWindowedMode(Core.graphics.getWidth(), Core.graphics.getHeight());
+                    settings.put("fullscreen", true);
+                    Core.app.post(() -> Core.graphics.setFullscreen());
                 }
             });
 
             graphics.checkPref("borderlesswindow", false, b -> {
                 if(b && settings.getBool("fullscreen")){
-                    Core.graphics.setWindowedMode(Core.graphics.getWidth(), Core.graphics.getHeight());
-                    settings.put("fullscreen", false);
+                    settings.put("borderlesswindow", false);
                     graphics.rebuild();
+                    return;
                 }
                 Core.graphics.setBorderless(b);
             });
 
             Core.graphics.setVSync(Core.settings.getBool("vsync"));
 
-            if(Core.settings.getBool("fullscreen")){
-                Core.app.post(() -> Core.graphics.setFullscreen());
+            if(Core.settings.getBool("borderlesswindow")){
+                Core.settings.put("borderlesswindow", false);
             }
 
-            if(Core.settings.getBool("borderlesswindow")){
-                Core.app.post(() -> Core.graphics.setBorderless(true));
+            if(!Core.settings.getBool("fullscreen")){
+                Core.settings.put("fullscreen", true);
             }
+
+            Core.app.post(() -> Core.graphics.setFullscreen());
         }else if(!ios){
             graphics.checkPref("landscape", false, b -> {
                 if(b){
@@ -527,7 +530,10 @@ public class SettingsMenuDialog extends BaseDialog{
         graphics.checkPref("smoothcamera", true);
         if(!mobile){
             graphics.checkPref("detach-camera", false);
+            graphics.checkPref("invert-middle-mouse-pan", false);
         }
+        graphics.sliderPref("adminchatlogwidth", 400, 100, 2000, 10, s -> s + "px");
+        graphics.sliderPref("adminchatlogheight", 800, 100, 2000, 10, s -> s + "px");
         //Removed position and mouseposition settings
         graphics.checkPref("fps", false);
         graphics.checkPref("playerindicators", true);

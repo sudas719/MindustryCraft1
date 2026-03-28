@@ -124,6 +124,7 @@ public class KeybindDialog extends Dialog{
 
     void rebind(KeyBind bind, KeyCode newKey){
         if(rebindKey == null) return;
+        if(newKey == KeyCode.mouseMiddle) return;
         rebindDialog.hide();
         boolean isAxis = bind.defaultValue instanceof Axis;
 

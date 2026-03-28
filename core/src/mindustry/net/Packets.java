@@ -253,4 +253,92 @@ public class Packets{
             }
         }
     }
+
+    public static class PlayerSelectionStatePacket extends Packet{
+        public int activeSubgroup = -1;
+        public int[] unitIds = {};
+        public int[] buildingPositions = {};
+
+        @Override
+        public void write(Writes buffer){
+            buffer.i(activeSubgroup);
+            buffer.s(unitIds.length);
+            for(int id : unitIds){
+                buffer.i(id);
+            }
+            buffer.s(buildingPositions.length);
+            for(int pos : buildingPositions){
+                buffer.i(pos);
+            }
+        }
+
+        @Override
+        public void read(Reads buffer){
+            activeSubgroup = buffer.i();
+            int unitCount = buffer.us();
+            unitIds = new int[unitCount];
+            for(int i = 0; i < unitCount; i++){
+                unitIds[i] = buffer.i();
+            }
+            int buildCount = buffer.us();
+            buildingPositions = new int[buildCount];
+            for(int i = 0; i < buildCount; i++){
+                buildingPositions[i] = buffer.i();
+            }
+        }
+
+        @Override
+        public void handleServer(NetConnection con){
+            if(netServer != null){
+                netServer.handlePlayerSelectionState(con, activeSubgroup, unitIds, buildingPositions);
+            }
+        }
+    }
+
+    public static class SpectatorSelectionStatePacket extends Packet{
+        public int targetPlayerId = -1;
+        public boolean active;
+        public int activeSubgroup = -1;
+        public int[] unitIds = {};
+        public int[] buildingPositions = {};
+
+        @Override
+        public void write(Writes buffer){
+            buffer.i(targetPlayerId);
+            buffer.b((byte)(active ? 1 : 0));
+            buffer.i(activeSubgroup);
+            buffer.s(unitIds.length);
+            for(int id : unitIds){
+                buffer.i(id);
+            }
+            buffer.s(buildingPositions.length);
+            for(int pos : buildingPositions){
+                buffer.i(pos);
+            }
+        }
+
+        @Override
+        public void read(Reads buffer){
+            targetPlayerId = buffer.i();
+            active = buffer.b() == 1;
+            activeSubgroup = buffer.i();
+            int unitCount = buffer.us();
+            unitIds = new int[unitCount];
+            for(int i = 0; i < unitCount; i++){
+                unitIds[i] = buffer.i();
+            }
+            int buildCount = buffer.us();
+            buildingPositions = new int[buildCount];
+            for(int i = 0; i < buildCount; i++){
+                buildingPositions[i] = buffer.i();
+            }
+        }
+
+        @Override
+        public void handleClient(){
+            if(control != null && control.input != null){
+                control.input.receiveSpectatorSelectionState(targetPlayerId, active, activeSubgroup, unitIds, buildingPositions);
+            }
+        }
+    }
 }

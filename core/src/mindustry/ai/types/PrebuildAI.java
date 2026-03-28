@@ -53,7 +53,7 @@ public class PrebuildAI extends AIController{
     }
 
     private boolean canBuild(CoreBuild core, Block block){
-        return state.rules.infiniteResources || unit.team.rules().infiniteResources || core.items.has(block.requirements, state.rules.buildCostMultiplier);
+        return state.rules.infiniteResources || unit.team.rules().infiniteResources || core.team.data().hasResources(block.requirements, state.rules.buildCostMultiplier);
     }
 
     private @Nullable BlockPlan findNextPlan(){
@@ -180,7 +180,7 @@ public class PrebuildAI extends AIController{
         }
 
         if(mining){
-            var targetStack = Structs.find(collectBlock.requirements, i -> !core.items.has(i.item, Mathf.ceil(state.rules.buildCostMultiplier * i.amount)));
+            var targetStack = Structs.find(collectBlock.requirements, i -> !core.team.data().hasResource(i.item, Mathf.ceil(state.rules.buildCostMultiplier * i.amount)));
             Item targetItem = targetStack == null ? null : targetStack.item;
 
             if(targetItem != null){

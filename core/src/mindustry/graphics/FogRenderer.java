@@ -20,9 +20,6 @@ import mindustry.world.meta.*;
 import static mindustry.Vars.*;
 
 public final class FogRenderer{
-    private static final float pvpDynamicFogAlpha = 0.3f;
-    private static final float pvpStaticFogAlpha = 0.5f;
-
     private FrameBuffer staticFog = new FrameBuffer(), dynamicFog = new FrameBuffer();
     private LongSeq events = new LongSeq();
     private Rect rect = new Rect();
@@ -124,9 +121,8 @@ public final class FogRenderer{
         }
         dynamicFog.getTexture().setFilter(TextureFilter.linear);
 
-        float dynamicAlpha = state.rules.pvp ? pvpDynamicFogAlpha :
-            (Float.isNaN(state.rules.dynamicColor.a) ? 0.5f : Math.max(0.5f, state.rules.dynamicColor.a));
-        float staticAlpha = state.rules.pvp ? pvpStaticFogAlpha : 1f;
+        float dynamicAlpha = Float.isNaN(state.rules.dynamicColor.a) ? 0.3f : Math.max(0f, Math.min(1f, state.rules.dynamicColor.a));
+        float staticAlpha = Float.isNaN(state.rules.staticColor.a) ? 0.6f : Math.max(0f, Math.min(1f, state.rules.staticColor.a));
 
         Draw.shader(Shaders.fog);
         Draw.color(state.rules.dynamicColor, dynamicAlpha);

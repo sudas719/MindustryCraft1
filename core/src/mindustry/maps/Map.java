@@ -125,6 +125,39 @@ public class Map implements Comparable<Map>, Publishable{
         return maps.readFilters(tags.get("genfilters", ""));
     }
 
+    public @Nullable Gamemode folderMode(){
+        if(file == null || !custom) return null;
+
+        String root = Vars.customMapDirectory.absolutePath().replace('\\', '/');
+        String path = file.absolutePath().replace('\\', '/');
+
+        if(!path.startsWith(root)) return null;
+
+        String relative = path.substring(root.length());
+        if(relative.startsWith("/")){
+            relative = relative.substring(1);
+        }
+
+        int slash = relative.indexOf('/');
+        if(slash <= 0) return null;
+
+        return switch(relative.substring(0, slash).toLowerCase()){
+            case "survival" -> Gamemode.survival;
+            case "attack" -> Gamemode.attack;
+            case "pvp" -> Gamemode.pvp;
+            case "sandbox" -> Gamemode.sandbox;
+            default -> null;
+        };
+    }
+
+    public Gamemode serverMode(){
+        Gamemode folder = folderMode();
+        if(folder != null) return folder;
+        if(Gamemode.pvp.valid(this)) return Gamemode.pvp;
+        if(Gamemode.attack.valid(this)) return Gamemode.attack;
+        return Gamemode.survival;
+    }
+
     public String name(){
         return UI.formatSudas(tag("name"));
     }
@@ -218,8 +251,7 @@ public class Map implements Comparable<Map>, Publishable{
 
     @Override
     public Seq<String> extraTags(){
-        Gamemode mode = Gamemode.attack.valid(this) ? Gamemode.attack : Gamemode.survival;
-        return Seq.with(mode.name());
+        return Seq.with(serverMode().name());
     }
 
     @Override

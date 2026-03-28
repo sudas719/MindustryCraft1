@@ -42,6 +42,9 @@ import static mindustry.gen.Tex.*;
 
 public class HudFragment{
     private static final float dsize = 65f, pauseHeight = 36f;
+    private static final float minimapOuterMargin = 5f;
+    private static final float minimapTimerHeight = 22f;
+    private static final float minimapTimerPadBottom = 2f;
     private static final int spectatorRefreshFrames = 20;
     private static final int spectatorMaxQueueIcons = 10;
     private static final int spectatorApmWindowFrames = 60 * 60;
@@ -57,6 +60,21 @@ public class HudFragment{
     public boolean shown = true;
 
     private ImageButton flip;
+
+    private static float minimapUiHeight(float size){
+        return size + minimapOuterMargin * 2f + minimapTimerHeight + minimapTimerPadBottom;
+    }
+
+    private static float minimapOuterWidth(float size){
+        return size + minimapOuterMargin * 2f;
+    }
+
+    private static String formatMinimapMatchTime(){
+        int totalSeconds = state != null && state.isGame() ? Math.max(0, (int)(state.tick / 60d)) : 0;
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        return (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
 
     private String hudText = "";
     private boolean showHudText;
@@ -665,46 +683,46 @@ public class HudFragment{
 
                     table.clearChildren();
                     if(!isSpectatorMode()){
-                        table.defaults().padLeft(4f).padRight(6f);
-                        table.label(() -> {
-                            var core = player.team().core();
-                            if(core == null) return "0";
-                            return Integer.toString(core.items.get(Items.graphite));
-                        });
-                        table.image(Items.graphite.uiIcon).size(16f);
+                        table.defaults().padLeft(8f).padRight(12f);
 
-                        table.label(() -> {
-                            var core = player.team().core();
-                            if(core == null) return "0";
-                            return Integer.toString(core.items.get(Items.highEnergyGas));
-                        });
-                        table.image(Items.highEnergyGas.uiIcon).size(16f);
+                        Label graphiteLabel = table.label(() -> {
+                            return Integer.toString(player.team().data().resource(Items.graphite));
+                        }).get();
+                        graphiteLabel.setFontScale(2f);
+                        table.image(Items.graphite.uiIcon).size(32f);
 
-                        table.label(() -> {
+                        Label gasLabel = table.label(() -> {
+                            return Integer.toString(player.team().data().resource(Items.highEnergyGas));
+                        }).get();
+                        gasLabel.setFontScale(2f);
+                        table.image(Items.highEnergyGas.uiIcon).size(32f);
+
+                        Label populationLabel = table.label(() -> {
                             var data = player.team().data();
                             if(!data.hasCore()) return "0/0";
                             int cap = Units.getCap(player.team());
                             return data.popCount + "/" + cap;
-                        });
-                        table.image(Blocks.doorLarge.uiIcon).size(16f);
+                        }).get();
+                        populationLabel.setFontScale(2f);
+                        table.image(Blocks.doorLarge.uiIcon).size(32f);
                     }else{
                         rebuildSpectatorPlayers();
-                        table.defaults().left().pad(2f);
+                        table.defaults().left().pad(4f);
                         for(Player sp : spectatorPlayers){
                             if(sp == null) continue;
                             Team team = sp.team();
                             if(team == null) continue;
                             var data = team.data();
-                            var core = team.core();
-                            int crystal = core == null ? 0 : core.items.get(Items.graphite);
-                            int gas = core == null ? 0 : core.items.get(Items.highEnergyGas);
+                            int crystal = data.resource(Items.graphite);
+                            int gas = data.resource(Items.highEnergyGas);
                             int cap = data.hasCore() ? Units.getCap(team) : 0;
                             String line = "[#" + team.color.toString() + "]" + Strings.stripColors(sp.name) + "[]  "
                                 + crystal + " / " + gas + "  "
                                 + data.popCount + "/" + cap;
 
-                            TextButton button = table.button(line, Styles.flatTogglet, () -> spectatorFocusPlayer = sp.id).left().growX().get();
+                            TextButton button = table.button(line, Styles.flatTogglet, () -> spectatorFocusPlayer = sp.id).left().growX().minHeight(44f).get();
                             button.getLabel().setAlignment(Align.left);
+                            button.getLabel().setFontScale(2f);
                             button.setChecked(sp.id == spectatorFocusPlayer);
                             table.row();
                         }
@@ -796,7 +814,7 @@ public class HudFragment{
             }).width(350f);
             t.update(() -> {
                 float size = Core.settings.getInt("minimapsize", 400);
-                float uiHeight = size + 10f;
+                float uiHeight = minimapUiHeight(size);
                 t.marginBottom(uiHeight + 6f);
             });
         });
@@ -945,16 +963,24 @@ public class HudFragment{
 
             //Left: Minimap
             Minimap minimap = new Minimap();
-            uiLayer.table(miniTable -> {
-                miniTable.name = "minimap-container";
-                miniTable.visible(() -> Core.settings.getBool("minimap"));
-                miniTable.add(minimap);
-            }).bottom().left();
+            Label minimapTimer = new Label("", Styles.monoLabel);
+            minimapTimer.setAlignment(Align.right);
+            minimapTimer.touchable = Touchable.disabled;
+            minimapTimer.update(() -> minimapTimer.setText(formatMinimapMatchTime()));
+
+            Table miniTable = new Table();
+            miniTable.name = "minimap-container";
+            miniTable.visible(() -> Core.settings.getBool("minimap"));
+            Cell<Label> minimapTimerCell = miniTable.add(minimapTimer).width(minimapOuterWidth(140f)).height(minimapTimerHeight).right().padBottom(minimapTimerPadBottom);
+            miniTable.row();
+            miniTable.add(minimap);
+            uiLayer.add(miniTable).bottom().left();
 
             //Center: Unit Selection Grid
             uiLayer.table(unitTable -> {
                 unitTable.name = "unitselection";
                 unitTable.visible(() -> control.input.selectedUnits.size > 0 || control.input.commandBuildings.size > 0 ||
+                    control.input.hasSpectatorSyncedSelection() ||
                     control.input.hasReadOnlySelection() ||
                     (control.input.selectedResource != null && (control.input.selectedResource.block() instanceof CrystalMineralWall
                         || control.input.selectedResource.floor() instanceof SteamVent)));
@@ -966,6 +992,7 @@ public class HudFragment{
             uiLayer.table(abilityTable -> {
                 abilityTable.name = "abilitypanel";
                 abilityTable.visible(() -> !control.input.hasReadOnlySelection());
+                abilityTable.update(() -> abilityTable.touchable = control.input.isAbilitySelectionReadOnly() ? Touchable.disabled : Touchable.enabled);
                 abilityTable.add(abilityPanel).pad(4f);
             }).bottom().right();
 
@@ -980,10 +1007,11 @@ public class HudFragment{
             stack.update(() -> {
                 float size = Core.settings.getInt("minimapsize", 400);
                 minimap.setMinimapSize(size);
+                minimapTimerCell.width(minimapOuterWidth(size));
 
                 //Stack height is based on minimap size, not control panel height
                 //This keeps UI elements at bottom without moving them up
-                float uiHeight = size + 10f; //Minimap size + margin
+                float uiHeight = minimapUiHeight(size);
                 stack.setHeight(uiHeight);
                 cell.height(uiHeight);
             });

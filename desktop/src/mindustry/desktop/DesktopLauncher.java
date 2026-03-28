@@ -41,7 +41,7 @@ public class DesktopLauncher extends ClientLauncher{
             Vars.loadLogger();
 
             new SdlApplication(new DesktopLauncher(arg), new SdlConfig(){{
-                title = "MindustryCraft v0.6";
+                title = "MindustryCraft v0.6.4";
                 maximized = true;
                 coreProfile = true;
                 width = 900;

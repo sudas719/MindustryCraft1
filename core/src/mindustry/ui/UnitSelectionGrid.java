@@ -328,12 +328,25 @@ public class UnitSelectionGrid extends Table{
                 }
             }
             if(current.isEmpty()){
-                Unit readOnlyUnit = control.input.readOnlySelectedUnit();
-                Building readOnlyBuilding = control.input.readOnlySelectedBuilding();
-                if(readOnlyUnit != null && readOnlyUnit.isValid()){
-                    current.add(new UnitDisplay(readOnlyUnit));
-                }else if(readOnlyBuilding != null && readOnlyBuilding.isValid()){
-                    current.add(new BuildingDisplay(readOnlyBuilding));
+                if(control.input.hasSpectatorSyncedSelection()){
+                    for(Unit unit : control.input.spectatorSyncedUnits()){
+                        if(unit != null && unit.isValid()){
+                            current.add(new UnitDisplay(unit));
+                        }
+                    }
+                    for(Building building : control.input.spectatorSyncedBuildings()){
+                        if(building != null && building.isValid()){
+                            current.add(new BuildingDisplay(building));
+                        }
+                    }
+                }else{
+                    Unit readOnlyUnit = control.input.readOnlySelectedUnit();
+                    Building readOnlyBuilding = control.input.readOnlySelectedBuilding();
+                    if(readOnlyUnit != null && readOnlyUnit.isValid()){
+                        current.add(new UnitDisplay(readOnlyUnit));
+                    }else if(readOnlyBuilding != null && readOnlyBuilding.isValid()){
+                        current.add(new BuildingDisplay(readOnlyBuilding));
+                    }
                 }
             }
             if(current.size > 1){
@@ -675,7 +688,7 @@ public class UnitSelectionGrid extends Table{
         for(int i = startIdx; i < endIdx; i++){
             Displayable item = displayedItems.get(i);
             int col = (i - startIdx) % COLS;
-            boolean readOnly = control.input.hasReadOnlySelection();
+            boolean readOnly = control.input.isSelectionReadOnly();
 
             //Create portrait button
             Table portrait = new Table();
@@ -759,7 +772,7 @@ public class UnitSelectionGrid extends Table{
         //Show unit info when only one unit/building is selected
         if(displayedItems.size == 1){
             Displayable item = displayedItems.get(0);
-            boolean readOnly = control.input.hasReadOnlySelection();
+            boolean readOnly = control.input.isSelectionReadOnly();
             if(item instanceof UnitDisplay){
                 UnitDisplay unitDisplay = (UnitDisplay)item;
                 buildSingleUnitPanel(unitDisplay.unit, readOnly);

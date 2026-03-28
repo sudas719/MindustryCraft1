@@ -211,9 +211,11 @@ public class UnitAbilityPanel extends Table{
 
         update(() -> {
             updateAutoCast();
+            touchable = control.input.isAbilitySelectionReadOnly() ? Touchable.disabled : Touchable.enabled;
 
             if(hasAbilityUnits() || hasAbilityBuildings()){
-                boolean allowKeys = !Core.scene.hasKeyboard();
+                boolean readOnly = control.input.isAbilitySelectionReadOnly();
+                boolean allowKeys = !readOnly && !Core.scene.hasKeyboard();
                 boolean coreSelected = isOnlyCoreSelected();
                 if(!coreSelected){
                     corePanel = CorePanel.MAIN;
@@ -306,7 +308,9 @@ public class UnitAbilityPanel extends Table{
                 }
 
                 //Cancel command mode with Esc or right-click
-                if(activeCommand != CommandMode.NONE){
+                if(readOnly && activeCommand != CommandMode.NONE){
+                    exitCommandMode();
+                }else if(activeCommand != CommandMode.NONE){
                     if(Core.input.keyTap(KeyCode.escape) || Core.input.keyTap(KeyCode.mouseRight)){
                         exitCommandMode();
                     }
@@ -2458,7 +2462,7 @@ public class UnitAbilityPanel extends Table{
             return;
         }
         if(activeCommand == CommandMode.DROP_PULSAR){
-            buildCoreTargetPanel("Drop Miner", "Left-click ground");
+            buildCoreTargetPanel("Drop Miner", "Left-click visible ground");
             return;
         }
         if(activeCommand == CommandMode.EXTRA_SUPPLY){
@@ -5689,11 +5693,11 @@ public class UnitAbilityPanel extends Table{
                 anyResources = true;
             }else if(core.items != null){
                 if(type == coreUpgradeOrbital){
-                    if(core.items.has(Items.graphite, CoreBlock.orbitalUpgradeCost)){
+                    if(player.team().data().hasResource(Items.graphite, CoreBlock.orbitalUpgradeCost)){
                         anyResources = true;
                     }
                 }else{
-                    if(core.items.has(Items.graphite, CoreBlock.fortressUpgradeCost) && core.items.has(Items.highEnergyGas, CoreBlock.fortressUpgradeGasCost)){
+                    if(player.team().data().hasResource(Items.graphite, CoreBlock.fortressUpgradeCost) && player.team().data().hasResource(Items.highEnergyGas, CoreBlock.fortressUpgradeGasCost)){
                         anyResources = true;
                     }
                 }
@@ -6628,18 +6632,15 @@ public class UnitAbilityPanel extends Table{
     private void queueCoreLift(CoreBuild core){
         if(core == null) return;
         if(!core.canLift()) return;
-
-        Unit unit = core.lift();
-        if(unit != null){
-            control.input.commandBuildings.clear();
-            control.input.selectedUnits.clear();
-            control.input.selectedUnits.add(unit);
-        }
+        if(!core.beginLift()) return;
+        scheduleLiftedUnitSelection(() -> core.lastLiftedUnitId);
     }
 
     private void showFactoryCannotLiftReason(UnitFactory.UnitFactoryBuild factory){
         if(factory == null) return;
-        if(UnitTypes.factoryTechResearching(factory)){
+        if(factory.pendingLiftTime > 0f){
+            ui.hudfrag.setHudText("Already lifting");
+        }else if(UnitTypes.factoryTechResearching(factory)){
             ui.hudfrag.setHudText("Cannot lift while tech research is in progress");
         }else{
             ui.hudfrag.setHudText("Cannot lift while training");
@@ -6652,12 +6653,24 @@ public class UnitAbilityPanel extends Table{
             showFactoryCannotLiftReason(factory);
             return;
         }
-        Unit unit = factory.lift();
-        if(unit != null){
+        if(!factory.beginLift()) return;
+        scheduleLiftedUnitSelection(() -> factory.lastLiftedUnitId);
+    }
+
+    private void scheduleLiftedUnitSelection(Intp unitIdProvider){
+        Time.run(61f, () -> {
+            if(control == null || control.input == null || unitIdProvider == null) return;
+
+            int unitId = unitIdProvider.get();
+            if(unitId < 0) return;
+
+            Unit unit = Groups.unit.getByID(unitId);
+            if(unit == null || !unit.isValid() || unit.team != player.team()) return;
+
             control.input.commandBuildings.clear();
             control.input.selectedUnits.clear();
             control.input.selectedUnits.add(unit);
-        }
+        });
     }
 
     private void showNotImplemented(){
@@ -6732,25 +6745,14 @@ public class UnitAbilityPanel extends Table{
         if(block == null) return false;
         Building core = player.core();
         if(core == null) return false;
-        for(ItemStack stack : block.requirements){
-            int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-            if(amount > 0 && !core.items.has(stack.item, amount)){
-                return false;
-            }
-        }
-        return true;
+        return player.team().data().hasResources(block.requirements, state.rules.buildCostMultiplier);
     }
 
     public static void payPlacementCost(Block block){
         if(block == null) return;
         Building core = player.core();
         if(core == null) return;
-        for(ItemStack stack : block.requirements){
-            int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-            if(amount > 0){
-                core.items.remove(stack.item, amount);
-            }
-        }
+        player.team().data().removeResources(block.requirements, state.rules.buildCostMultiplier);
     }
 
     private void buildCommandModePanel(){

@@ -29,6 +29,7 @@ import mindustry.net.Administration.*;
 import mindustry.net.Packets.*;
 import mindustry.type.*;
 import mindustry.ui.*;
+import mindustry.ui.fragments.*;
 import mindustry.world.*;
 import mindustry.world.meta.*;
 
@@ -152,8 +153,11 @@ public class NetServer implements ApplicationListener{
     private boolean matchPreviewActive = false;
     private boolean skipNextPreview = false;
     private boolean previewRulesApplied = false;
+    private boolean previewFog = false;
+    private boolean previewStaticFog = false;
     private float previewUnitDamageMultiplier = 1f;
     private float previewBlockDamageMultiplier = 1f;
+    private boolean localObserverChatMuted = false;
     private final IntIntMap teamHandicapPercent = new IntIntMap();
     private final IntSet handicappedUnits = new IntSet();
     private final IntSet handicappedBuildings = new IntSet();
@@ -529,11 +533,39 @@ public class NetServer implements ApplicationListener{
         con.send(packet, true);
     }
 
+    private void fillSpectatorSelectionState(Player target, SpectatorSelectionStatePacket packet){
+        packet.targetPlayerId = target == null ? -1 : target.id;
+        packet.active = false;
+        packet.activeSubgroup = -1;
+        packet.unitIds = new int[0];
+        packet.buildingPositions = new int[0];
+
+        if(target == null || target.con == null) return;
+
+        packet.active = true;
+        packet.activeSubgroup = target.con.syncedSelectionActiveSubgroup;
+        packet.unitIds = target.con.syncedSelectionUnitIds.toArray();
+        packet.buildingPositions = target.con.syncedSelectionBuildingPositions.toArray();
+    }
+
+    private void sendSpectatorSelectionClear(NetConnection con, int targetPlayerId){
+        SpectatorSelectionStatePacket packet = new SpectatorSelectionStatePacket();
+        packet.targetPlayerId = targetPlayerId;
+        con.send(packet, true);
+    }
+
+    private void sendSpectatorSelectionState(NetConnection con, Player target){
+        SpectatorSelectionStatePacket packet = new SpectatorSelectionStatePacket();
+        fillSpectatorSelectionState(target, packet);
+        con.send(packet, true);
+    }
+
     private void clearSpectatorCameraTarget(NetConnection con, boolean notifyClient){
         int previousTarget = con.spectatorCameraTarget;
         con.spectatorCameraTarget = -1;
         if(notifyClient){
             sendSpectatorCameraClear(con, previousTarget);
+            sendSpectatorSelectionClear(con, previousTarget);
         }
     }
 
@@ -562,6 +594,7 @@ public class NetServer implements ApplicationListener{
 
         con.spectatorCameraTarget = targetPlayerId;
         sendSpectatorCameraState(con, target);
+        sendSpectatorSelectionState(con, target);
     }
 
     public void relaySpectatorCameraState(Player target){
@@ -585,6 +618,49 @@ public class NetServer implements ApplicationListener{
                 clearSpectatorCameraTarget(con, true);
             }
         }
+    }
+
+    public void relaySpectatorSelectionState(Player target){
+        if(target == null) return;
+
+        for(NetConnection con : net.getConnections()){
+            if(con == null || !con.isConnected() || con.spectatorCameraTarget != target.id) continue;
+
+            if(!canFollowSpectatorCamera(con.player, target)){
+                clearSpectatorCameraTarget(con, true);
+                continue;
+            }
+
+            sendSpectatorSelectionState(con, target);
+        }
+    }
+
+    public void handlePlayerSelectionState(NetConnection con, int activeSubgroup, int[] unitIds, int[] buildingPositions){
+        if(con == null || !con.isConnected() || con.player == null) return;
+
+        con.syncedSelectionUnitIds.clear();
+        con.syncedSelectionBuildingPositions.clear();
+        con.syncedSelectionActiveSubgroup = activeSubgroup;
+
+        if(unitIds != null){
+            for(int id : unitIds){
+                Unit unit = Groups.unit.getByID(id);
+                if(unit != null && unit.isValid() && unit.team == con.player.team()){
+                    con.syncedSelectionUnitIds.add(id);
+                }
+            }
+        }
+
+        if(buildingPositions != null){
+            for(int pos : buildingPositions){
+                Building build = world.build(pos);
+                if(build != null && build.isValid() && build.team == con.player.team()){
+                    con.syncedSelectionBuildingPositions.add(pos);
+                }
+            }
+        }
+
+        relaySpectatorSelectionState(con.player);
     }
 
     private void updateLocalSpectatorCameraFollowers(){
@@ -700,53 +776,111 @@ public class NetServer implements ApplicationListener{
         Call.menu(player.con, helpMenuId, "Command Help", message.toString(), options);
     }
 
-    private Seq<Map> filterBuiltinMaps(@Nullable String filter){
-        Seq<Map> builtin = maps.defaultMaps();
+    private Seq<Map> filterServerMaps(@Nullable String filter){
+        Seq<Map> allMaps = maps.all();
         if(filter != null && !filter.trim().isEmpty()){
             String lowered = filter.trim().toLowerCase();
-            builtin = builtin.select(map -> map.plainName().toLowerCase().contains(lowered));
+            allMaps = allMaps.select(map -> map.plainName().toLowerCase().contains(lowered));
         }
-        return builtin;
+        return allMaps;
     }
 
-    private int builtinMapNumber(@Nullable Map target){
+    private int serverMapNumber(@Nullable Map target){
         if(target == null) return -1;
 
-        Seq<Map> builtin = maps.defaultMaps();
-        for(int i = 0; i < builtin.size; i++){
-            if(builtin.get(i) == target){
+        Seq<Map> allMaps = maps.all();
+        for(int i = 0; i < allMaps.size; i++){
+            if(allMaps.get(i) == target){
                 return i + 1;
             }
         }
         return -1;
     }
 
+    private Rules rulesForHostedMap(Map target){
+        return target.applyRules(target.serverMode());
+    }
+
+    private void loadHostedMap(Map target, String successMessage, @Nullable String failureMessage){
+        if(target == null) return;
+
+        try{
+            world.loadMap(target, rulesForHostedMap(target));
+            logic.play();
+            if(successMessage != null && !successMessage.isEmpty()){
+                Call.sendMessage(successMessage);
+            }
+        }catch(Throwable t){
+            Log.err("Failed to load map '@'.", target.plainName(), t);
+            if(failureMessage != null && !failureMessage.isEmpty()){
+                Call.sendMessage(failureMessage);
+            }
+        }
+    }
+
+    private void hostMapByToken(Player player, String rawToken){
+        String token = rawToken == null ? "" : rawToken.trim();
+        if(token.isEmpty()){
+            if(player != null){
+                player.sendMessage("[scarlet]Usage: /host <map/id>");
+            }
+            return;
+        }
+
+        if(isResourceMapIdToken(token)){
+            int resourceId = Strings.parseInt(token);
+            Call.sendMessage("[yellow]Downloading resource-site map [accent]" + resourceId + "[yellow]...");
+            fetchResourceSiteMapById(resourceId, map -> Core.app.post(() -> loadHostedMap(
+            map,
+            "[green]Loaded resource-site map [accent]" + map.plainName() + "[green] (id=" + resourceId + ").",
+            "[scarlet]Failed to load resource-site map id=" + resourceId + "."
+            )), err -> Core.app.post(() -> Call.sendMessage("[scarlet]Failed to download resource-site map id=" + resourceId + ": " + err)));
+            return;
+        }
+
+        Map target = resolveHostMap(token);
+        if(target == null){
+            if(player != null){
+                player.sendMessage("[scarlet]Map not found. Use [orange]/maps[] or [orange]/sitemaps[].");
+            }
+            return;
+        }
+
+        loadHostedMap(target,
+        "[green]Host changed map to [accent]" + target.plainName() + "[green].",
+        "[scarlet]Failed to load map: " + target.plainName());
+    }
+
     private void sendMapsText(Player player, @Nullable String filter, int requestedPage){
-        Seq<Map> builtin = filterBuiltinMaps(filter);
-        if(builtin.isEmpty()){
-            player.sendMessage("[scarlet]No built-in maps matched your query.");
+        Seq<Map> listedMaps = filterServerMaps(filter);
+        if(listedMaps.isEmpty()){
+            player.sendMessage("[scarlet]No server maps matched your query.");
             return;
         }
 
         int perPage = 10;
-        int totalPages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int totalPages = Math.max(1, Mathf.ceil((float)listedMaps.size / perPage));
         int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
         int start = page * perPage;
-        int end = Math.min(start + perPage, builtin.size);
+        int end = Math.min(start + perPage, listedMaps.size);
 
         StringBuilder out = new StringBuilder();
         if(filter != null && !filter.trim().isEmpty()){
             out.append("[lightgray]Filter: [accent]").append(filter).append('\n');
         }
-        out.append(Strings.format("[orange]-- Built-in Maps [lightgray]@[gray]/[lightgray]@[orange] --\n\n", page + 1, totalPages));
+        out.append(Strings.format("[orange]-- Server Maps [lightgray]@[gray]/[lightgray]@[orange] --\n\n", page + 1, totalPages));
         for(int i = start; i < end; i++){
-            Map map = builtin.get(i);
-            int number = builtinMapNumber(map);
-            out.append("[lightgray] ").append(number < 0 ? i + 1 : number).append(". [accent]").append(map.plainName()).append('\n');
+            Map map = listedMaps.get(i);
+            int number = serverMapNumber(map);
+            out.append("[lightgray] ")
+            .append(number < 0 ? i + 1 : number)
+            .append(". [accent]").append(map.plainName())
+            .append("[lightgray] (").append(Strings.capitalize(map.serverMode().name())).append(")")
+            .append('\n');
         }
         out.append("\n[lightgray]Use [accent]/vote map <number>[] to vote-switch.");
         if(player.admin){
-            out.append("\n[lightgray]Admin can use [accent]/host <number>[] to switch immediately.");
+            out.append("\n[lightgray]Admins using [accent]/vote map <number>[] switch immediately.");
         }
         out.append("\n[lightgray]< [accent]").append(page + 1).append("[lightgray]/[accent]").append(totalPages).append("[lightgray] >");
         player.sendMessage(out.toString());
@@ -759,17 +893,17 @@ public class NetServer implements ApplicationListener{
             return;
         }
 
-        Seq<Map> builtin = filterBuiltinMaps(filter);
-        if(builtin.isEmpty()){
-            player.sendMessage("[scarlet]No built-in maps matched your query.");
+        Seq<Map> listedMaps = filterServerMaps(filter);
+        if(listedMaps.isEmpty()){
+            player.sendMessage("[scarlet]No server maps matched your query.");
             return;
         }
 
         int perPage = 10;
-        int totalPages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int totalPages = Math.max(1, Mathf.ceil((float)listedMaps.size / perPage));
         int page = Mathf.clamp(requestedPage, 0, totalPages - 1);
         int start = page * perPage;
-        int end = Math.min(start + perPage, builtin.size);
+        int end = Math.min(start + perPage, listedMaps.size);
         int itemCount = end - start;
         int rows = Math.max(1, Mathf.ceil(itemCount / 2f));
         String[][] options = new String[rows + 2][];
@@ -785,8 +919,8 @@ public class NetServer implements ApplicationListener{
 
             String[] line = new String[cols];
             for(int col = 0; col < cols; col++){
-                Map map = builtin.get(start + cursor);
-                int number = builtinMapNumber(map);
+                Map map = listedMaps.get(start + cursor);
+                int number = serverMapNumber(map);
                 String label = (number < 0 ? start + cursor + 1 : number) + "." + Strings.truncate(map.plainName(), 20);
                 line[col] = label;
                 cursor++;
@@ -798,19 +932,21 @@ public class NetServer implements ApplicationListener{
         options[rows + 1] = new String[]{"Close"};
 
         StringBuilder message = new StringBuilder();
-        message.append("[lightgray]Built-in maps");
+        message.append("[lightgray]Server maps");
         if(filter != null && !filter.trim().isEmpty()){
             message.append(" [accent](filter: ").append(filter.trim()).append(")[]");
         }
-        message.append("\n[lightgray]Click a map to open the vote confirmation menu.\n");
+        message.append("\n[lightgray]Custom maps under [accent]maps/survival[] [lightgray]/ [accent]attack[] [lightgray]/ [accent]pvp[] [lightgray]/ [accent]sandbox[] use that folder's mode.");
+        message.append("\n[lightgray]Click a map to ");
+        message.append(player.admin ? "switch immediately.\n" : "open the vote confirmation menu.\n");
         message.append("[lightgray]Chat: [accent]/vote map <number>[]");
         if(player.admin){
-            message.append("[lightgray] | Admin: [accent]/host <number>[]");
+            message.append("[lightgray] | Admin vote switches immediately");
         }
 
         mapsMenuFilterByPlayer.put(player.uuid(), filter == null ? "" : filter.trim());
         mapsMenuPageByPlayer.put(player.uuid(), page);
-        Call.menu(player.con, mapsMenuId, "Built-in Maps", message.toString(), options);
+        Call.menu(player.con, mapsMenuId, "Server Maps", message.toString(), options);
     }
 
     private void openMapVoteConfirmMenu(Player player, Map map, String token){
@@ -824,6 +960,7 @@ public class NetServer implements ApplicationListener{
 
         StringBuilder message = new StringBuilder();
         message.append("[orange]Map: [accent]").append(map.plainName()).append('\n');
+        message.append("[lightgray]Mode: [accent]").append(Strings.capitalize(map.serverMode().name())).append("[]\n");
         message.append("[lightgray]Start a vote to change to this map?");
 
         Call.menu(player.con, mapVoteConfirmMenuId, "Vote Map", message.toString(), new String[][]{
@@ -915,7 +1052,7 @@ public class NetServer implements ApplicationListener{
         "siteapicfg", "host", "clearunit", "dosbanclear", "showeffect", "showeffectlist",
         "spawn", "tp", "forceob", "restart", "js", "welcomecfg", "welcometpl",
         "alerttoggle", "alertinterval", "alertadd", "alertremove", "alertnext",
-        "goserveradd", "goserverremove", "tpslimit", "tpslimitmax", "start", "a"
+        "goserveradd", "goserverremove", "tpslimit", "tpslimitmax", "start", "a", "s"
         );
 
         clientCommands.<Player>register("help", "[page]", "Lists all commands.", (args, player) -> {
@@ -932,8 +1069,8 @@ public class NetServer implements ApplicationListener{
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
-        // scripts/wayzer/cmds/mapsCmd.kts (partial, built-in map source only)
-        clientCommands.<Player>register("maps", "[filter/page] [page]", "List built-in server maps, 10 per page. Menu clicks start map votes.", (args, player) -> {
+        // scripts/wayzer/cmds/mapsCmd.kts
+        clientCommands.<Player>register("maps", "[filter/page] [page]", "List server maps, 10 per page. Menu clicks start map votes.", (args, player) -> {
             String filter = null;
             int page = 1;
 
@@ -1050,48 +1187,13 @@ public class NetServer implements ApplicationListener{
 
         // Ported from WayZer ScriptAgent4MindustryExt:
         // scripts/wayzer/maps.kts + scripts/wayzer/map/resourceHelper.kts (partial)
-        clientCommands.<Player>register("host", "<map/id>", "Admin: immediately change map (built-in number/local map name/resource-site id).", (args, player) -> {
+        clientCommands.<Player>register("host", "<map/id>", "Admin: immediately change map (server map number/name/resource-site id).", (args, player) -> {
             if(!player.admin){
                 player.sendMessage("[scarlet]Admin required.");
                 return;
             }
 
-            String token = args[0] == null ? "" : args[0].trim();
-            if(token.isEmpty()){
-                player.sendMessage("[scarlet]Usage: /host <map/id>");
-                return;
-            }
-
-            if(isResourceMapIdToken(token)){
-                int resourceId = Strings.parseInt(token);
-                Call.sendMessage("[yellow]Downloading resource-site map [accent]" + resourceId + "[yellow]...");
-                fetchResourceSiteMapById(resourceId, map -> Core.app.post(() -> {
-                    try{
-                        world.loadMap(map, map.applyRules(state.rules.mode()));
-                        logic.play();
-                        Call.sendMessage("[green]Loaded resource-site map [accent]" + map.plainName() + "[green] (id=" + resourceId + ").");
-                    }catch(Throwable t){
-                        Log.err("Failed to load resource-site map " + resourceId + ".", t);
-                        Call.sendMessage("[scarlet]Failed to load resource-site map id=" + resourceId + ".");
-                    }
-                }), err -> Core.app.post(() -> Call.sendMessage("[scarlet]Failed to download resource-site map id=" + resourceId + ": " + err)));
-                return;
-            }
-
-            Map target = resolveVoteMap(token);
-            if(target == null){
-                player.sendMessage("[scarlet]Map not found. Use [orange]/maps[] or [orange]/sitemaps[].");
-                return;
-            }
-
-            try{
-                world.loadMap(target, target.applyRules(state.rules.mode()));
-                logic.play();
-                Call.sendMessage("[green]Host changed map to [accent]" + target.plainName() + "[green].");
-            }catch(Throwable t){
-                Log.err("Failed to host local map " + token + ".", t);
-                player.sendMessage("[scarlet]Failed to load map: " + token);
-            }
+            hostMapByToken(player, args[0]);
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
@@ -1462,6 +1564,17 @@ public class NetServer implements ApplicationListener{
                 player.clearUnit();
                 player.sendMessage("[yellow]Observer mode enabled. Use [accent]/ob off[] to return.");
             }
+        });
+
+        clientCommands.<Player>register("mute", "Toggle muting chat from other observers.", (args, player) -> {
+            if(!isObserver(player)){
+                player.sendMessage("[scarlet]Only observers can use /mute.");
+                return;
+            }
+
+            boolean muted = !isObserverChatMuted(player);
+            setObserverChatMuted(player, muted);
+            player.sendMessage(muted ? "[yellow]Muted chat from other observers." : "[green]Observer chat is visible again.");
         });
 
         // Ported from WayZer ScriptAgent4MindustryExt:
@@ -2049,6 +2162,7 @@ public class NetServer implements ApplicationListener{
             String message = admins.filterMessage(player, args[0]);
             if(message != null){
                 String raw = "[#" + player.team().color.toString() + "]<T> " + chatFormatter.format(player, message);
+                sendAdminChatLog(raw);
                 Groups.player.each(p -> p.team() == player.team(), o -> o.sendMessage(raw, player, message));
             }
         });
@@ -2098,7 +2212,25 @@ public class NetServer implements ApplicationListener{
             }
 
             String raw = "[#" + Pal.adminChat.toString() + "]<A> " + chatFormatter.format(player, args[0]);
+            sendAdminChatLog(raw);
             Groups.player.each(Player::admin, a -> a.sendMessage(raw, player, args[0]));
+        });
+
+        clientCommands.<Player>register("s", "<message...>", "Admin: send a server-wide message to all players and observers.", (args, player) -> {
+            if(!player.admin){
+                player.sendMessage("[scarlet]You must be an admin to use this command.");
+                return;
+            }
+
+            String message = args[0] == null ? "" : args[0].trim();
+            if(message.isEmpty()){
+                player.sendMessage("[scarlet]Usage: /s <message...>");
+                return;
+            }
+
+            String raw = "[scarlet][[Server][] [accent]" + player.name + "[white]: " + message;
+            sendAdminChatLog(raw);
+            Call.sendMessage(raw);
         });
 
         //cooldowns per player
@@ -2851,6 +2983,11 @@ public class NetServer implements ApplicationListener{
             return;
         }
 
+        if(player.admin){
+            hostMapByToken(player, token);
+            return;
+        }
+
         if(isResourceMapIdToken(token)){
             int resourceId = Strings.parseInt(token);
             startGenericVote(
@@ -2863,7 +3000,7 @@ public class NetServer implements ApplicationListener{
                 Call.sendMessage("[yellow]Downloading voted resource-site map [accent]" + resourceId + "[yellow]...");
                 fetchResourceSiteMapById(resourceId, map -> Core.app.post(() -> {
                     try{
-                        world.loadMap(map, map.applyRules(state.rules.mode()));
+                        world.loadMap(map, rulesForHostedMap(map));
                         logic.play();
                         Call.sendMessage("[green]Loaded resource-site map [accent]" + map.plainName() + "[green] (id=" + resourceId + ").");
                     }catch(Throwable t){
@@ -2892,7 +3029,7 @@ public class NetServer implements ApplicationListener{
             Call.sendMessage("[yellow]Loading voted map: [accent]" + selected.plainName());
             Core.app.post(() -> {
                 try{
-                    world.loadMap(selected, selected.applyRules(state.rules.mode()));
+                    world.loadMap(selected, rulesForHostedMap(selected));
                     logic.play();
                 }catch(Throwable t){
                     Log.err("Failed to load voted map.", t);
@@ -2902,6 +3039,23 @@ public class NetServer implements ApplicationListener{
         });
     }
 
+    private @Nullable Map resolveHostMap(String token){
+        if(token == null) return null;
+
+        String clean = Strings.stripColors(token).trim();
+        if(clean.isEmpty()) return null;
+
+        if(Strings.canParseInt(clean)){
+            Seq<Map> allMaps = maps.all();
+            int index = Strings.parseInt(clean) - 1;
+            if(index >= 0 && index < allMaps.size){
+                return allMaps.get(index);
+            }
+        }
+
+        return resolveVoteMap(clean);
+    }
+
     private @Nullable Map resolveVoteMap(String token){
         if(token == null) return null;
 
@@ -2909,7 +3063,7 @@ public class NetServer implements ApplicationListener{
         if(clean.isEmpty()) return null;
 
         if(Strings.canParseInt(clean)){
-            Seq<Map> builtin = maps.defaultMaps();
+            Seq<Map> builtin = maps.all();
             int index = Strings.parseInt(clean) - 1;
             if(index >= 0 && index < builtin.size){
                 return builtin.get(index);
@@ -3293,6 +3447,33 @@ public class NetServer implements ApplicationListener{
         return matchPreviewActive;
     }
 
+    public boolean isObserverChatMuted(@Nullable Player player){
+        if(player == null) return false;
+        if(player.con != null) return player.con.muteOtherObservers;
+        return player.isLocal() && localObserverChatMuted;
+    }
+
+    public void sendAdminChatLog(String message){
+        if(message == null || message.isEmpty()) return;
+
+        Groups.player.each(p -> p != null && p.isAdded() && p.admin, p -> {
+            if(p.con != null){
+                Call.clientPacketReliable(p.con, AdminChatLogFragment.packetType, message);
+            }else if(!headless && p.isLocal() && ui != null && ui.adminchatlogfrag != null){
+                ui.adminchatlogfrag.addServerMessage(message);
+            }
+        });
+    }
+
+    public void setObserverChatMuted(@Nullable Player player, boolean muted){
+        if(player == null) return;
+        if(player.con != null){
+            player.con.muteOtherObservers = muted;
+        }else if(player.isLocal()){
+            localObserverChatMuted = muted;
+        }
+    }
+
     @Override
     public void update(){
         if(net.server() && state.isMenu()){
@@ -3334,6 +3515,7 @@ public class NetServer implements ApplicationListener{
                 }
             }
 
+            updateEliminatedPlayersToObservers();
             sync();
             updateLocalSpectatorCameraFollowers();
 
@@ -3416,6 +3598,7 @@ public class NetServer implements ApplicationListener{
             if(data.cores.size > 0){
                 dataStream.writeByte(data.team.id);
                 data.cores.first().items.write(dataWrites);
+                data.resources.write(dataWrites);
             }
         }
 
@@ -3492,18 +3675,29 @@ public class NetServer implements ApplicationListener{
     }
 
     private Player findPlayerByUid(String token){
-        String uid = token;
-        if(uid.startsWith("|")){
-            uid = uid.substring(1);
-        }
-
-        if(uid.length() != 3) return null;
+        String uid = normalizeShortUidToken(token);
+        if(uid == null) return null;
 
         String targetUid = uid;
         return Groups.player.find(p -> {
             String shortUid = shortUidOf(p);
             return shortUid != null && shortUid.equalsIgnoreCase(targetUid);
         });
+    }
+
+    private String normalizeShortUidToken(String token){
+        if(token == null) return null;
+        String uid = Strings.stripColors(token).trim();
+        if(uid.startsWith("|")){
+            uid = uid.substring(1).trim();
+        }
+        if(uid.length() != 3) return null;
+        for(int i = 0; i < uid.length(); i++){
+            if(!Character.isLetterOrDigit(uid.charAt(i))){
+                return null;
+            }
+        }
+        return uid;
     }
 
     private String shortUidOf(Player player){
@@ -3563,14 +3757,20 @@ public class NetServer implements ApplicationListener{
     private void applyPreviewRules(){
         if(previewRulesApplied) return;
         previewRulesApplied = true;
+        previewFog = state.rules.fog;
+        previewStaticFog = state.rules.staticFog;
         previewUnitDamageMultiplier = state.rules.unitDamageMultiplier;
         previewBlockDamageMultiplier = state.rules.blockDamageMultiplier;
+        state.rules.fog = false;
+        state.rules.staticFog = false;
         state.rules.unitDamageMultiplier = 0f;
         state.rules.blockDamageMultiplier = 0f;
     }
 
     private void restorePreviewRules(){
         if(!previewRulesApplied) return;
+        state.rules.fog = previewFog;
+        state.rules.staticFog = previewStaticFog;
         state.rules.unitDamageMultiplier = previewUnitDamageMultiplier;
         state.rules.blockDamageMultiplier = previewBlockDamageMultiplier;
         previewRulesApplied = false;
@@ -3644,17 +3844,17 @@ public class NetServer implements ApplicationListener{
         }
 
         String filter = mapsMenuFilterByPlayer.get(id, "");
-        Seq<Map> builtin = filterBuiltinMaps(filter);
-        if(builtin.isEmpty()){
-            player.sendMessage("[scarlet]No built-in maps matched your query.");
+        Seq<Map> listedMaps = filterServerMaps(filter);
+        if(listedMaps.isEmpty()){
+            player.sendMessage("[scarlet]No server maps matched your query.");
             return;
         }
 
         int perPage = 10;
-        int pages = Math.max(1, Mathf.ceil((float)builtin.size / perPage));
+        int pages = Math.max(1, Mathf.ceil((float)listedMaps.size / perPage));
         int page = Mathf.clamp(mapsMenuPageByPlayer.get(id, 0), 0, pages - 1);
         int start = page * perPage;
-        int end = Math.min(start + perPage, builtin.size);
+        int end = Math.min(start + perPage, listedMaps.size);
         int itemCount = end - start;
 
         int prevIndex = itemCount;
@@ -3663,9 +3863,18 @@ public class NetServer implements ApplicationListener{
         int closeIndex = itemCount + 3;
 
         if(option < itemCount){
-            Map map = builtin.get(start + option);
-            int number = builtinMapNumber(map);
-            openMapVoteConfirmMenu(player, map, number < 0 ? map.plainName() : String.valueOf(number));
+            Map map = listedMaps.get(start + option);
+            if(player.admin){
+                mapsMenuFilterByPlayer.remove(id);
+                mapsMenuPageByPlayer.remove(id, 0);
+                mapsMenuVoteTokenByPlayer.remove(id);
+                loadHostedMap(map,
+                "[green]Host changed map to [accent]" + map.plainName() + "[green].",
+                "[scarlet]Failed to load map: " + map.plainName());
+            }else{
+                int number = serverMapNumber(map);
+                openMapVoteConfirmMenu(player, map, number < 0 ? map.plainName() : String.valueOf(number));
+            }
             return;
         }
 
@@ -3845,7 +4054,7 @@ public class NetServer implements ApplicationListener{
         Core.app.post(() -> {
             try{
                 Map map = state.map;
-                world.loadMap(map, map.applyRules(state.rules.mode()));
+                world.loadMap(map, rulesForHostedMap(map));
                 logic.play();
 
                 for(Player player : Groups.player){
@@ -4011,6 +4220,50 @@ public class NetServer implements ApplicationListener{
         if(player == null) return false;
         Team team = player.team();
         return team == Team.derelict || (team != null && !team.data().isAlive());
+    }
+
+    private boolean teamHasPlayerPresence(@Nullable Team team){
+        if(team == null || team == Team.derelict) return false;
+
+        TeamData data = state.teams.getOrNull(team);
+        if(data == null) return false;
+
+        for(Building build : data.buildings){
+            if(build != null && build.isValid()){
+                return true;
+            }
+        }
+
+        for(Unit unit : data.units){
+            if(unit == null || !unit.isValid() || unit.dead()) continue;
+            if(unit.type != null && unit.type.internal) continue;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void updateEliminatedPlayersToObservers(){
+        if(!net.server() || !state.isGame() || state.gameOver || matchPreviewActive || Groups.player.size() <= 1) return;
+
+        for(Player player : Groups.player){
+            if(player == null || !player.isAdded()) continue;
+
+            Team team = player.team();
+            if(team == null || team == Team.derelict) continue;
+            if(teamHasPlayerPresence(team)) continue;
+
+            player.team(Team.derelict);
+            player.clearUnit();
+
+            if(player.con != null){
+                player.con.syncedSelectionUnitIds.clear();
+                player.con.syncedSelectionBuildingPositions.clear();
+                player.con.syncedSelectionActiveSubgroup = -1;
+                relaySpectatorSelectionState(player);
+            }
+
+        }
     }
 
     private boolean isObserverExitLocked(){

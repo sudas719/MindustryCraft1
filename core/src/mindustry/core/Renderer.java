@@ -91,6 +91,7 @@ public class Renderer implements ApplicationListener{
     private float viewRotationDuration;
     private boolean viewRotationKeyDown;
     private static final float viewRotationTarget = -45f;
+    private static final float viewRotationTargetReverse = 45f;
     private static final float viewRotationSpeed = 90f;
     private float viewRotationCos = 1f;
     private float viewRotationSin = 0f;
@@ -344,11 +345,13 @@ public class Renderer implements ApplicationListener{
 
         boolean allow = !ui.chatfrag.shown() && !scene.hasDialog() && !scene.hasField();
         boolean keyDown = allow && (input.keyDown(KeyCode.del) || input.keyDown(KeyCode.forwardDel) || input.keyDown(KeyCode.backspace));
+        boolean reverse = keyDown && (input.keyDown(KeyCode.shiftLeft) || input.keyDown(KeyCode.shiftRight));
+        float target = keyDown ? (reverse ? viewRotationTargetReverse : viewRotationTarget) : 0f;
 
-        if(keyDown != viewRotationKeyDown){
+        if(keyDown != viewRotationKeyDown || target != viewRotationTo){
             viewRotationKeyDown = keyDown;
             viewRotationFrom = viewRotation;
-            viewRotationTo = keyDown ? viewRotationTarget : 0f;
+            viewRotationTo = target;
             viewRotationTime = 0f;
             float dist = Math.abs(viewRotationTo - viewRotationFrom);
             viewRotationDuration = Math.max(0.05f, dist / viewRotationSpeed);

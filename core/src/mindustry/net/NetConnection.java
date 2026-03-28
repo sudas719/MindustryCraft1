@@ -36,6 +36,10 @@ public abstract class NetConnection{
     public boolean hasConnected, hasBegunConnecting, hasDisconnected;
     public float viewWidth, viewHeight, viewX, viewY;
     public int spectatorCameraTarget = -1;
+    public boolean muteOtherObservers = false;
+    public final IntSeq syncedSelectionUnitIds = new IntSeq();
+    public final IntSeq syncedSelectionBuildingPositions = new IntSeq();
+    public int syncedSelectionActiveSubgroup = -1;
 
     public NetConnection(String address){
         this.address = address;

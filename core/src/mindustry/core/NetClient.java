@@ -331,6 +331,7 @@ public class NetClient implements ApplicationListener{
             }
 
             boolean observerSender = isObserverTeam(player.team());
+            boolean previewGlobalChat = net.server() && netServer != null && netServer.isMatchPreviewActive();
             String formatted = netServer.chatFormatter.format(player, message);
             String observerFormatted = "[gray]<OBS>[] " + formatted;
             String plainMessage = message;
@@ -339,17 +340,31 @@ public class NetClient implements ApplicationListener{
             Log.info("&fi@: @", "&lc" + player.plainName(), "&lw" + message);
 
             if(observerSender){
-                //spectator chat is team-local by default
-                Groups.player.each(p -> isObserverTeam(p.team()), o -> o.sendMessage(observerFormatted, player, plainMessage));
+                if(netServer != null){
+                    netServer.sendAdminChatLog(observerFormatted);
+                }
+                Groups.player.each(recipient -> {
+                    if(recipient == null || !recipient.isAdded()) return;
+
+                    boolean recipientObserver = isObserverTeam(recipient.team());
+                    if(!previewGlobalChat && !recipientObserver) return;
+                    if(recipient != player && recipientObserver && netServer != null && netServer.isObserverChatMuted(recipient)) return;
+
+                    recipient.sendMessage(observerFormatted, player, plainMessage);
+                });
             }else{
+                String output = observerSender ? observerFormatted : formatted;
+                if(netServer != null){
+                    netServer.sendAdminChatLog(output);
+                }
                 //special case; graphical server needs to see its message
                 if(!headless){
-                    sendMessage(formatted, plainMessage, player);
+                    sendMessage(output, plainMessage, player);
                 }
 
                 //invoke event for all clients but also locally
                 //this is required so other clients get the correct name even if they don't know who's sending it yet
-                Call.sendMessage(formatted, plainMessage, player);
+                Call.sendMessage(output, plainMessage, player);
             }
         }else{
 
@@ -617,7 +632,9 @@ public class NetClient implements ApplicationListener{
                 TeamData data = Team.all[team].data();
                 if(data.cores.any()){
                     data.cores.first().items.read(dataReads);
+                    data.resources.read(dataReads);
                 }else{
+                    new ItemModule().read(dataReads);
                     new ItemModule().read(dataReads);
                 }
             }

@@ -15,6 +15,7 @@ import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.payloads.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
+import mindustry.world.modules.*;
 
 import java.util.*;
 
@@ -317,9 +318,88 @@ public class Teams{
         public Seq<Building> buildings = new Seq<>(false);
         /** Units of this team by type. Updated each frame. */
         public @Nullable Seq<Unit>[] unitsByType;
+        /** Team-wide shared resources, independent from core storage. */
+        public final ItemModule resources = new ItemModule();
 
         public TeamData(Team team){
             this.team = team;
+        }
+
+        public int resource(Item item){
+            return item == null ? 0 : resources.get(item);
+        }
+
+        public boolean hasResource(Item item, int amount){
+            return amount <= 0 || (item != null && resources.has(item, amount));
+        }
+
+        public boolean hasResources(ItemStack[] requirements, float multiplier){
+            return requirements == null || resources.has(requirements, multiplier);
+        }
+
+        public boolean hasResources(ItemStack[] requirements){
+            return requirements == null || resources.has(requirements);
+        }
+
+        public void addResource(Item item, int amount){
+            if(item == null || amount <= 0) return;
+            resources.add(item, amount);
+        }
+
+        public boolean removeResource(Item item, int amount){
+            if(item == null || amount <= 0) return true;
+            if(!resources.has(item, amount)) return false;
+            resources.remove(item, amount);
+            return true;
+        }
+
+        public void addResources(ItemStack[] requirements, float multiplier){
+            if(requirements == null) return;
+            for(ItemStack stack : requirements){
+                if(stack == null || stack.item == null) continue;
+                int amount = Mathf.round(stack.amount * multiplier);
+                if(amount > 0){
+                    resources.add(stack.item, amount);
+                }
+            }
+        }
+
+        public void addResources(ItemStack[] requirements){
+            addResources(requirements, 1f);
+        }
+
+        public boolean removeResources(ItemStack[] requirements, float multiplier){
+            if(requirements == null) return true;
+            if(!hasResources(requirements, multiplier)) return false;
+
+            for(ItemStack stack : requirements){
+                if(stack == null || stack.item == null) continue;
+                int amount = Mathf.round(stack.amount * multiplier);
+                if(amount > 0){
+                    resources.remove(stack.item, amount);
+                }
+            }
+            return true;
+        }
+
+        public boolean removeResources(ItemStack[] requirements){
+            return removeResources(requirements, 1f);
+        }
+
+        public boolean hasSc2Cost(int crystal, int gas){
+            return hasResource(Items.graphite, crystal) && hasResource(Items.highEnergyGas, gas);
+        }
+
+        public void addSc2Cost(int crystal, int gas){
+            addResource(Items.graphite, crystal);
+            addResource(Items.highEnergyGas, gas);
+        }
+
+        public boolean removeSc2Cost(int crystal, int gas){
+            if(!hasSc2Cost(crystal, gas)) return false;
+            removeResource(Items.graphite, crystal);
+            removeResource(Items.highEnergyGas, gas);
+            return true;
         }
 
         public Seq<Building> getBuildings(Block block){
@@ -433,22 +513,37 @@ public class Teams{
             return typeCounts == null || typeCounts.length <= type.id ? 0 : typeCounts[type.id];
         }
 
+        public boolean hasBuildings(){
+            if(buildings.size > 0) return true;
+
+            for(Unit unit : units){
+                if(unit == null || !unit.isValid() || !(unit instanceof Payloadc payload)) continue;
+
+                if(hasBuildPayload(payload)) return true;
+            }
+
+            return Groups.unit.contains(unit ->
+                unit != null && unit.team == team && unit.isValid() &&
+                unit instanceof Payloadc payload && hasBuildPayload(payload)
+            );
+        }
+
         public boolean active(){
             return (team == state.rules.waveTeam && state.rules.waves)
-                || cores.size > 0
-                || buildings.size > 0
-                || units.contains(u -> u != null && u.isValid() && u.type == UnitTypes.coreFlyer)
+                || hasCore()
+                || hasBuildings()
                 || (team == Team.neoplastic && units.size > 0);
         }
 
         public boolean hasCore(){
             if(cores.size > 0) return true;
-            return units.contains(u -> u != null && u.isValid() && u.type == UnitTypes.coreFlyer);
+            if(findPayloadCore(units) != null) return true;
+            return findPayloadCore(Groups.unit) != null;
         }
 
         /** @return whether this team has any cores (standard team), or any hearts (neoplasm). */
         public boolean isAlive(){
-            return hasCore() || buildings.size > 0 || (team == Team.neoplastic && units.size > 0);
+            return hasCore() || hasBuildings() || (team == Team.neoplastic && units.size > 0);
         }
 
         public boolean noCores(){
@@ -460,8 +555,31 @@ public class Teams{
             if(!cores.isEmpty()){
                 return cores.first();
             }
-            for(Unit unit : units){
-                if(unit == null || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+            CoreBuild cached = findPayloadCore(units);
+            return cached != null ? cached : findPayloadCore(Groups.unit);
+        }
+
+        /** @return whether this team is controlled by the AI and builds bases. */
+        public boolean hasAI(){
+            return team.rules().rtsAi || team.rules().buildAi;
+        }
+
+        private boolean hasBuildPayload(Payloadc payload){
+            var payloads = payload.payloads();
+            for(int i = 0; i < payloads.size; i++){
+                Payload pay = payloads.get(i);
+                if(pay instanceof BuildPayload) return true;
+                if(pay instanceof UnitPayload unitPayload && unitPayload.unit instanceof Payloadc nested && hasBuildPayload(nested)){
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private @Nullable CoreBuild findPayloadCore(Iterable<Unit> source){
+            for(Unit unit : source){
+                if(unit == null || unit.team != team || unit.type != UnitTypes.coreFlyer || !(unit instanceof Payloadc payload)) continue;
+
                 for(Payload pay : payload.payloads()){
                     if(pay instanceof BuildPayload buildPayload && buildPayload.build instanceof CoreBuild core){
                         return core;
@@ -469,11 +587,6 @@ public class Teams{
                 }
             }
             return null;
-        }
-
-        /** @return whether this team is controlled by the AI and builds bases. */
-        public boolean hasAI(){
-            return team.rules().rtsAi || team.rules().buildAi;
         }
 
         @Override

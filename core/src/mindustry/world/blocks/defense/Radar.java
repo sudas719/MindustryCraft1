@@ -121,15 +121,7 @@ public class Radar extends Block{
             if(net.client()) return;
             if(!isValid()) return;
 
-            CoreBuild core = team.core();
-            if(core != null){
-                if(recycleCrystalRefund > 0){
-                    core.items.add(Items.graphite, recycleCrystalRefund);
-                }
-                if(recycleGasRefund > 0){
-                    core.items.add(Items.highEnergyGas, recycleGasRefund);
-                }
-            }
+            team.data().addSc2Cost(recycleCrystalRefund, recycleGasRefund);
 
             Fx.blockExplosionSmoke.at(x, y);
             Fx.dynamicExplosion.at(x, y, block.size);

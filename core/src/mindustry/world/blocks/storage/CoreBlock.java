@@ -60,6 +60,10 @@ public class CoreBlock extends StorageBlock{
     public static final int displayCrystalInfoRangeTiles = 8;
     public static final int refineryIdealScvCount = 3;
 
+    private static boolean warehouseItem(@Nullable Item item){
+        return item == Items.graphite || item == Items.highEnergyGas;
+    }
+
     public int unitQueueSlots = maxUnitQueue;
     public int activeUnitSlots = 1;
 
@@ -303,6 +307,16 @@ public class CoreBlock extends StorageBlock{
         return true;
     }
 
+    public boolean canLandOn(Tile tile, Team team, int rotation){
+        if(tile == null) return false;
+        if(state.isEditor()) return true;
+        if(tile.block() instanceof CoreBlock){
+            return size > tile.block().size;
+        }
+        if(blockedByResourceNode(tile)) return false;
+        return true;
+    }
+
     private boolean blockedByResourceNode(Tile tile){
         if(tile == null) return false;
         tile.getLinkedTilesAs(this, tempTiles);
@@ -388,6 +402,8 @@ public class CoreBlock extends StorageBlock{
         public float orbitalUpgradeProgress = 0f;
         public boolean upgradingFortress = false;
         public float fortressUpgradeProgress = 0f;
+        public transient float pendingLiftTime = 0f;
+        public transient int lastLiftedUnitId = -1;
 
         protected float cloudSeed, landParticleTimer;
 
@@ -788,6 +804,15 @@ public class CoreBlock extends StorageBlock{
         public void updateTile(){
             iframes -= Time.delta;
             thrusterTime -= Time.delta/90f;
+
+            if(pendingLiftTime > 0f){
+                pendingLiftTime = Math.max(0f, pendingLiftTime - Time.delta);
+                if(pendingLiftTime <= 0f){
+                    liftNow();
+                }
+                return;
+            }
+
             updateOrbitalUpgrade();
             updateFortressUpgrade();
             updateUnitQueue();
@@ -801,7 +826,7 @@ public class CoreBlock extends StorageBlock{
             if(unitQueue.size >= queueSlots()) return false;
             if(!Units.canCreate(team, type)) return false;
             if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
-            return items.has(Items.graphite, scvCost);
+            return team.data().hasSc2Cost(scvCost, 0);
         }
 
         public boolean queueUnit(int unitId){
@@ -812,7 +837,7 @@ public class CoreBlock extends StorageBlock{
             if(type == null || !canQueueUnit(type)) return false;
 
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.remove(Items.graphite, scvCost);
+                team.data().removeSc2Cost(scvCost, 0);
             }
 
             unitQueue.add(unitId);
@@ -828,7 +853,7 @@ public class CoreBlock extends StorageBlock{
             }
 
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.add(Items.graphite, scvCost);
+                team.data().addSc2Cost(scvCost, 0);
             }
             return true;
         }
@@ -1047,15 +1072,22 @@ public class CoreBlock extends StorageBlock{
 
         public boolean canLift(){
             if(block == Blocks.corePlanetaryFortress) return false;
-            return (unitQueue == null || unitQueue.isEmpty()) && !isUpgrading();
+            return pendingLiftTime <= 0f && (unitQueue == null || unitQueue.isEmpty()) && !isUpgrading();
         }
 
-        public @Nullable Unit lift(){
-            if(!canLift()) return null;
+        public boolean beginLift(){
+            if(!canLift()) return false;
+            pendingLiftTime = 60f;
+            lastLiftedUnitId = -1;
+            return true;
+        }
+
+        private @Nullable Unit liftNow(){
             Unit unit = UnitTypes.coreFlyer.create(team);
             unit.set(x, y);
             unit.rotation(225f);
             unit.add();
+            lastLiftedUnitId = unit.id;
             if(unit instanceof Payloadc payload){
                 payload.pickup(this);
                 UnitTypes.CoreFlyerData data = UnitTypes.getCoreFlyerData(unit);
@@ -1067,19 +1099,24 @@ public class CoreBlock extends StorageBlock{
             return unit;
         }
 
+        public @Nullable Unit lift(){
+            if(!canLift()) return null;
+            return liftNow();
+        }
+
         public boolean canStartOrbitalUpgrade(){
             if(block != Blocks.coreNucleus) return false;
             if(isUpgrading()) return false;
             if(unitQueue != null && !unitQueue.isEmpty()) return false;
             if(unitProgress > 0f) return false;
             if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
-            return items.has(Items.graphite, orbitalUpgradeCost);
+            return team.data().hasSc2Cost(orbitalUpgradeCost, 0);
         }
 
         public boolean startOrbitalUpgrade(){
             if(!canStartOrbitalUpgrade()) return false;
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.remove(Items.graphite, orbitalUpgradeCost);
+                team.data().removeSc2Cost(orbitalUpgradeCost, 0);
             }
             upgradingOrbital = true;
             orbitalUpgradeProgress = 0f;
@@ -1089,7 +1126,7 @@ public class CoreBlock extends StorageBlock{
         public boolean cancelOrbitalUpgrade(){
             if(!upgradingOrbital) return false;
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.add(Items.graphite, orbitalUpgradeCost);
+                team.data().addSc2Cost(orbitalUpgradeCost, 0);
             }
             upgradingOrbital = false;
             orbitalUpgradeProgress = 0f;
@@ -1107,14 +1144,13 @@ public class CoreBlock extends StorageBlock{
             if(unitProgress > 0f) return false;
             if(!hasEngineeringStation()) return false;
             if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
-            return items.has(Items.graphite, fortressUpgradeCost) && items.has(Items.highEnergyGas, fortressUpgradeGasCost);
+            return team.data().hasSc2Cost(fortressUpgradeCost, fortressUpgradeGasCost);
         }
 
         public boolean startFortressUpgrade(){
             if(!canStartFortressUpgrade()) return false;
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.remove(Items.graphite, fortressUpgradeCost);
-                items.remove(Items.highEnergyGas, fortressUpgradeGasCost);
+                team.data().removeSc2Cost(fortressUpgradeCost, fortressUpgradeGasCost);
             }
             upgradingFortress = true;
             fortressUpgradeProgress = 0f;
@@ -1124,8 +1160,7 @@ public class CoreBlock extends StorageBlock{
         public boolean cancelFortressUpgrade(){
             if(!upgradingFortress) return false;
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                items.add(Items.graphite, fortressUpgradeCost);
-                items.add(Items.highEnergyGas, fortressUpgradeGasCost);
+                team.data().addSc2Cost(fortressUpgradeCost, fortressUpgradeGasCost);
             }
             upgradingFortress = false;
             fortressUpgradeProgress = 0f;
@@ -1444,11 +1479,13 @@ public class CoreBlock extends StorageBlock{
 
         @Override
         public boolean acceptItem(Building source, Item item){
+            if(warehouseItem(item)) return true;
             return state.rules.coreIncinerates || items.get(item) < getMaximumAccepted(item);
         }
 
         @Override
         public int getMaximumAccepted(Item item){
+            if(warehouseItem(item)) return Integer.MAX_VALUE / 2;
             return state.rules.coreIncinerates ? Integer.MAX_VALUE/2 : storageCapacity;
         }
 
@@ -1476,6 +1513,13 @@ public class CoreBlock extends StorageBlock{
 
             if(!world.isGenerating()){
                 for(Item item : content.items()){
+                    if(warehouseItem(item) && items.get(item) > 0){
+                        team.data().addResource(item, items.get(item));
+                        items.set(item, 0);
+                    }
+                }
+
+                for(Item item : content.items()){
                     items.set(item, Math.min(items.get(item), storageCapacity));
                 }
             }
@@ -1487,6 +1531,17 @@ public class CoreBlock extends StorageBlock{
 
         @Override
         public void handleStack(Item item, int amount, Teamc source){
+            if(warehouseItem(item)){
+                if(amount > 0){
+                    team.data().addResource(item, amount);
+                }
+
+                if(team == state.rules.defaultTeam && state.isCampaign()){
+                    state.rules.sector.info.handleCoreItem(item, amount);
+                }
+                return;
+            }
+
             boolean incinerate = incinerateNonBuildable && !item.buildable;
             int realAmount = incinerate ? 0 : Math.min(amount, storageCapacity - items.get(item));
             super.handleStack(item, realAmount, source);
@@ -1588,6 +1643,20 @@ public class CoreBlock extends StorageBlock{
 
         @Override
         public void handleItem(Building source, Item item){
+            if(warehouseItem(item)){
+                if(team == state.rules.defaultTeam){
+                    state.stats.coreItemCount.increment(item);
+                }
+
+                if(net.server() || !net.active()){
+                    team.data().addResource(item, 1);
+                    if(team == state.rules.defaultTeam && state.isCampaign()){
+                        state.rules.sector.info.handleCoreItem(item, 1);
+                    }
+                }
+                return;
+            }
+
             boolean incinerate = incinerateNonBuildable && !item.buildable;
 
             if(team == state.rules.defaultTeam){

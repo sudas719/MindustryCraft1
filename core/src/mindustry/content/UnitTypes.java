@@ -2693,20 +2693,26 @@ public class UnitTypes{
         return team != null && team.data().getCount(Blocks.tankFabricator) > 0;
     }
 
+    private static boolean hasSharedSc2Cost(@Nullable Team team, int crystal, int gas){
+        return team != null && team.data().hasSc2Cost(crystal, gas);
+    }
+
+    private static void consumeSharedSc2Cost(@Nullable Team team, int crystal, int gas){
+        if(team == null) return;
+        team.data().removeSc2Cost(crystal, gas);
+    }
+
+    private static void refundSharedSc2Cost(@Nullable Team team, int crystal, int gas){
+        if(team == null) return;
+        team.data().addSc2Cost(crystal, gas);
+    }
+
     private static boolean ghostWarheadCanAfford(@Nullable Team team){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null || core.items == null) return false;
-        return core.items.has(Items.graphite, ghostWarheadCrystalCost)
-            && core.items.has(Items.highEnergyGas, ghostWarheadGasCost);
+        return hasSharedSc2Cost(team, ghostWarheadCrystalCost, ghostWarheadGasCost);
     }
 
     private static void ghostWarheadConsume(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null || core.items == null) return;
-        core.items.remove(Items.graphite, ghostWarheadCrystalCost);
-        core.items.remove(Items.highEnergyGas, ghostWarheadGasCost);
+        consumeSharedSc2Cost(team, ghostWarheadCrystalCost, ghostWarheadGasCost);
     }
 
     public static boolean ghostWarheadProducing(@Nullable Building build){
@@ -6738,195 +6744,99 @@ public class UnitTypes{
     }
 
     private static boolean infantryUpgradeCanAfford(@Nullable Team team, int level){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, infantryWeaponCrystalCost(level))
-            && core.items.has(Items.highEnergyGas, infantryWeaponGasCost(level));
+        return hasSharedSc2Cost(team, infantryWeaponCrystalCost(level), infantryWeaponGasCost(level));
     }
 
     private static boolean vehicleWeaponCanAfford(@Nullable Team team, int level){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, vehicleWeaponCrystalCost(level))
-            && core.items.has(Items.highEnergyGas, vehicleWeaponGasCost(level));
+        return hasSharedSc2Cost(team, vehicleWeaponCrystalCost(level), vehicleWeaponGasCost(level));
     }
 
     private static boolean shipWeaponCanAfford(@Nullable Team team, int level){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, shipWeaponCrystalCost(level))
-            && core.items.has(Items.highEnergyGas, shipWeaponGasCost(level));
+        return hasSharedSc2Cost(team, shipWeaponCrystalCost(level), shipWeaponGasCost(level));
     }
 
     private static boolean vehicleArmorCanAfford(@Nullable Team team, int level){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, vehicleArmorCrystalCost(level))
-            && core.items.has(Items.highEnergyGas, vehicleArmorGasCost(level));
+        return hasSharedSc2Cost(team, vehicleArmorCrystalCost(level), vehicleArmorGasCost(level));
     }
 
     private static boolean instantTrackingCanAfford(@Nullable Team team){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, instantTrackingCrystalCost)
-            && core.items.has(Items.highEnergyGas, instantTrackingGasCost);
+        return hasSharedSc2Cost(team, instantTrackingCrystalCost, instantTrackingGasCost);
     }
 
     private static boolean steelArmorCanAfford(@Nullable Team team){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, steelArmorCrystalCost)
-            && core.items.has(Items.highEnergyGas, steelArmorGasCost);
+        return hasSharedSc2Cost(team, steelArmorCrystalCost, steelArmorGasCost);
     }
 
     private static boolean ghostCamoCanAfford(@Nullable Team team){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, ghostCamoCrystalCost)
-            && core.items.has(Items.highEnergyGas, ghostCamoGasCost);
+        return hasSharedSc2Cost(team, ghostCamoCrystalCost, ghostCamoGasCost);
     }
 
     private static boolean barracksTechCanAfford(@Nullable Team team, int crystalCost, int gasCost){
-        if(team == null) return false;
-        Building core = team.core();
-        if(core == null) return false;
-        return core.items.has(Items.graphite, crystalCost)
-            && core.items.has(Items.highEnergyGas, gasCost);
+        return hasSharedSc2Cost(team, crystalCost, gasCost);
     }
 
     private static void infantryUpgradeConsume(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, infantryWeaponCrystalCost(level));
-        core.items.remove(Items.highEnergyGas, infantryWeaponGasCost(level));
+        consumeSharedSc2Cost(team, infantryWeaponCrystalCost(level), infantryWeaponGasCost(level));
     }
 
     private static void vehicleWeaponConsume(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, vehicleWeaponCrystalCost(level));
-        core.items.remove(Items.highEnergyGas, vehicleWeaponGasCost(level));
+        consumeSharedSc2Cost(team, vehicleWeaponCrystalCost(level), vehicleWeaponGasCost(level));
     }
 
     private static void shipWeaponConsume(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, shipWeaponCrystalCost(level));
-        core.items.remove(Items.highEnergyGas, shipWeaponGasCost(level));
+        consumeSharedSc2Cost(team, shipWeaponCrystalCost(level), shipWeaponGasCost(level));
     }
 
     private static void vehicleArmorConsume(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, vehicleArmorCrystalCost(level));
-        core.items.remove(Items.highEnergyGas, vehicleArmorGasCost(level));
+        consumeSharedSc2Cost(team, vehicleArmorCrystalCost(level), vehicleArmorGasCost(level));
     }
 
     private static void infantryUpgradeRefund(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, infantryWeaponCrystalCost(level));
-        core.items.add(Items.highEnergyGas, infantryWeaponGasCost(level));
+        refundSharedSc2Cost(team, infantryWeaponCrystalCost(level), infantryWeaponGasCost(level));
     }
 
     private static void vehicleWeaponRefund(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, vehicleWeaponCrystalCost(level));
-        core.items.add(Items.highEnergyGas, vehicleWeaponGasCost(level));
+        refundSharedSc2Cost(team, vehicleWeaponCrystalCost(level), vehicleWeaponGasCost(level));
     }
 
     private static void shipWeaponRefund(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, shipWeaponCrystalCost(level));
-        core.items.add(Items.highEnergyGas, shipWeaponGasCost(level));
+        refundSharedSc2Cost(team, shipWeaponCrystalCost(level), shipWeaponGasCost(level));
     }
 
     private static void vehicleArmorRefund(@Nullable Team team, int level){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, vehicleArmorCrystalCost(level));
-        core.items.add(Items.highEnergyGas, vehicleArmorGasCost(level));
+        refundSharedSc2Cost(team, vehicleArmorCrystalCost(level), vehicleArmorGasCost(level));
     }
 
     private static void instantTrackingConsume(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, instantTrackingCrystalCost);
-        core.items.remove(Items.highEnergyGas, instantTrackingGasCost);
+        consumeSharedSc2Cost(team, instantTrackingCrystalCost, instantTrackingGasCost);
     }
 
     private static void instantTrackingRefund(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, instantTrackingCrystalCost);
-        core.items.add(Items.highEnergyGas, instantTrackingGasCost);
+        refundSharedSc2Cost(team, instantTrackingCrystalCost, instantTrackingGasCost);
     }
 
     private static void steelArmorConsume(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, steelArmorCrystalCost);
-        core.items.remove(Items.highEnergyGas, steelArmorGasCost);
+        consumeSharedSc2Cost(team, steelArmorCrystalCost, steelArmorGasCost);
     }
 
     private static void steelArmorRefund(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, steelArmorCrystalCost);
-        core.items.add(Items.highEnergyGas, steelArmorGasCost);
+        refundSharedSc2Cost(team, steelArmorCrystalCost, steelArmorGasCost);
     }
 
     private static void ghostCamoConsume(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, ghostCamoCrystalCost);
-        core.items.remove(Items.highEnergyGas, ghostCamoGasCost);
+        consumeSharedSc2Cost(team, ghostCamoCrystalCost, ghostCamoGasCost);
     }
 
     private static void ghostCamoRefund(@Nullable Team team){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, ghostCamoCrystalCost);
-        core.items.add(Items.highEnergyGas, ghostCamoGasCost);
+        refundSharedSc2Cost(team, ghostCamoCrystalCost, ghostCamoGasCost);
     }
 
     private static void barracksTechConsume(@Nullable Team team, int crystalCost, int gasCost){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.remove(Items.graphite, crystalCost);
-        core.items.remove(Items.highEnergyGas, gasCost);
+        consumeSharedSc2Cost(team, crystalCost, gasCost);
     }
 
     private static void barracksTechRefund(@Nullable Team team, int crystalCost, int gasCost){
-        if(team == null) return;
-        Building core = team.core();
-        if(core == null) return;
-        core.items.add(Items.graphite, crystalCost);
-        core.items.add(Items.highEnergyGas, gasCost);
+        refundSharedSc2Cost(team, crystalCost, gasCost);
     }
 
     public static boolean infantryWeaponCanStartResearch(@Nullable Team team, int level){
@@ -9707,7 +9617,7 @@ public class UnitTypes{
 
         nova = new UnitType("nova"){{
             speed = 3.94f;
-            accel = 0.1f;
+            accel = 0.11f;
             drag = 0.11f;
             hitSizeFromRegion = false;
             spriteHitSizeRatio = 1.5f;
@@ -16246,6 +16156,7 @@ public class UnitTypes{
             drawSoftShadow = false;
             drawCell = false;
             hidden = true;
+            fogRadius = 8f;
         }
 
         @Override
@@ -16277,6 +16188,19 @@ public class UnitTypes{
                 }
 
                 unit.vel.setZero();
+
+                if(payload.payloads().peek() instanceof BuildPayload buildPayload){
+                    Block block = buildPayload.build.block;
+                    float offset = block.offset;
+                    int tx = World.toTile(data.target.x - offset);
+                    int ty = World.toTile(data.target.y - offset);
+                    if(!Build.validLandPlace(block, unit.team, tx, ty, buildPayload.build.rotation, false)){
+                        data.active = false;
+                        data.landing = false;
+                        data.landTime = 0f;
+                        return;
+                    }
+                }
 
                 //Rotate back to source building angle before beginning landing.
                 float next = Angles.moveToward(unit.rotation(), data.returnRotation, unit.type.rotateSpeed * Time.delta);
@@ -16349,7 +16273,8 @@ public class UnitTypes{
             drawMinimap = false;
             hidden = true;
             internal = true;
-            fogRadius = 10f;
+            fogRadius = 11f;
+            stealthDetectionRange = 11f * tilesize;
         }};
 
         warpProbe = new UnitType("warp-probe"){{

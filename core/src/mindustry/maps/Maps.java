@@ -130,6 +130,14 @@ public class Maps{
         return parent != null && parent.name().equalsIgnoreCase(folder);
     }
 
+    private void ensureCustomModeFolders(){
+        customMapDirectory.mkdirs();
+        customMapDirectory.child("survival").mkdirs();
+        customMapDirectory.child("attack").mkdirs();
+        customMapDirectory.child("pvp").mkdirs();
+        customMapDirectory.child("sandbox").mkdirs();
+    }
+
     /** Load all maps. Should be called at application start. */
     public void load(){
         //defaults; must work
@@ -155,6 +163,7 @@ public class Maps{
         }
 
         //custom
+        ensureCustomModeFolders();
         customMapDirectory.walk(file -> {
             try{
                 if(file.extension().equalsIgnoreCase(mapExtension)){
@@ -534,6 +543,11 @@ public class Maps{
         }
 
         private static boolean valid(Gamemode mode, Map map){
+            Gamemode folderMode = map.folderMode();
+            if(folderMode != null){
+                return folderMode == mode;
+            }
+
             boolean pvp = !map.custom && Structs.contains(pvpMaps, map.file.nameWithoutExtension());
             if(mode == Gamemode.survival || mode == Gamemode.attack || mode == Gamemode.sandbox) return !pvp;
             if(mode == Gamemode.pvp) return map.custom || pvp;

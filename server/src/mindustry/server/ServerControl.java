@@ -788,7 +788,7 @@ public class ServerControl implements ApplicationListener{
                 }
             }else{
                 if(arg.length == 2){
-                    PlayerInfo info = netServer.admins.getInfoOptional(arg[1]);
+                    PlayerInfo info = findPlayerInfoByToken(arg[1]);
 
                     if(info == null){
                         err("Player ID not found. You must use the ID displayed when a player joins a server.");
@@ -835,32 +835,30 @@ public class ServerControl implements ApplicationListener{
             }
         });
 
-        handler.register("kick", "<username...>", "Kick a person by name.", arg -> {
+        handler.register("kick", "<username/UID/ID...>", "Kick a person by name, UID, or ID.", arg -> {
             if(!state.isGame()){
                 err("Not hosting a game yet. Calm down.");
                 return;
             }
 
-            Player target = findPlayerByNameToken(arg[0]);
-            if(target == null){
-                target = findPlayerByShortUid(arg[0]);
-            }
+            Player target = findOnlinePlayerByToken(arg[0]);
 
             if(target != null){
                 Call.sendMessage("[scarlet]" + target.name() + "[scarlet] has been kicked by the server.");
                 target.kick(KickReason.kick);
                 info("It is done.");
             }else{
-                info("Nobody with that name could be found...");
+                info("Nobody with that name, UID, or ID could be found...");
             }
         });
 
         handler.register("ban", "<type-id/name/ip> <username/IP/ID...>", "Ban a person.", arg -> {
             if(arg[0].equals("id")){
-                netServer.admins.banPlayerID(arg[1]);
+                PlayerInfo info = findPlayerInfoByToken(arg[1]);
+                netServer.admins.banPlayerID(info == null ? arg[1] : info.id);
                 info("Banned.");
             }else if(arg[0].equals("name")){
-                Player target = Groups.player.find(p -> p.name().equalsIgnoreCase(arg[1]));
+                Player target = findOnlinePlayerByToken(arg[1]);
                 if(target != null){
                     netServer.admins.banPlayer(target.uuid());
                     info("Banned.");
@@ -921,8 +919,8 @@ public class ServerControl implements ApplicationListener{
             }
         });
 
-        handler.register("pardon", "<ID>", "Pardons a votekicked player by ID and allows them to join again.", arg -> {
-            PlayerInfo info = netServer.admins.getInfoOptional(arg[0]);
+        handler.register("pardon", "<ID/UID>", "Pardons a votekicked player by ID or UID and allows them to join again.", arg -> {
+            PlayerInfo info = findPlayerInfoByToken(arg[0]);
 
             if(info != null){
                 info.lastKicked = 0;
@@ -933,7 +931,7 @@ public class ServerControl implements ApplicationListener{
             }
         });
 
-        handler.register("admin", "<add/remove> <username/ID...>", "Make an online user admin", arg -> {
+        handler.register("admin", "<add/remove> <username/UID/ID...>", "Make a user admin by name, UID, or ID", arg -> {
             if(!state.isGame()){
                 err("Open the server first.");
                 return;
@@ -946,12 +944,9 @@ public class ServerControl implements ApplicationListener{
 
             boolean add = arg[0].equals("add");
 
-            PlayerInfo target;
-            Player playert = Groups.player.find(p -> p.plainName().equalsIgnoreCase(Strings.stripColors(arg[1])));
-            if(playert != null){
-                target = playert.getInfo();
-            }else{
-                target = netServer.admins.getInfoOptional(arg[1]);
+            Player playert = findOnlinePlayerByToken(arg[1]);
+            PlayerInfo target = playert != null ? playert.getInfo() : findPlayerInfoByToken(arg[1]);
+            if(playert == null && target != null){
                 playert = Groups.player.find(p -> p.getInfo() == target);
             }
 
@@ -964,7 +959,7 @@ public class ServerControl implements ApplicationListener{
                 if(playert != null) playert.admin = add;
                 info("Changed admin status of player: @", target.plainLastName());
             }else{
-                err("Nobody with that name or ID could be found. If adding an admin by name, make sure they're online; otherwise, use their UUID.");
+                err("Nobody with that name, UID, or ID could be found. If adding by name, make sure they're online; otherwise, use their UID or UUID.");
             }
         });
 
@@ -1093,7 +1088,19 @@ public class ServerControl implements ApplicationListener{
             Events.fire(new GameOverEvent(state.rules.waveTeam));
         });
 
-        handler.register("info", "<IP/UUID/name...>", "Find player info(s). Can optionally check for all names or IPs a player has had.", arg -> {
+        handler.register("info", "<IP/UUID/UID/name...>", "Find player info(s). Can optionally check for all names or IPs a player has had.", arg -> {
+            PlayerInfo exact = findPlayerInfoByToken(arg[0]);
+            if(exact != null){
+                info("Players found: 1");
+                info("[0] Trace info for player '@' / UUID @ / RAW @", exact.plainLastName(), exact.id, exact.lastName);
+                info("  all names used: @", exact.names);
+                info("  IP: @", exact.lastIP);
+                info("  all IPs used: @", exact.ips);
+                info("  times joined: @", exact.timesJoined);
+                info("  times kicked: @", exact.timesKicked);
+                return;
+            }
+
             ObjectSet<PlayerInfo> infos = netServer.admins.findByName(arg[0]);
 
             if(infos.size > 0){
@@ -1176,8 +1183,8 @@ public class ServerControl implements ApplicationListener{
     }
 
     private Player findPlayerByShortUid(String token){
-        String uid = token.startsWith("|") ? token.substring(1) : token;
-        if(uid.length() != 3) return null;
+        String uid = normalizeShortUidToken(token);
+        if(uid == null) return null;
 
         return Groups.player.find(player -> {
             String shortUid = shortUidOf(player);
@@ -1188,6 +1195,72 @@ public class ServerControl implements ApplicationListener{
     private String shortUidOf(Player player){
         PlayerInfo info = netServer.admins.getInfoOptional(player.uuid());
         return info == null ? null : info.shortUid;
+    }
+
+    private String normalizeShortUidToken(String token){
+        if(token == null) return null;
+        String uid = Strings.stripColors(token).trim();
+        if(uid.startsWith("|")){
+            uid = uid.substring(1).trim();
+        }
+        if(uid.length() != 3) return null;
+        for(int i = 0; i < uid.length(); i++){
+            if(!Character.isLetterOrDigit(uid.charAt(i))){
+                return null;
+            }
+        }
+        return uid;
+    }
+
+    private Player findOnlinePlayerByToken(String token){
+        if(token == null) return null;
+
+        String clean = Strings.stripColors(token).trim();
+        if(clean.isEmpty()) return null;
+
+        if(clean.length() > 1 && clean.startsWith("#") && Strings.canParseInt(clean.substring(1))){
+            int id = Strings.parseInt(clean.substring(1));
+            return Groups.player.find(p -> p.id() == id);
+        }
+
+        Player byUid = findPlayerByShortUid(clean);
+        if(byUid != null) return byUid;
+
+        if(Strings.canParseInt(clean)){
+            int id = Strings.parseInt(clean);
+            Player numeric = Groups.player.find(p -> p.id() == id);
+            if(numeric != null) return numeric;
+        }
+
+        PlayerInfo info = findPlayerInfoByToken(clean);
+        if(info != null){
+            Player byInfo = Groups.player.find(p -> p.getInfo() == info);
+            if(byInfo != null) return byInfo;
+        }
+
+        return findPlayerByNameToken(clean);
+    }
+
+    private PlayerInfo findPlayerInfoByToken(String token){
+        if(token == null) return null;
+
+        String clean = Strings.stripColors(token).trim();
+        if(clean.isEmpty()) return null;
+
+        Player online = findPlayerByNameToken(clean);
+        if(online != null) return online.getInfo();
+
+        String uid = normalizeShortUidToken(clean);
+        if(uid != null){
+            PlayerInfo byUid = netServer.admins.findByShortUid(uid);
+            if(byUid != null) return byUid;
+        }
+
+        PlayerInfo direct = netServer.admins.getInfoOptional(clean);
+        if(direct != null) return direct;
+
+        ObjectSet<PlayerInfo> infos = netServer.admins.findByName(clean);
+        return infos.size == 1 ? infos.first() : null;
     }
 
     private Player findPlayerByNameToken(String token){

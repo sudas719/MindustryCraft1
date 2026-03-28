@@ -289,6 +289,8 @@ public class UnitFactory extends UnitBlock{
         private final Rect addonOccupancyRect = new Rect();
         public boolean hadDoubleAddon = false;
         public float liftThrusterTime = 0f;
+        public transient float pendingLiftTime = 0f;
+        public transient int lastLiftedUnitId = -1;
 
         public float fraction(){
             if(sc2Queue && queued <= 0) return 0f;
@@ -476,6 +478,13 @@ public class UnitFactory extends UnitBlock{
         @Override
         public void updateTile(){
             liftThrusterTime = Math.max(liftThrusterTime - Time.delta/60f, 0f);
+            if(pendingLiftTime > 0f){
+                pendingLiftTime = Math.max(0f, pendingLiftTime - Time.delta);
+                if(pendingLiftTime <= 0f){
+                    liftNow();
+                }
+                return;
+            }
             if(!configurable){
                 currentPlan = 0;
             }
@@ -948,15 +957,22 @@ public class UnitFactory extends UnitBlock{
             if(isAddonBuilding()) return false;
             if(payload != null) return false;
             if(UnitTypes.factoryTechResearching(this)) return false;
-            return queuedTotal() <= 0;
+            return pendingLiftTime <= 0f && queuedTotal() <= 0;
         }
 
-        public @Nullable Unit lift(){
-            if(!canLift()) return null;
+        public boolean beginLift(){
+            if(!canLift()) return false;
+            pendingLiftTime = 60f;
+            lastLiftedUnitId = -1;
+            return true;
+        }
+
+        private @Nullable Unit liftNow(){
             Unit unit = UnitTypes.coreFlyer.create(team);
             unit.set(x, y);
             unit.rotation(225f);
             unit.add();
+            lastLiftedUnitId = unit.id;
             if(unit instanceof Payloadc payload){
                 payload.pickup(this);
                 UnitTypes.CoreFlyerData data = UnitTypes.getCoreFlyerData(unit);
@@ -966,6 +982,11 @@ public class UnitFactory extends UnitBlock{
                 data.returnRotation = payload.payloads().peek() instanceof BuildPayload build ? build.build.rotation * 90f : unit.rotation();
             }
             return unit;
+        }
+
+        public @Nullable Unit lift(){
+            if(!canLift()) return null;
+            return liftNow();
         }
 
         private void drawLiftThrusters(float frame){
@@ -979,12 +1000,7 @@ public class UnitFactory extends UnitBlock{
         }
 
         public boolean canAffordAddon(int crystal, int gas){
-            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
-            CoreBuild core = team.core();
-            if(core == null) return false;
-            if(crystal > 0 && !core.items.has(Items.graphite, crystal)) return false;
-            if(gas > 0 && !core.items.has(Items.highEnergyGas, gas)) return false;
-            return true;
+            return state.rules.infiniteResources || team.rules().infiniteResources || team.data().hasSc2Cost(crystal, gas);
         }
 
         public boolean startAddonBuild(Block addon, int crystalCost, int gasCost, float buildTime){
@@ -998,10 +1014,7 @@ public class UnitFactory extends UnitBlock{
             if(!Build.validPlaceIgnoreUnits(addon, team, addonTile.x, addonTile.y, 0, true, true)) return false;
 
             if(!state.rules.infiniteResources && !team.rules().infiniteResources){
-                CoreBuild core = team.core();
-                if(core == null) return false;
-                if(crystalCost > 0) core.items.remove(Items.graphite, crystalCost);
-                if(gasCost > 0) core.items.remove(Items.highEnergyGas, gasCost);
+                if(!team.data().removeSc2Cost(crystalCost, gasCost)) return false;
             }
 
             addonBuildPos = Point2.pack(addonTile.x, addonTile.y);
@@ -1317,13 +1330,7 @@ public class UnitFactory extends UnitBlock{
         }
 
         private void refundAddonCost(){
-            CoreBuild core = team.core();
-            if(core == null) return;
-            for(ItemStack stack : addonRefundStacks()){
-                if(stack.amount > 0){
-                    core.items.add(stack.item, stack.amount);
-                }
-            }
+            team.data().addSc2Cost((int)Mathf.ceil(addonCrystalCost * 0.75f), (int)Mathf.ceil(addonGasCost * 0.75f));
         }
 
         private ItemStack[] addonRefundStacks(){
@@ -1355,40 +1362,25 @@ public class UnitFactory extends UnitBlock{
         }
 
         private boolean canAffordPlan(UnitPlan plan, int count){
-            if(state.rules.infiniteResources || team.rules().infiniteResources) return true;
-            CoreBuild core = team.core();
-            if(core == null) return false;
-            for(ItemStack stack : plan.requirements){
-                int amount = planItemCost(stack) * count;
-                if(amount > 0 && !core.items.has(stack.item, amount)){
-                    return false;
-                }
-            }
-            return true;
+            return state.rules.infiniteResources || team.rules().infiniteResources || team.data().hasResources(plan.requirements, state.rules.unitCost(team) * count);
         }
 
         private void payForPlan(UnitPlan plan, int count){
             if(state.rules.infiniteResources || team.rules().infiniteResources) return;
-            CoreBuild core = team.core();
-            if(core == null) return;
-            for(ItemStack stack : plan.requirements){
-                int amount = planItemCost(stack) * count;
-                if(amount > 0){
-                    core.items.remove(stack.item, amount);
-                }
-            }
+            team.data().removeResources(plan.requirements, state.rules.unitCost(team) * count);
         }
 
         private void refundPlan(UnitPlan plan, int count){
             if(count <= 0 || state.rules.infiniteResources || team.rules().infiniteResources) return;
             CoreBuild core = team.core();
-            for(ItemStack stack : plan.requirements){
-                int amount = planItemCost(stack) * count;
-                if(amount <= 0) continue;
-                if(core != null){
-                    core.items.add(stack.item, amount);
-                }else if(items != null){
-                    items.add(stack.item, amount);
+            if(core != null){
+                team.data().addResources(plan.requirements, state.rules.unitCost(team) * count);
+            }else if(items != null){
+                for(ItemStack stack : plan.requirements){
+                    int amount = planItemCost(stack) * count;
+                    if(amount > 0){
+                        items.add(stack.item, amount);
+                    }
                 }
             }
         }

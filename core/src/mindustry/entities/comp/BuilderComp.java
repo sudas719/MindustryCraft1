@@ -8,6 +8,7 @@ import arc.math.geom.Point2;
 import arc.struct.Queue;
 import arc.util.*;
 import mindustry.*;
+import mindustry.ai.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
 import mindustry.entities.Units;
@@ -160,8 +161,9 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
             buildAlpha = 1f;
             if(current.breaking) lastSize = tile.block().size;
 
+            boolean waitingForBlockers = false;
             if(current.requireClose && !current.initialized){
-                scatterUnitsForBuild(current, 1.0f);
+                waitingForBlockers = moveBlockingUnitsForBuild(current);
             }
 
             float placeDst = current.requireClose ? Math.min(finalPlaceDst, closeRange(current)) : finalPlaceDst;
@@ -181,18 +183,18 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
 
             if(!(tile.build instanceof ConstructBuild cb)){
                 if(!current.initialized && !current.breaking && Build.validPlaceIgnoreUnits(current.block, team, current.x, current.y, current.rotation, true, true)){
-                    if(current.requireClose || Build.checkNoUnitOverlap(current.block, current.x, current.y)){
+                    if(waitingForBlockers){
+                        continue;
+                    }
+                    if(current.requireClose ? Build.checkPersistentUnitBlockers(current.block, current.x, current.y) : Build.checkNoUnitOverlap(current.block, current.x, current.y)){
                         boolean hasAll = infinite || current.isRotation(team) ||
                             //derelict repair
                             (tile.team() == Team.derelict && tile.block() == current.block && tile.build != null && tile.block().allowDerelictRepair && state.rules.derelictRepair) ||
                             //make sure there's at least 1 item of each type first
                             ConstructBlock.isPrepaid(tile.pos()) ||
-                            !Structs.contains(current.block.requirements, i -> !core.items.has(i.item, Math.min(Mathf.round(i.amount * state.rules.buildCostMultiplier), 1)));
+                            !Structs.contains(current.block.requirements, i -> !core.team.data().hasResource(i.item, Math.min(Mathf.round(i.amount * state.rules.buildCostMultiplier), 1)));
 
                         if(hasAll){
-                            if(current.requireClose){
-                                scatterUnitsForBuild(current, 1.5f);
-                            }
                             Call.beginPlace(self(), current.block, team, current.x, current.y, current.rotation, current.block.instantBuild ? current.config : null);
 
                             if(!net.client() && current.block.instantBuild){
@@ -303,12 +305,7 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         if(ConstructBlock.consumePrepaid(pos)){
             ConstructBlock.clearForceBuildTime(pos);
             if(core == null) return;
-            for(ItemStack stack : plan.block.requirements){
-                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-                if(amount > 0){
-                    core.items.add(stack.item, amount);
-                }
-            }
+            core.team.data().addResources(plan.block.requirements, state.rules.buildCostMultiplier);
         }
     }
 
@@ -318,8 +315,9 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
 
         if(ConstructBlock.isPrepaid(Point2.pack(plan.x, plan.y))) return false;
 
-        return (plan.stuck && !core.items.has(plan.block.requirements)) ||
-            (Structs.contains(plan.block.requirements, i -> !core.items.has(i.item, Math.min(i.amount, 15)) && Mathf.round(i.amount * state.rules.buildCostMultiplier) > 0));
+        var resources = core.team.data();
+        return (plan.stuck && !resources.hasResources(plan.block.requirements, state.rules.buildCostMultiplier)) ||
+            (Structs.contains(plan.block.requirements, i -> !resources.hasResource(i.item, Math.min(i.amount, 15)) && Mathf.round(i.amount * state.rules.buildCostMultiplier) > 0));
     }
 
     void removeBuild(int x, int y, boolean breaking){
@@ -381,23 +379,82 @@ abstract class BuilderComp implements Posc, Statusc, Teamc, Rotc{
         return isBuilding() && updateBuilding;
     }
 
-    private void scatterUnitsForBuild(BuildPlan plan, float power){
-        float cx = plan.drawx(), cy = plan.drawy();
-        float baseRadius = plan.block.size * tilesize / 2f;
-        float scatterRadius = baseRadius + 12f;
-        if(!within(cx, cy, scatterRadius + 24f)) return;
+    private boolean moveBlockingUnitsForBuild(BuildPlan plan){
+        if(net.client() || plan == null || plan.block == null) return false;
 
-        Units.nearby(null, cx, cy, scatterRadius + 24f, other -> {
-            if(other == self()) return;
-            float dx = other.x - cx, dy = other.y - cy;
-            float rs = scatterRadius + other.hitSize / 2f;
-            if(dx * dx + dy * dy < rs * rs){
-                if(Mathf.zero(dx) && Mathf.zero(dy)){
-                    dy = -1f;
-                }
-                other.velAddNet(Tmp.v1.set(dx, dy).setLength(1.2f * power * Time.delta));
+        float cx = plan.drawx(), cy = plan.drawy();
+        float size = plan.block.size * tilesize;
+        float half = size / 2f;
+        float searchRadius = half + 12f;
+        if(!within(cx, cy, searchRadius + 24f)) return false;
+
+        float left = cx - half, right = cx + half, bottom = cy - half, top = cy + half;
+        boolean[] waiting = {false};
+
+        Units.nearby(team, cx - searchRadius - 24f, cy - searchRadius - 24f, (searchRadius + 24f) * 2f, (searchRadius + 24f) * 2f, other -> {
+            if(other == self() || !other.isGrounded()) return;
+
+            other.hitboxTile(Tmp.r1);
+            if(!Tmp.r1.overlaps(left, bottom, size, size)) return;
+
+            BuildPlan otherPlan = other.buildPlan();
+            if(otherPlan != null && otherPlan.requireClose && otherPlan.x == plan.x && otherPlan.y == plan.y) return;
+            if(other.activelyBuilding() && otherPlan != null && otherPlan.requireClose) return;
+
+            if(other.controller() instanceof CommandAI ai && other.type.commands.contains(UnitCommand.moveCommand)){
+                waiting[0] = true;
+                commandUnitOutsideBuild(other, ai, left, right, bottom, top);
             }
         });
+
+        return waiting[0];
+    }
+
+    private void commandUnitOutsideBuild(Unit other, CommandAI ai, float left, float right, float bottom, float top){
+        float unitHalf = Math.max(other.hitSize / 2f, 2f);
+        float padding = unitHalf + tilesize * 0.1f;
+        float innerLeft = Math.min(left + unitHalf, right - unitHalf);
+        float innerRight = Math.max(left + unitHalf, right - unitHalf);
+        float innerBottom = Math.min(bottom + unitHalf, top - unitHalf);
+        float innerTop = Math.max(bottom + unitHalf, top - unitHalf);
+
+        float distLeft = Math.abs(other.x - left);
+        float distRight = Math.abs(right - other.x);
+        float distBottom = Math.abs(other.y - bottom);
+        float distTop = Math.abs(top - other.y);
+
+        long spreadSeed = other.id * 31L + (long)Mathf.floor(left) * 131L + (long)Mathf.floor(bottom) * 137L;
+        float moveX = other.x, moveY = other.y;
+
+        if(distLeft <= distRight && distLeft <= distBottom && distLeft <= distTop){
+            float spread = Mathf.randomSeed(spreadSeed, -tilesize * 0.75f, tilesize * 0.75f);
+            moveX = left - padding;
+            moveY = Mathf.clamp(other.y + spread, innerBottom, innerTop);
+        }else if(distRight <= distBottom && distRight <= distTop){
+            float spread = Mathf.randomSeed(spreadSeed + 1L, -tilesize * 0.75f, tilesize * 0.75f);
+            moveX = right + padding;
+            moveY = Mathf.clamp(other.y + spread, innerBottom, innerTop);
+        }else if(distBottom <= distTop){
+            float spread = Mathf.randomSeed(spreadSeed + 2L, -tilesize * 0.75f, tilesize * 0.75f);
+            moveX = Mathf.clamp(other.x + spread, innerLeft, innerRight);
+            moveY = bottom - padding;
+        }else{
+            float spread = Mathf.randomSeed(spreadSeed + 3L, -tilesize * 0.75f, tilesize * 0.75f);
+            moveX = Mathf.clamp(other.x + spread, innerLeft, innerRight);
+            moveY = top + padding;
+        }
+
+        if(ai.command == UnitCommand.moveCommand && ai.targetPos != null){
+            boolean alreadyOutside = ai.targetPos.x < left - tilesize * 0.05f || ai.targetPos.x > right + tilesize * 0.05f ||
+                ai.targetPos.y < bottom - tilesize * 0.05f || ai.targetPos.y > top + tilesize * 0.05f;
+            if(alreadyOutside && Mathf.within(ai.targetPos.x, ai.targetPos.y, moveX, moveY, tilesize * 0.75f)){
+                return;
+            }
+        }
+
+        ai.command(UnitCommand.moveCommand);
+        ai.commandQueue.clear();
+        ai.commandPosition(Tmp.v1.set(moveX, moveY));
     }
 
     private float buildRangeFor(@Nullable BuildPlan plan){

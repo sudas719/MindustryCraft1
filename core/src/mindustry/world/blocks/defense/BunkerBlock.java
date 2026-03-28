@@ -235,10 +235,7 @@ public class BunkerBlock extends HeatCrafter{
             if(!isValid()) return;
             unloadAll(true);
 
-            CoreBuild core = team.core();
-            if(core != null && recycleCrystalRefund > 0){
-                core.items.add(Items.graphite, recycleCrystalRefund);
-            }
+            team.data().addSc2Cost(recycleCrystalRefund, 0);
 
             Fx.blockExplosionSmoke.at(x, y);
             Fx.dynamicExplosion.at(x, y, block.size);

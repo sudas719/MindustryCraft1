@@ -1649,7 +1649,7 @@ public class Fx{
         Draw.reset();
     }),
 
-    sc2Scan = new Effect(9f * 60f, tilesize * 12f, e -> {
+    sc2Scan = new Effect(9f * 60f, tilesize * 13f, e -> {
         float radius = e.rotation;
         color(Pal.accent);
         stroke(1.5f);

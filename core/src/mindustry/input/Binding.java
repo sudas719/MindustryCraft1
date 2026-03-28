@@ -27,7 +27,7 @@ public class Binding{
     rotate = KeyBind.add("rotate", new Axis(KeyCode.scroll)),
     rotatePlaced = KeyBind.add("rotateplaced", KeyCode.unset),
     diagonalPlacement = KeyBind.add("diagonal_placement", KeyCode.controlLeft),
-    pick = KeyBind.add("pick", KeyCode.mouseMiddle),
+    pick = KeyBind.add("pick", KeyCode.unset),
 
     rebuildSelect = KeyBind.add("rebuild_select", KeyCode.unset),
     schematicSelect = KeyBind.add("schematic_select", KeyCode.unset),
@@ -36,7 +36,7 @@ public class Binding{
     schematicMenu = KeyBind.add("schematic_menu", KeyCode.unset),
 
     commandMode = KeyBind.add("command_mode", KeyCode.shiftLeft, "command"),
-    commandQueue = KeyBind.add("command_queue", KeyCode.mouseMiddle),
+    commandQueue = KeyBind.add("command_queue", KeyCode.unset),
     createControlGroup = KeyBind.add("create_control_group", KeyCode.controlLeft),
 
     controlGroup01 = KeyBind.add("control_group_01", KeyCode.num1),
@@ -156,6 +156,16 @@ public class Binding{
     console = KeyBind.add("console", KeyCode.unset),
     debugHitboxes = KeyBind.add("debug_hitboxes", KeyCode.unset)
     ;
+
+    static{
+        //Middle mouse is reserved for camera dragging only.
+        for(KeyBind bind : KeyBind.all){
+            if(bind.value != null && bind.value.key == KeyCode.mouseMiddle){
+                bind.value = new Axis(KeyCode.unset);
+                bind.save();
+            }
+        }
+    }
 
     //dummy static class initializer
     public static void init(){}

@@ -146,7 +146,8 @@ public class Build{
                 ignoreUnits = true;
             }
         }
-        if(!(ignoreUnits ? validPlaceIgnoreUnits(result, team, x, y, rotation, true, true) : validPlace(result, team, x, y, rotation))){
+        boolean persistentBlockersClear = checkPersistentUnitBlockers(result, x, y);
+        if(!(ignoreUnits ? validPlaceIgnoreUnits(result, team, x, y, rotation, true, true) && persistentBlockersClear : validPlace(result, team, x, y, rotation))){
             return;
         }
 
@@ -247,27 +248,14 @@ public class Build{
     /** Places a ConstructBlock and deducts full cost immediately. Used for RTS build commands. */
     @Remote(called = Loc.server)
     public static void beginPlacePaid(@Nullable Unit unit, Block result, Team team, int x, int y, int rotation, @Nullable Object placeConfig){
-        if(!validPlaceIgnoreUnits(result, team, x, y, rotation, true, true)){
+        if(!validPlaceIgnoreUnits(result, team, x, y, rotation, true, true) || !checkPersistentUnitBlockers(result, x, y)){
             return;
         }
 
         if(!state.rules.infiniteResources && !team.rules().infiniteResources){
             CoreBuild core = team.core();
             if(core == null) return;
-
-            for(ItemStack stack : result.requirements){
-                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-                if(amount > 0 && !core.items.has(stack.item, amount)){
-                    return;
-                }
-            }
-
-            for(ItemStack stack : result.requirements){
-                int amount = Mathf.round(stack.amount * state.rules.buildCostMultiplier);
-                if(amount > 0){
-                    core.items.remove(stack.item, amount);
-                }
-            }
+            if(!team.data().removeResources(result.requirements, state.rules.buildCostMultiplier)) return;
 
             if(!result.instantBuild){
                 ConstructBlock.markPrepaid(Point2.pack(x, y));
@@ -293,8 +281,32 @@ public class Build{
         return validPlaceIgnoreUnits(type, team, x, y, rotation, checkVisible, checkCoreRadius) && checkNoUnitOverlap(type, x, y);
     }
 
+    /** @return whether a lifted building can land at this location. Unlike normal placement, landing never replaces existing blocks/buildings. */
+    public static boolean validLandPlace(Block type, Team team, int x, int y, int rotation, boolean allowFoggedUnknowns){
+        return validLandPlace(type, team, x, y, rotation, allowFoggedUnknowns, true);
+    }
+
+    /** @return whether a lifted building can land at this location. Unlike normal placement, landing never replaces existing blocks/buildings. */
+    public static boolean validLandPlace(Block type, Team team, int x, int y, int rotation, boolean allowFoggedUnknowns, boolean checkCoreRadius){
+        return validLandPlaceIgnoreUnits(type, team, x, y, rotation, allowFoggedUnknowns, checkCoreRadius) &&
+            checkLandUnitOverlap(type, team, x, y, allowFoggedUnknowns);
+    }
+
     /** @return whether a tile can be placed at this location by this team. */
     public static boolean checkNoUnitOverlap(Block type, int x, int y){
+        if(!checkPersistentUnitBlockers(type, x, y)) return false;
+
+        float wx = x * tilesize + type.offset - type.size * tilesize / 2f;
+        float wy = y * tilesize + type.offset - type.size * tilesize / 2f;
+        float size = type.size * tilesize;
+
+        return (!type.solid && !type.solidifes) || !Units.anyEntities(wx, wy, size, size);
+    }
+
+    /** @return whether special immobile unit states that must always block placement are absent. */
+    public static boolean checkPersistentUnitBlockers(Block type, int x, int y){
+        if(type == null) return false;
+
         float wx = x * tilesize + type.offset - type.size * tilesize / 2f;
         float wy = y * tilesize + type.offset - type.size * tilesize / 2f;
         float size = type.size * tilesize;
@@ -303,8 +315,22 @@ public class Build{
         if(Units.anyEntities(wx, wy, size, size, UnitTypes::widowIsBuried)) return false;
         //Sieged precept tanks always block placement in their footprint.
         if(Units.anyEntities(wx, wy, size, size, UnitTypes::preceptIsSieged)) return false;
+        return true;
+    }
 
-        return (!type.solid && !type.solidifes) || !Units.anyEntities(wx, wy, size, size);
+    /** @return whether visible units that should block landing are absent. */
+    public static boolean checkLandUnitOverlap(Block type, Team team, int x, int y, boolean allowFoggedUnknowns){
+        if(type == null) return false;
+        if(!checkPersistentUnitBlockers(type, x, y)) return false;
+        if(!type.solid && !type.solidifes) return true;
+
+        float wx = x * tilesize + type.offset - type.size * tilesize / 2f;
+        float wy = y * tilesize + type.offset - type.size * tilesize / 2f;
+        float size = type.size * tilesize;
+
+        return !Units.anyEntities(wx, wy, size, size, u ->
+            u != null && u.isValid() && (!allowFoggedUnknowns || !u.inFogTo(team))
+        );
     }
 
     /** @return whether a tile can be placed at this location by this team. Ignores units at this location. */
@@ -442,6 +468,127 @@ public class Build{
         }
 
         return true;
+    }
+
+    /** @return whether a lifted building can land at this location while ignoring units at this location. */
+    public static boolean validLandPlaceIgnoreUnits(Block type, Team team, int x, int y, int rotation, boolean allowFoggedUnknowns, boolean checkCoreRadius){
+        boolean envBuildable = type != null && type.environmentBuildable();
+        if(type == Blocks.radar || type == Blocks.tankFabricator || type == Blocks.shipFabricator || type == Blocks.surgeCrucible){
+            envBuildable = true;
+        }
+
+        if(state.rules.polygonCoreProtection && !envBuildable){
+            Building closest = null;
+            float mindst = Float.MAX_VALUE;
+            Seq<TeamData> data = state.teams.present;
+            if(type instanceof CoreBlock){
+                for(TeamData dataTeam : data){
+                    if(!dataTeam.team.rules().protectCores){
+                        continue;
+                    }
+
+                    for(CoreBuild tile : dataTeam.cores){
+                        float dst = tile.dst2(x * tilesize + type.offset, y * tilesize + type.offset);
+                        if(dst < mindst){
+                            closest = tile;
+                            mindst = dst;
+                        }
+                    }
+                }
+                if(closest != null && closest.team != team){
+                    return false;
+                }
+            }else if(state.teams.anyEnemyCoresWithinBuildRadius(team, x * tilesize + type.offset, y * tilesize + type.offset)){
+                return false;
+            }
+        }
+
+        Tile tile = world.tile(x, y);
+        if(tile == null) return false;
+        if(hasSlopeInPlacementArea(type, x, y)) return false;
+
+        boolean centerHidden = allowFoggedUnknowns && landTileHidden(team, tile);
+
+        if(type instanceof CoreBlock core){
+            return centerHidden || core.canLandOn(tile, team, rotation);
+        }
+
+        if(type == Blocks.ventCondenser){
+            if(centerHidden) return true;
+            if(!(tile.floor() instanceof SteamVent vent)) return false;
+            for(int dx = -1; dx <= 1; dx++){
+                for(int dy = -1; dy <= 1; dy++){
+                    Tile other = world.tile(tile.x + dx, tile.y + dy);
+                    if(other == null) return false;
+                    if(allowFoggedUnknowns && landTileHidden(team, other)) continue;
+                    if(other.floor() != vent) return false;
+                }
+            }
+
+            int offsetx = -(type.size - 1) / 2;
+            int offsety = -(type.size - 1) / 2;
+
+            for(int dx = 0; dx < type.size; dx++){
+                for(int dy = 0; dy < type.size; dy++){
+                    int wx = dx + offsetx + tile.x, wy = dy + offsety + tile.y;
+                    Tile check = world.tile(wx, wy);
+                    if(check == null) return false;
+                    if(allowFoggedUnknowns && landTileHidden(team, check)) continue;
+                    if(check.build != null || (check.block() != Blocks.air && !check.block().alwaysReplace)) return false;
+                }
+            }
+            return true;
+        }
+
+        if(!centerHidden && !type.canPlaceOn(tile, team, rotation)){
+            return false;
+        }
+
+        if(type.isFloor()){
+            return centerHidden || (type.isOverlay() ? tile.overlay() != type : tile.floor() != type);
+        }
+
+        if(!type.ignoreBuildDarkness && world.getDarkness(x, y) >= 3){
+            return false;
+        }
+
+        if(type.requiresWater && !contactsShallows(tile.x, tile.y, type) && !type.placeableLiquid){
+            return false;
+        }
+
+        int offsetx = -(type.size - 1) / 2;
+        int offsety = -(type.size - 1) / 2;
+
+        for(int dx = 0; dx < type.size; dx++){
+            for(int dy = 0; dy < type.size; dy++){
+                int wx = dx + offsetx + tile.x, wy = dy + offsety + tile.y;
+                Tile check = world.tile(wx, wy);
+                if(check == null) return false;
+                if(allowFoggedUnknowns && landTileHidden(team, check)) continue;
+
+                if(
+                    (type.size == 2 && world.getDarkness(wx, wy) >= 3) ||
+                    (isPlacementDeep(check) && !type.floating && !type.requiresWater && !type.placeableLiquid) ||
+                    (!state.rules.derelictRepair && check.team() == Team.derelict && check.build != null) ||
+                    !check.interactable(team) ||
+                    (!isPlacementPlaceable(check) && !type.ignoreBuildDarkness) ||
+                    (check.build != null) ||
+                    (check.block() != Blocks.air && !check.block().alwaysReplace) ||
+                    (type.requiresWater && !hasPlacementWater(check))
+                ) return false;
+            }
+        }
+
+        if(state.rules.placeRangeCheck && checkCoreRadius && !state.isEditor() && getEnemyOverlap(type, team, x, y) != null){
+            return false;
+        }
+
+        return true;
+    }
+
+    private static boolean landTileHidden(@Nullable Team team, @Nullable Tile tile){
+        return tile != null && team != null && state.rules.fog && fogControl != null && team != Team.derelict && team.data().isAlive() &&
+            !fogControl.isVisibleTile(team, tile.x, tile.y);
     }
 
     /** @return whether any tile in this block's footprint is marked as slope height. */

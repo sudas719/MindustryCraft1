@@ -45,8 +45,11 @@ public class Logic implements ApplicationListener{
     private static final int pvpHarvestSearchRadiusTiles = 40;
     private static final float openingScvSpawnOutwardOffset = 2f;
     private static final float openingScvSpawnAnchorDuration = 12f;
+    private static final double gameOverRecheckDelay = 2d * Time.toSeconds;
+    private final double[] teamAbsenceSince = new double[256];
 
     public Logic(){
+        Arrays.fill(teamAbsenceSince, -1d);
 
         Events.on(BlockDestroyEvent.class, event -> {
             //skip if rule is off
@@ -67,6 +70,8 @@ public class Logic implements ApplicationListener{
                 if(event.team == state.rules.defaultTeam){
                     state.stats.placedBlockCount.increment(event.tile.block());
                 }
+
+                scheduleRefineryAutoHarvest(event);
             }
         });
 
@@ -182,7 +187,7 @@ public class Logic implements ApplicationListener{
 
         //listen to core changes; if all cores have been destroyed, set to derelict.
         Events.on(CoreChangeEvent.class, e -> Core.app.post(() -> {
-            if(state.rules.cleanupDeadTeams && state.rules.pvp && !e.core.isAdded() && e.core.team != Team.derelict && e.core.team.cores().isEmpty()){
+            if(state.rules.cleanupDeadTeams && state.rules.pvp && !e.core.isAdded() && e.core.team != Team.derelict && !isTeamAliveAfterRecheck(e.core.team)){
                 e.core.team.data().destroyToDerelict();
             }
         }));
@@ -238,6 +243,7 @@ public class Logic implements ApplicationListener{
     /** Adds starting items, resets wave time, and sets state to playing. */
     public void play(){
         state.set(State.playing);
+        clearGameOverRechecks();
         //grace period of 2x wave time before game starts
         state.wavetime = (state.rules.initialWaveSpacing <= 0 ? state.rules.waveSpacing * 2 : state.rules.initialWaveSpacing) * (state.isCampaign() ? state.getPlanet().campaignRules.difficulty.waveTimeMultiplier : 1f);
         state.stats = new GameStats();
@@ -249,10 +255,10 @@ public class Logic implements ApplicationListener{
                 if(team.hasCore()){
                     CoreBuild entity = team.core();
                     entity.items.clear();
+                    team.resources.clear();
 
                     for(ItemStack stack : state.rules.loadout){
-                        //make sure to cap storage
-                        entity.items.add(stack.item, Math.min(stack.amount, entity.storageCapacity - entity.items.get(stack.item)));
+                        team.addResource(stack.item, stack.amount);
                     }
                 }
             }
@@ -268,6 +274,7 @@ public class Logic implements ApplicationListener{
 
     public void reset(){
         State prev = state.getState();
+        clearGameOverRechecks();
         state.patcher.unapply();
         //recreate gamestate - sets state to menu
         state = new GameState();
@@ -295,12 +302,54 @@ public class Logic implements ApplicationListener{
         Events.fire(new WaveEvent());
     }
 
+    private void clearGameOverRechecks(){
+        Arrays.fill(teamAbsenceSince, -1d);
+    }
+
+    private boolean hasTeamAlivePresenceNow(Team team){
+        if(team == null || team == Team.derelict) return false;
+
+        TeamData data = team.data();
+        if(data.hasCore() || data.hasBuildings()) return true;
+
+        return team == Team.neoplastic && (data.units.size > 0 || Groups.unit.contains(unit -> unit != null && unit.team == team && unit.isValid()));
+    }
+
+    private boolean isTeamAliveAfterRecheck(Team team){
+        if(team == null || team == Team.derelict) return false;
+
+        if(hasTeamAlivePresenceNow(team)){
+            teamAbsenceSince[team.id] = -1d;
+            return true;
+        }
+
+        double since = teamAbsenceSince[team.id];
+        if(since < 0d){
+            teamAbsenceSince[team.id] = state.tick;
+            return true;
+        }
+
+        return state.tick - since < gameOverRecheckDelay;
+    }
+
+    private void updatePvpTeamCleanup(){
+        if(!state.rules.cleanupDeadTeams || !state.rules.pvp) return;
+
+        for(Team team : Team.all){
+            if(team == Team.derelict || isTeamAliveAfterRecheck(team)) continue;
+
+            TeamData data = team.data();
+            if(data.buildings.size == 0 && data.units.size == 0) continue;
+            data.destroyToDerelict();
+        }
+    }
+
     private void checkGameState(){
-        boolean playerHasBuildings = state.rules.defaultTeam.data().buildings.size > 0;
+        boolean playerAlive = isTeamAliveAfterRecheck(state.rules.defaultTeam);
+        updatePvpTeamCleanup();
         //campaign maps do not have a 'win' state!
         if(state.isCampaign()){
-            //gameover only when cores are dead
-            if(state.teams.playerCores().size == 0 && !playerHasBuildings && !state.gameOver){
+            if(!playerAlive && !state.gameOver){
                 state.gameOver = true;
                 Events.fire(new GameOverEvent(state.rules.waveTeam));
             }
@@ -313,7 +362,7 @@ public class Logic implements ApplicationListener{
 
             //if there's a "win" wave and no enemies are present, win automatically
             if(state.rules.waves && (state.enemies == 0 && state.rules.winWave > 0 && state.wave >= state.rules.winWave && !spawner.isSpawning()) ||
-                (state.rules.attackMode && !state.rules.waveTeam.isAlive())){
+                (state.rules.attackMode && !isTeamAliveAfterRecheck(state.rules.waveTeam))){
 
                 if(state.rules.sector.preset != null && state.rules.sector.preset.attackAfterWaves && !state.rules.attackMode){
                     //activate attack mode to destroy cores after waves are done.
@@ -325,16 +374,20 @@ public class Logic implements ApplicationListener{
                 }
             }
         }else{
-            if(!state.rules.attackMode && state.teams.playerCores().size == 0 && !playerHasBuildings && !state.gameOver){
+            if(!state.rules.attackMode && !playerAlive && !state.gameOver){
                 state.gameOver = true;
                 Events.fire(new GameOverEvent(state.rules.waveTeam));
             }else if(state.rules.attackMode){
                 //count # of teams alive
-                int countAlive = state.teams.getActive().count(t -> t.isAlive() && t.team != Team.derelict);
+                int countAlive = 0;
+                TeamData left = null;
+                for(Team team : Team.all){
+                    if(team == Team.derelict || !isTeamAliveAfterRecheck(team)) continue;
+                    countAlive++;
+                    if(left == null) left = team.data();
+                }
 
-                if((countAlive <= 1 || (!state.rules.pvp && state.rules.defaultTeam.core() == null)) && !state.gameOver){
-                    //find team that won
-                    TeamData left = state.teams.getActive().find(t -> t.isAlive() && t.team != Team.derelict);
+                if((countAlive <= 1 || (!state.rules.pvp && state.rules.defaultTeam.core() == null && !playerAlive)) && !state.gameOver){
                     Events.fire(new GameOverEvent(left == null ? Team.derelict : left.team));
                     state.gameOver = true;
                 }
@@ -623,6 +676,55 @@ public class Logic implements ApplicationListener{
         }else if(unit.controller() instanceof HarvestAI ai && harvestTarget != null){
             ai.setHarvestTarget(Tmp.v2.set(harvestTarget.worldx(), harvestTarget.worldy()));
         }
+    }
+
+    private void scheduleRefineryAutoHarvest(BlockBuildEndEvent event){
+        if(net.client() || event == null || event.breaking || event.unit == null) return;
+        if(event.unit.type != UnitTypes.nova || !event.unit.isValid()) return;
+
+        Building build = event.tile == null ? null : event.tile.build;
+        if(build == null || build.block != Blocks.ventCondenser || build.team != event.unit.team) return;
+
+        Tile ventTile = CoreBlock.findVentTile(build);
+        if(ventTile == null) return;
+
+        int unitId = event.unit.id;
+        int buildPos = build.pos();
+        int ventPos = ventTile.pos();
+
+        // Let the builder drop the completed plan first; only auto-harvest when it stays idle.
+        Time.run(1f, () -> {
+            Unit unit = Groups.unit.getByID(unitId);
+            Building refinery = world.build(buildPos);
+            Tile harvestTarget = world.tile(ventPos);
+            if(!canAutoHarvestBuiltRefinery(unit, refinery, harvestTarget)) return;
+            applyHarvestCommand(unit, harvestTarget);
+        });
+    }
+
+    private boolean canAutoHarvestBuiltRefinery(@Nullable Unit unit, @Nullable Building refinery, @Nullable Tile harvestTarget){
+        if(unit == null || !unit.isValid() || unit.dead || unit.type != UnitTypes.nova) return false;
+        if(refinery == null || !refinery.isValid() || refinery.block != Blocks.ventCondenser || refinery.team != unit.team) return false;
+        if(harvestTarget == null) return false;
+        if(unit.activelyBuilding() || unit.isBuilding() || unit.mineTile() != null) return false;
+
+        if(unit.controller() instanceof HarvestAI){
+            return false;
+        }
+
+        if(unit.controller() instanceof CommandAI ai){
+            if(ai.commandQueue.any()) return false;
+            if(ai.attackTarget != null || ai.followTarget != null || ai.pendingHarvestTarget != null) return false;
+            if(ai.queuedCommand != null || ai.queuedCommandPos != null || ai.queuedCommandTarget != null || ai.queuedFollowTarget != null) return false;
+            if(ai.holdPositionActive()) return false;
+            if(ai.currentCommand() == UnitCommand.harvestCommand) return false;
+
+            if(ai.targetPos != null && !Mathf.within(ai.targetPos.x, ai.targetPos.y, refinery.x, refinery.y, tilesize * 0.75f) && !unit.within(ai.targetPos, tilesize * 0.75f)){
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private Seq<Tile> coreRingTiles(CoreBuild core){
